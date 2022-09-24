@@ -56,7 +56,7 @@ tool_dirs = [
     config.circt_tools_dir, config.mlir_tools_dir, config.llvm_tools_dir
 ]
 tools = [
-    'firtool', 'circt-as', 'circt-dis', 'circt-opt', 'circt-reduce',
+    'firtool', 'circt-as', 'circt-dis', 'circt-lec', 'circt-opt', 'circt-reduce',
     'circt-translate', 'circt-capi-ir-test', 'esi-tester', 'hlstool'
 ]
 
