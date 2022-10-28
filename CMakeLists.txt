@@ -473,6 +473,32 @@ endif()
 llvm_canonicalize_cmake_booleans(CIRCT_LLHD_SIM_ENABLED)
 
 #-------------------------------------------------------------------------------
+# circt-mc Configuration
+#-------------------------------------------------------------------------------
+# If circt-mc hasn't been explicitly disabled, find it.
+option(CIRCT_MC_DISABLE "Disable the Model Checker" OFF)
+if(CIRCT_MC_DISABLE)
+  message (STATUS "Disabling circt-mc")
+else()
+  if(Z3_DIR)
+    # Search and load the package configuration file in the specified directory.
+    find_package(Z3 CONFIG REQUIRED)
+    # Append the given path to the runpath for linking.
+    list(APPEND CMAKE_INSTALL_RPATH ${Z3_DIR})
+    set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+  else()
+    # Attempt initialising Z3 according to LLVM's `FindZ3.cmake`.
+    find_package(Z3)
+  endif()
+
+  if(Z3_FOUND)
+    message(STATUS "Z3 identified as a logical backend.")
+    # Signal to proceed building circt-lec.
+    set(CIRCT_MC_ENABLED ON)
+  endif()
+endif()
+
+#-------------------------------------------------------------------------------
 # Python Configuration
 #-------------------------------------------------------------------------------
 
