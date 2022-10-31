@@ -12,7 +12,6 @@
 
 #include "circt/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "llvm/Support/CommandLine.h"
 
 
