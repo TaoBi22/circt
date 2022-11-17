@@ -44,7 +44,7 @@ ServiceGeneratorDispatcher::generate(ServiceImplementReqOp req,
 
 /// The generator for the "cosim" impl_type.
 static LogicalResult instantiateCosimEndpointOps(ServiceImplementReqOp req,
-                                                 ServiceDeclOpInterface decl) {
+                                                 ServiceDeclOpInterface) {
   auto *ctxt = req.getContext();
   OpBuilder b(req);
   Value clk = req.getOperand(0);
@@ -118,6 +118,10 @@ static LogicalResult instantiateCosimEndpointOps(ServiceImplementReqOp req,
 static LogicalResult
 instantiateSystemVerilogMemory(ServiceImplementReqOp req,
                                ServiceDeclOpInterface decl) {
+  if (!decl)
+    return req.emitOpError(
+        "Must specify a service declaration to use 'sv_mem'.");
+
   ImplicitLocOpBuilder b(req.getLoc(), req);
   BackedgeBuilder bb(b, req.getLoc());
 
@@ -325,8 +329,13 @@ LogicalResult ESIConnectServicesPass::process(hw::HWMutableModuleLike mod) {
 
   // Index the local services and create blocks in which to put the requests.
   DenseMap<SymbolRefAttr, Block *> localImplReqs;
-  for (auto instOp : modBlock.getOps<ServiceInstanceOp>())
-    localImplReqs[instOp.getServiceSymbolAttr()] = new Block();
+  Block *anyServiceInst = nullptr;
+  for (auto instOp : modBlock.getOps<ServiceInstanceOp>()) {
+    auto *b = new Block();
+    localImplReqs[instOp.getServiceSymbolAttr()] = b;
+    if (!instOp.getServiceSymbol().has_value())
+      anyServiceInst = b;
+  }
 
   // Decompose the 'inout' requests int to 'in' and 'out' requests.
   mod.walk([&](RequestInOutChannelOp reqInOut) {
@@ -348,11 +357,15 @@ LogicalResult ESIConnectServicesPass::process(hw::HWMutableModuleLike mod) {
       auto implOpF = localImplReqs.find(service);
       if (implOpF != localImplReqs.end())
         req->moveBefore(implOpF->second, implOpF->second->end());
+      else if (anyServiceInst)
+        req->moveBefore(anyServiceInst, anyServiceInst->end());
     } else if (auto req = dyn_cast<RequestToServerConnectionOp>(op)) {
       auto service = req.getServicePortAttr().getModuleRef();
       auto implOpF = localImplReqs.find(service);
       if (implOpF != localImplReqs.end())
         req->moveBefore(implOpF->second, implOpF->second->end());
+      else if (anyServiceInst)
+        req->moveBefore(anyServiceInst, anyServiceInst->end());
     }
   });
 
@@ -418,6 +431,14 @@ void ESIConnectServicesPass::copyMetadata(hw::HWMutableModuleLike mod) {
 static void emitServiceMetadata(ServiceImplementReqOp implReqOp) {
   ImplicitLocOpBuilder b(implReqOp.getLoc(), implReqOp);
 
+  // Check if there are any "BSP" service providers -- ones which implement any
+  // service -- and create an implicit service declaration for them.
+  std::unique_ptr<Block> bspPorts = nullptr;
+  if (!implReqOp.getServiceSymbol().has_value()) {
+    bspPorts = std::make_unique<Block>();
+    b.setInsertionPointToStart(bspPorts.get());
+  }
+
   llvm::SmallVector<
       std::pair<RequestToServerConnectionOp, RequestToClientConnectionOp>, 8>
       reqPairs;
@@ -444,10 +465,35 @@ static void emitServiceMetadata(ServiceImplementReqOp implReqOp) {
     clientAttrs.push_back(b.getNamedAttr("client_name", clientNamePath));
 
     clients.push_back(b.getDictionaryAttr(clientAttrs));
+
+    if (!bspPorts)
+      continue;
+
+    if (toServer && toClient)
+      b.create<ServiceDeclInOutOp>(
+          toServer.getServicePort().getName(),
+          TypeAttr::get(toServer.getToServer().getType()),
+          TypeAttr::get(toClient.getToClient().getType()));
+    else if (toClient)
+      b.create<ToClientOp>(toClient.getServicePort().getName(),
+                           TypeAttr::get(toClient.getToClient().getType()));
+    else
+      b.create<ToServerOp>(toServer.getServicePort().getName(),
+                           TypeAttr::get(toServer.getToServer().getType()));
+  }
+
+  if (bspPorts && !bspPorts->empty()) {
+    b.setInsertionPointToEnd(
+        implReqOp->getParentOfType<mlir::ModuleOp>().getBody());
+    // TODO: we currently only support one BSP. Should we support more?
+    auto decl = b.create<CustomServiceDeclOp>("BSP");
+    decl.getPorts().push_back(bspPorts.release());
+    implReqOp.setServiceSymbol(decl.getSymNameAttr().getValue());
   }
 
   auto clientsAttr = b.getArrayAttr(clients);
   auto nameAttr = b.getArrayAttr(ArrayRef<Attribute>{});
+  b.setInsertionPointAfter(implReqOp);
   b.create<ServiceHierarchyMetadataOp>(
       implReqOp.getServiceSymbolAttr(), nameAttr, implReqOp.getImplTypeAttr(),
       implReqOp.getImplOptsAttr(), clientsAttr);
@@ -456,12 +502,15 @@ static void emitServiceMetadata(ServiceImplementReqOp implReqOp) {
 LogicalResult ESIConnectServicesPass::replaceInst(ServiceInstanceOp instOp,
                                                   Block *portReqs) {
   assert(portReqs);
-
-  auto decl = dyn_cast_or_null<ServiceDeclOpInterface>(
-      topLevelSyms.getDefinition(instOp.getServiceSymbolAttr()));
-  if (!decl)
-    return instOp.emitOpError("Could not find service declaration ")
-           << instOp.getServiceSymbolAttr();
+  auto declSym = instOp.getServiceSymbolAttr();
+  ServiceDeclOpInterface decl;
+  if (declSym) {
+    decl = dyn_cast_or_null<ServiceDeclOpInterface>(
+        topLevelSyms.getDefinition(declSym));
+    if (!decl)
+      return instOp.emitOpError("Could not find service declaration ")
+             << declSym;
+  }
 
   // Compute the result types for the new op -- the instance op's output types
   // + the to_client types.

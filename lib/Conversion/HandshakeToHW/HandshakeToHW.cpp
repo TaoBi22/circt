@@ -1839,10 +1839,12 @@ public:
       auto *parentOp = op->getParentOp();
       auto *predeclModule =
           SymbolTable::lookupSymbolIn(parentOp, predecl.getValue());
-      if (failed(SymbolTable::replaceAllSymbolUses(
-              predeclModule, hwModule.moduleNameAttr(), parentOp)))
-        return failure();
-      rewriter.eraseOp(predeclModule);
+      if (predeclModule) {
+        if (failed(SymbolTable::replaceAllSymbolUses(
+                predeclModule, hwModule.moduleNameAttr(), parentOp)))
+          return failure();
+        rewriter.eraseOp(predeclModule);
+      }
     }
 
     rewriter.eraseOp(op);
@@ -1927,11 +1929,14 @@ public:
 
     // Lowering to HW requires that every value is used exactly once. Check
     // whether this precondition is met, and if not, exit.
-    if (llvm::any_of(mod.getOps<handshake::FuncOp>(), [](auto f) {
-          return failed(verifyAllValuesHasOneUse(f));
-        })) {
-      signalPassFailure();
-      return;
+    for (auto f : mod.getOps<handshake::FuncOp>()) {
+      if (failed(verifyAllValuesHasOneUse(f))) {
+        f.emitOpError() << "HandshakeToHW: failed to verify that all values "
+                           "are used exactly once. Remember to run the "
+                           "fork/sink materialization pass before HW lowering.";
+        signalPassFailure();
+        return;
+      }
     }
 
     // Resolve the instance graph to get a top-level module.
@@ -1948,7 +1953,8 @@ public:
     // All top-level logic of a handshake module will be the interconnectivity
     // between instantiated modules.
     target.addLegalOp<hw::HWModuleOp, hw::OutputOp, hw::InstanceOp>();
-    target.addIllegalDialect<handshake::HandshakeDialect>();
+    target
+        .addIllegalDialect<handshake::HandshakeDialect, arith::ArithDialect>();
 
     // Convert the handshake.func operations in post-order wrt. the instance
     // graph. This ensures that any referenced submodules (through

@@ -150,11 +150,15 @@ module attributes {firrtl.extract.assert =  #hw.output_file<"dir3/", excludeFrom
 // CHECK: %0 = comb.and %1
 // CHECK: %1 = comb.and %0
 // CHECK: hw.instance "{{[^ ]+}}" {{.+}} @InputOnlyCycle_cover
+// CHECK: hw.instance {{.*}} sym @[[already_bound:[^ ]+]] @AlreadyBound
 // CHECK-NOT: sv.bind <@InputOnly::
 // CHECK-DAG: sv.bind <@Top::@[[input_only_assert]]>
 // CHECK-DAG: sv.bind <@Top::@[[input_only_cover]]>
 // CHECK-DAG: sv.bind <@InputOnlySym::@[[input_only_sym_cover]]>
+// CHECK-DAG: sv.bind <@Top::@[[already_bound]]>
 module {
+  hw.module private @AlreadyBound() -> () {}
+
   hw.module private @InputOnly(%clock: i1, %cond: i1) -> () {
     sv.always posedge %clock  {
       sv.cover %cond, immediate
@@ -178,12 +182,23 @@ module {
     }
   }
 
+  hw.module private @InputOnlyBind(%clock: i1, %cond: i1) -> () {
+    hw.instance "already_bound" sym @already_bound @AlreadyBound() -> () {doNotPrint = true}
+    sv.always posedge %clock  {
+      sv.cover %cond, immediate
+      sv.assert %cond, immediate
+    }
+  }
+
   hw.module @Top(%clock: i1, %cond: i1) -> (foo: i1) {
     hw.instance "input_only" @InputOnly(clock: %clock: i1, cond: %cond: i1) -> ()
     hw.instance "input_only_sym" sym @foo @InputOnlySym(clock: %clock: i1, cond: %cond: i1) -> ()
     hw.instance "input_only_cycle" @InputOnlyCycle(clock: %clock: i1, cond: %cond: i1) -> ()
+    hw.instance "input_only_bind" @InputOnlyBind(clock: %clock: i1, cond: %cond: i1) -> ()
     hw.output %cond : i1
   }
+
+  sv.bind <@InputOnlyBind::@already_bound>
 }
 
 // -----
@@ -192,6 +207,10 @@ module {
 // All instances of Baz are extracted, so it should be output to the testbench.
 // CHECK-LABEL: @Baz
 // CHECK-SAME: output_file = #hw.output_file<"testbench{{/|\\\\}}", excludeFromFileList, includeReplicatedOps>
+
+// All instances of Bozo are extracted, so it should be output to the testbench.
+// CHECK-LABEL: @Bozo
+// CHECK: #hw.output_file<"testbench
 
 // In AllExtracted, instances foo, bar, and baz should be extracted.
 // CHECK-LABEL: @AllExtracted_cover
@@ -217,12 +236,22 @@ module {
 // CHECK-NOT: hw.instance "child"
 // CHECK: hw.instance {{.+}} @ShouldBeInlined_cover
 
+// In ChildShouldInline2, instance bozo should not be inlined, since it was also extracted.
+// CHECK-LABEL: hw.module @ChildShouldInline2
+// CHECK-NOT: hw.instance "bozo"
+
 // In MultiResultExtracted, instance qux should be extracted without leaving null operands to the extracted instance
 // CHECK-LABEL: @MultiResultExtracted_cover
 // CHECK: hw.instance "qux"
 // CHECK-LABEL: @MultiResultExtracted
 // CHECK-SAME: (%[[clock:.+]]: i1, %[[in:.+]]: i1)
 // CHECK: hw.instance {{.+}} @MultiResultExtracted_cover([[clock]]: %[[clock]]: i1, [[in]]: %[[in]]: i1)
+
+// In SymNotExtracted, instance foo should not be extracted because it has a sym.
+// CHECK-LABEL: @SymNotExtracted_cover
+// CHECK-NOT: hw.instance "foo"
+// CHECK-LABEL: @SymNotExtracted
+// CHECK: hw.instance "foo"
 
 module attributes {
   firrtl.extract.testbench = #hw.output_file<"testbench/", excludeFromFileList, includeReplicatedOps>
@@ -236,6 +265,8 @@ module attributes {
   hw.module.extern private @Baz(%a: i1) -> (b: i1)
 
   hw.module.extern private @Qux(%a: i1) -> (b: i1, c: i1)
+
+  hw.module.extern private @Bozo(%a: i1) -> (b: i1)
 
   hw.module @AllExtracted(%clock: i1, %in: i1) {
     %foo.b = hw.instance "foo" @Foo(a: %in: i1) -> (b: i1)
@@ -279,8 +310,24 @@ module attributes {
     }
   }
 
+  hw.module private @ShouldBeInlined2(%clock: i1, %in: i1) {
+    %bozo.b = hw.instance "bozo" @Bozo(a: %in: i1) -> (b: i1)
+    sv.ifdef "SYNTHESIS" {
+    } else {
+      sv.always posedge %clock {
+        sv.if %bozo.b {
+          sv.cover %bozo.b, immediate
+        }
+      }
+    }
+  }
+
   hw.module @ChildShouldInline(%clock: i1, %in: i1) {
     hw.instance "child" @ShouldBeInlined(clock: %clock: i1, in: %in: i1) -> ()
+  }
+
+  hw.module @ChildShouldInline2(%clock: i1, %in: i1) {
+    hw.instance "child" @ShouldBeInlined2(clock: %clock: i1, in: %in: i1) -> ()
   }
 
   hw.module @MultiResultExtracted(%clock: i1, %in: i1) {
@@ -288,6 +335,13 @@ module attributes {
     sv.always posedge %clock {
       sv.cover %qux.b, immediate
       sv.cover %qux.c, immediate
+    }
+  }
+
+  hw.module @SymNotExtracted(%clock: i1, %in: i1) {
+    %foo.b = hw.instance "foo" sym @foo @Foo(a: %in: i1) -> (b: i1)
+    sv.always posedge %clock {
+      sv.cover %foo.b, immediate
     }
   }
 }

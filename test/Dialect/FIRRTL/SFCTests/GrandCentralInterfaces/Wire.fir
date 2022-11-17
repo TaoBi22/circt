@@ -3,6 +3,7 @@
 ; RUN: firtool --annotation-file %s.anno.json --annotation-file %s.Extract.anno.json %s --annotation-file %s.YAML.anno.json | FileCheck %s --check-prefixes YAML
 ; RUN: firtool --split-verilog --annotation-file %s.anno.json %s -o %t.folder > %t  && cat %t.folder/MyView_companion.sv | FileCheck %s --check-prefixes MYVIEW_COMPANION
 ; RUN: firtool --annotation-file %s.anno.json --annotation-file %s.Prefix.anno.json %s | FileCheck %s --check-prefixes PREFIX
+; RUN: firtool --annotation-file %s.anno.json %s --disable-opt
 
 circuit Top :
   extmodule BlackBox_DUT :
@@ -226,12 +227,12 @@ circuit Top :
 
     ; EXTRACT:        FILE ".{{[/\]}}BlackBox_DUT.v"
     ; EXTRACT:        FILE "Wire{{[/\]}}firrtl{{[/\]}}gct{{[/\]}}BlackBox_GCT.v"
-    ; EXTRACT:        FILE "Wire{{[/\]}}firrtl{{[/\]}}gct{{[/\]}}BlackBox_DUTAndGCT.v"
+    ; EXTRACT:        FILE ".{{[/\]}}BlackBox_DUTAndGCT.v"
 
     ; EXTRACT:        FILE "firrtl_black_box_resource_files.f"
     ; EXTRACT-NOT:    FILE
     ; EXTRACT:          BlackBox_DUT.v
-    ; EXTRACT-NEXT:     Wire{{[/\]}}firrtl{{[/\]}}gct{{[/\]}}BlackBox_DUTAndGCT.v
+    ; EXTRACT-NEXT:     BlackBox_DUTAndGCT.v
     ; EXTRACT-NEXT:     Wire{{[/\]}}firrtl{{[/\]}}gct{{[/\]}}BlackBox_GCT.v
 
     ; EXTRACT:        FILE "Wire{{[/\]}}firrtl{{[/\]}}gct{{[/\]}}MyView_companion.sv"

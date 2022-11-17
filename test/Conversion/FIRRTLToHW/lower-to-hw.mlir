@@ -1,5 +1,9 @@
-// RUN: circt-opt -lower-firrtl-to-hw -verify-diagnostics %s | FileCheck %s
+// RUN: circt-opt -pass-pipeline="builtin.module(lower-firrtl-to-hw)" -verify-diagnostics %s | FileCheck %s
+// RUN: circt-opt -pass-pipeline="builtin.module(lower-firrtl-to-hw{disable-mem-randomization})" -verify-diagnostics %s | FileCheck %s --check-prefix DISABLE_RANDOM --implicit-check-not RANDOMIZE_MEM
+// RUN: circt-opt -pass-pipeline="builtin.module(lower-firrtl-to-hw{disable-reg-randomization})" -verify-diagnostics %s | FileCheck %s --check-prefix DISABLE_RANDOM --implicit-check-not RANDOMIZE_REG
+// RUN: circt-opt -pass-pipeline="builtin.module(lower-firrtl-to-hw{disable-mem-randomization disable-reg-randomization})" -verify-diagnostics %s | FileCheck %s --check-prefix DISABLE_RANDOM --implicit-check-not RANDOMIZE_MEM --implicit-check-not RANDOMIZE_REG
 
+// DISABLE_RANDOM-LABEL: module @Simple
 firrtl.circuit "Simple"   attributes {annotations = [{class =
 "sifive.enterprise.firrtl.ExtractAssumptionsAnnotation", directory = "dir1",  filename = "./dir1/filename1" }, {class =
 "sifive.enterprise.firrtl.ExtractCoverageAnnotation", directory = "dir2",  filename = "./dir2/filename2" }, {class =
@@ -514,9 +518,11 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
     in %clock: !firrtl.clock,
     in %cond: !firrtl.uint<1>,
     in %enable: !firrtl.uint<1>,
-    in %value: !firrtl.uint<42>
+    in %value: !firrtl.uint<42>,
+    in %i0: !firrtl.uint<0>
   ) {
     firrtl.assert %clock, %cond, %enable, "assert0" {isConcurrent = true, format = "sva"}
+    // CHECK-NEXT: [[FALSE:%.+]] = hw.constant false
     // CHECK-NEXT: [[TRUE:%.+]] = hw.constant true
     // CHECK-NEXT: [[TMP1:%.+]] = comb.xor %enable, [[TRUE]]
     // CHECK-NEXT: [[TMP2:%.+]] = comb.or bin [[TMP1]], %cond
@@ -524,7 +530,7 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
     // CHECK-NEXT: sv.ifdef "USE_PROPERTY_AS_CONSTRAINT" {
     // CHECK-NEXT:   sv.assume.concurrent posedge %clock, [[TMP2]]
     // CHECK-NEXT: }
-    firrtl.assert %clock, %cond, %enable, "assert1"(%value) : !firrtl.uint<42> {isConcurrent = true, format = "ifElseFatal"}
+    firrtl.assert %clock, %cond, %enable, "assert1 %d, %d"(%value, %i0) : !firrtl.uint<42>, !firrtl.uint<0> {isConcurrent = true, format = "ifElseFatal"}
     // CHECK-NEXT: [[TRUE:%.+]] = hw.constant true
     // CHECK-NEXT: [[TMP1:%.+]] = comb.xor %cond, [[TRUE]]
     // CHECK-NEXT: [[TMP2:%.+]] = comb.and bin %enable, [[TMP1]]
@@ -534,7 +540,7 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
     // CHECK-NEXT:     sv.if [[TMP2]] {
     // CHECK-NEXT:       [[ASSERT_VERBOSE_COND:%.+]] = sv.macro.ref< "ASSERT_VERBOSE_COND_"> : i1
     // CHECK-NEXT:       sv.if [[ASSERT_VERBOSE_COND]] {
-    // CHECK-NEXT:         sv.error "assert1"(%value) : i42
+    // CHECK-NEXT:         sv.error "assert1 %d, %d"(%value, %false) : i42, i1
     // CHECK-NEXT:       }
     // CHECK-NEXT:       [[STOP_COND:%.+]] = sv.macro.ref< "STOP_COND_"> : i1
     // CHECK-NEXT:       sv.if [[STOP_COND]] {
@@ -1717,5 +1723,40 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
     // CHECK: hw.output %[[RET]]
     firrtl.strictconnect %0, %a : !firrtl.uint<10>
     firrtl.strictconnect %b, %0 : !firrtl.uint<10>
+  }
+
+  // CHECK-LABEL: hw.module @MergeBundle
+  firrtl.module @MergeBundle(out %o: !firrtl.bundle<valid: uint<1>, ready: uint<1>>, in %i: !firrtl.uint<1>) 
+  {
+    %a = firrtl.wire   : !firrtl.bundle<valid: uint<1>, ready: uint<1>>
+    firrtl.strictconnect %o, %a : !firrtl.bundle<valid: uint<1>, ready: uint<1>>
+    %0 = firrtl.bundlecreate %i, %i : (!firrtl.uint<1>, !firrtl.uint<1>) -> !firrtl.bundle<valid: uint<1>, ready: uint<1>>
+    firrtl.strictconnect %a, %0 : !firrtl.bundle<valid: uint<1>, ready: uint<1>>
+    // CHECK:  %a = sv.wire : !hw.inout<struct<valid: i1, ready: i1>> 
+    // CHECK:  %0 = sv.read_inout %a : !hw.inout<struct<valid: i1, ready: i1>> 
+    // CHECK:  %1 = hw.struct_create (%i, %i) : !hw.struct<valid: i1, ready: i1> 
+    // CHECK:  sv.assign %a, %1 : !hw.struct<valid: i1, ready: i1> 
+    // CHECK:  hw.output %0 : !hw.struct<valid: i1, ready: i1> 
+  }
+ 
+  // CHECK-LABEL: hw.module @MergeVector
+  firrtl.module @MergeVector(out %o: !firrtl.vector<uint<1>, 3>, in %i: !firrtl.uint<1>, in %j: !firrtl.uint<1>) {
+    %a = firrtl.wire   : !firrtl.vector<uint<1>, 3>
+    firrtl.strictconnect %o, %a : !firrtl.vector<uint<1>, 3>
+    %0 = firrtl.vectorcreate %i, %i, %j : (!firrtl.uint<1>, !firrtl.uint<1>, !firrtl.uint<1>) -> !firrtl.vector<uint<1>, 3>
+    firrtl.strictconnect %a, %0 : !firrtl.vector<uint<1>, 3>
+    // CHECK:  %a = sv.wire : !hw.inout<array<3xi1>> 
+    // CHECK:  %0 = sv.read_inout %a : !hw.inout<array<3xi1>> 
+    // CHECK:  %1 = hw.array_create %j, %i, %i : i1
+    // CHECK:  sv.assign %a, %1 : !hw.array<3xi1> 
+    // CHECK:  hw.output %0 : !hw.array<3xi1> 
+  }
+
+  // CHECK-LABEL: hw.module @aggregateconstant
+  firrtl.module @aggregateconstant(out %out : !firrtl.vector<uint<8>, 2>) {
+    %0 = firrtl.aggregateconstant [1 : ui8, 0: ui8] : !firrtl.vector<uint<8>, 2>
+    firrtl.strictconnect %out, %0 : !firrtl.vector<uint<8>, 2>
+    // CHECK:      %0 = hw.array_create %c0_i8, %c1_i8 : i8
+    // CHECK-NEXT: hw.output %0 : !hw.array<2xi8>
   }
 }

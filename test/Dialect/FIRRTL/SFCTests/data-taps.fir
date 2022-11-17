@@ -31,6 +31,10 @@ circuit Top : %[[
     ]
   },
   {
+    "class": "firrtl.transforms.DontTouchAnnotation",
+    "target": "~Top|Child>always"
+  },
+  {
     "class":"sifive.enterprise.grandcentral.MemTapAnnotation",
     "source": "~Top|Child>always",
     "taps":["~Top|MemTap_2>_0", "~Top|MemTap_2>_1"]
@@ -111,15 +115,15 @@ circuit Top : %[[
 ; CHECK: module DataTap_2_impl_0(
 ; CHECK:   output _1,
 ; CHECK:          _0);
-; CHECK:   assign _1 = Top.unsigned_1.signed_0.localparam_0.foo.bar.out;
-; CHECK:   assign _0 = Top.unsigned_1.signed_0.localparam_0.foo.bar.in;
+; CHECK:   assign _1 = Top.unsigned_0.signed_0.localparam_0.foo.bar.out;
+; CHECK:   assign _0 = Top.unsigned_0.signed_0.localparam_0.foo.bar.in;
 ; CHECK: endmodule
 
 ; CHECK: module MemTap_2_impl_0(
 ; CHECK:   output  _1,
 ; CHECK:           _0);
-; CHECK:   assign _1 = Top.unsigned_1.signed_0.always_ext.Memory[1];
-; CHECK:   assign _0 = Top.unsigned_1.signed_0.always_ext.Memory[0];
+; CHECK:   assign _1 = Top.unsigned_0.signed_0.always_ext.Memory[1];
+; CHECK:   assign _0 = Top.unsigned_0.signed_0.always_ext.Memory[0];
 ; CHECK: endmodule
 
 ; // -----

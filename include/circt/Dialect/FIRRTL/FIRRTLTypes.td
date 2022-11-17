@@ -63,6 +63,13 @@ def BundleType : FIRRTLDialectType<CPred<"$_self.isa<BundleType>()">,
 def FVectorType : FIRRTLDialectType<CPred<"$_self.isa<FVectorType>()">,
   "FVectorType", "::circt::firrtl::FVectorType">;
 
+def AggregateType : FIRRTLDialectType<
+  Or<[
+    CPred<"$_self.isa<FVectorType>()">,
+    CPred<"$_self.isa<BundleType>()">
+  ]>,
+  "a aggregate type", "::circt::firrtl::FIRRTLBaseType">;
+
 def ConnectableType : FIRRTLDialectType<
   Or<[
     CPred<"$_self.isa<FIRRTLBaseType>()">,
@@ -84,7 +91,7 @@ def SizedBaseOrRefType : FIRRTLDialectType<
 
 def SizedType : FIRRTLDialectType<CPred<"$_self.isa<FIRRTLBaseType>() && "
     "!$_self.cast<FIRRTLBaseType>().hasUninferredWidth()">,
-    "a sized type (contains no unifered widths)", "::circt::firrtl::FIRRTLType">;
+    "a sized type (contains no uninferred widths)", "::circt::firrtl::FIRRTLType">;
 def SizedOrForeignType : AnyTypeOf<[SizedType, ForeignType]>;
 def SizedBaseOrRefTypeOrForeignType : AnyTypeOf<[SizedBaseOrRefType, ForeignType]>;
 

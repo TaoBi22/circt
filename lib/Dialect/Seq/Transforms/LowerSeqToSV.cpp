@@ -31,11 +31,16 @@ using namespace circt;
 using namespace seq;
 
 namespace {
-struct SeqToSVPass : public LowerSeqToSVBase<SeqToSVPass> {
+struct SeqToSVPass : public impl::LowerSeqToSVBase<SeqToSVPass> {
   void runOnOperation() override;
 };
-struct SeqFIRRTLToSVPass : public LowerSeqFIRRTLToSVBase<SeqFIRRTLToSVPass> {
+struct SeqFIRRTLToSVPass
+    : public impl::LowerSeqFIRRTLToSVBase<SeqFIRRTLToSVPass> {
   void runOnOperation() override;
+  using LowerSeqFIRRTLToSVBase<SeqFIRRTLToSVPass>::disableRegRandomization;
+  using LowerSeqFIRRTLToSVBase<
+      SeqFIRRTLToSVPass>::addVivadoRAMAddressConflictSynthesisBugWorkaround;
+  using LowerSeqFIRRTLToSVBase<SeqFIRRTLToSVPass>::LowerSeqFIRRTLToSVBase;
 };
 } // anonymous namespace
 
@@ -89,7 +94,11 @@ namespace {
 /// Lower FirRegOp to `sv.reg` and `sv.always`.
 class FirRegLower {
 public:
-  FirRegLower(hw::HWModuleOp module) : module(module){};
+  FirRegLower(hw::HWModuleOp module, bool disableRegRandomization = false,
+              bool addVivadoRAMAddressConflictSynthesisBugWorkaround = false)
+      : module(module), disableRegRandomization(disableRegRandomization),
+        addVivadoRAMAddressConflictSynthesisBugWorkaround(
+            addVivadoRAMAddressConflictSynthesisBugWorkaround){};
 
   void lower();
 
@@ -142,6 +151,9 @@ private:
   llvm::SmallDenseMap<std::pair<Value, unsigned>, Value> arrayIndexCache;
 
   hw::HWModuleOp module;
+
+  bool disableRegRandomization;
+  bool addVivadoRAMAddressConflictSynthesisBugWorkaround;
 };
 } // namespace
 
@@ -201,7 +213,7 @@ void FirRegLower::lower() {
   //     `INIT_RANDOM_PROLOG_
   //     ... initBuilder ..
   // `endif
-  if (toInit.empty())
+  if (toInit.empty() || disableRegRandomization)
     return;
 
   auto loc = module.getLoc();
@@ -351,6 +363,7 @@ FirRegLower::RegLowerInfo FirRegLower::lower(FirRegOp reg) {
   RegLowerInfo svReg{nullptr, nullptr, nullptr, -1, 0};
   svReg.reg = builder.create<sv::RegOp>(loc, reg.getType(), reg.getNameAttr());
   svReg.width = hw::getBitWidth(reg.getResult().getType());
+
   if (auto attr = reg->getAttrOfType<IntegerAttr>("firrtl.random_init_start"))
     svReg.randStart = attr.getUInt();
 
@@ -360,6 +373,17 @@ FirRegLower::RegLowerInfo FirRegLower::lower(FirRegOp reg) {
   // Move Attributes
   svReg.reg->setDialectAttrs(reg->getDialectAttrs());
 
+  // For array registers, we annotate ram_style attributes if
+  // `addVivadoRAMAddressConflictSynthesisBugWorkaround` is enabled so that we
+  // can workaround incorrect optimizations of vivado. See "RAM address conflict
+  // and Vivado synthesis bug" issue in the vivado forum for the more detail.
+  if (addVivadoRAMAddressConflictSynthesisBugWorkaround &&
+      hw::type_isa<hw::ArrayType, hw::UnpackedArrayType>(reg.getType()))
+    circt::sv::setSVAttributes(
+        svReg.reg, sv::SVAttributesAttr::get(
+                       builder.getContext(),
+                       {std::make_pair("ram_style", R"("distributed")")}));
+
   if (auto innerSymAttr = reg.getInnerSymAttr())
     svReg.reg.setInnerSymAttr(innerSymAttr);
 
@@ -368,7 +392,14 @@ FirRegLower::RegLowerInfo FirRegLower::lower(FirRegOp reg) {
   if (reg.hasReset()) {
     addToAlwaysBlock(
         module.getBodyBlock(), sv::EventControl::AtPosEdge, reg.getClk(),
-        [&](OpBuilder &b) { createTree(b, svReg.reg, reg, reg.getNext()); },
+        [&](OpBuilder &b) {
+          // If this is an AsyncReset, ensure that we emit a self connect to
+          // avoid erroneously creating a latch construct.
+          if (reg.getIsAsync() && areEquivalentValues(reg, reg.getNext()))
+            b.create<sv::PAssignOp>(reg.getLoc(), svReg.reg, reg);
+          else
+            createTree(b, svReg.reg, reg, reg.getNext());
+        },
         reg.getIsAsync() ? ResetType::AsyncReset : ResetType::SyncReset,
         sv::EventControl::AtPosEdge, reg.getReset(),
         [&](OpBuilder &builder) {
@@ -502,13 +533,16 @@ void SeqToSVPass::runOnOperation() {
 
 void SeqFIRRTLToSVPass::runOnOperation() {
   hw::HWModuleOp module = getOperation();
-  FirRegLower(module).lower();
+  FirRegLower(module, disableRegRandomization,
+              addVivadoRAMAddressConflictSynthesisBugWorkaround)
+      .lower();
 }
 
 std::unique_ptr<Pass> circt::seq::createSeqLowerToSVPass() {
   return std::make_unique<SeqToSVPass>();
 }
 
-std::unique_ptr<Pass> circt::seq::createSeqFIRRTLLowerToSVPass() {
-  return std::make_unique<SeqFIRRTLToSVPass>();
+std::unique_ptr<Pass> circt::seq::createSeqFIRRTLLowerToSVPass(
+    const LowerSeqFIRRTLToSVOptions &options) {
+  return std::make_unique<SeqFIRRTLToSVPass>(options);
 }

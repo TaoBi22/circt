@@ -48,6 +48,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 
@@ -137,6 +138,12 @@ static cl::opt<bool> replSeqMem(
     cl::desc(
         "Replace the seq mem for macro replacement and emit relevant metadata"),
     cl::init(false), cl::cat(mainCategory));
+
+static cl::opt<bool>
+    lowerMemories("lower-memories",
+                  cl::desc("Lower memories to have memories with masks as an "
+                           "array with one memory per ground type"),
+                  cl::init(false), cl::cat(mainCategory));
 
 static cl::opt<circt::firrtl::PreserveAggregate::PreserveMode>
     preserveAggregate(
@@ -321,6 +328,31 @@ static cl::opt<bool> etcDisableModuleInlining(
     "etc-disable-module-inlining",
     cl::desc("Disable inlining modules that only feed test code"),
     cl::init(false), cl::cat(mainCategory));
+
+static cl::opt<bool> addVivadoRAMAddressConflictSynthesisBugWorkaround(
+    "add-vivado-ram-address-conflict-synthesis-bug-workaround",
+    cl::desc(
+        "Add a vivado specific SV attribute (* ram_style = \"distributed\" *) "
+        "to array registers as a workaronud for a vivado synthesis bug that "
+        "incorrectly modifies address conflict behavivor of combinational "
+        "memories"),
+    cl::init(false), cl::cat(mainCategory));
+
+enum class RandomKind { None, Mem, Reg, All };
+
+static cl::opt<RandomKind> disableRandom(
+    cl::desc("Disable random initialization code (may break semantics!)"),
+    cl::values(clEnumValN(RandomKind::Mem, "disable-mem-randomization",
+                          "Disable emission of memory randomization code"),
+               clEnumValN(RandomKind::Reg, "disable-reg-randomization",
+                          "Disable emission of register randomization code"),
+               clEnumValN(RandomKind::All, "disable-all-randomization",
+                          "Disable emission of all randomization code")),
+    cl::init(RandomKind::None), cl::cat(mainCategory));
+
+static bool isRandomEnabled(RandomKind kind) {
+  return disableRandom != RandomKind::All && disableRandom != kind;
+}
 
 enum OutputFormatKind {
   OutputParseOnly,
@@ -621,7 +653,7 @@ processBuffer(MLIRContext &context, TimingScope &ts, llvm::SourceMgr &sourceMgr,
   if (!disableWireDFT)
     pm.nest<firrtl::CircuitOp>().addPass(firrtl::createWireDFTPass());
 
-  if (replSeqMem)
+  if (!lowerMemories)
     pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
         firrtl::createFlattenMemoryPass());
 
@@ -645,8 +677,9 @@ processBuffer(MLIRContext &context, TimingScope &ts, llvm::SourceMgr &sourceMgr,
   // implementation assumes it can run at a time where every register is
   // currently in the final module it will be emitted in, all registers have
   // been created, and no registers have yet been removed.
-  pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
-      firrtl::createRandomizeRegisterInitPass());
+  if (isRandomEnabled(RandomKind::Reg))
+    pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
+        firrtl::createRandomizeRegisterInitPass());
 
   if (!disableCheckCombCycles) {
     // TODO: Currently CheckCombCyles pass doesn't support aggregates so skip
@@ -749,9 +782,10 @@ processBuffer(MLIRContext &context, TimingScope &ts, llvm::SourceMgr &sourceMgr,
     // RefType ports and ops.
     pm.nest<firrtl::CircuitOp>().addPass(firrtl::createLowerXMRPass());
 
-    pm.addPass(createLowerFIRRTLToHWPass(enableAnnotationWarning.getValue(),
-                                         emitChiselAssertsAsSVA.getValue(),
-                                         stripMuxPragmas.getValue()));
+    pm.addPass(createLowerFIRRTLToHWPass(
+        enableAnnotationWarning.getValue(), emitChiselAssertsAsSVA.getValue(),
+        stripMuxPragmas.getValue(), !isRandomEnabled(RandomKind::Mem),
+        !isRandomEnabled(RandomKind::Reg)));
 
     if (outputFormat == OutputIRHW) {
       if (!disableOptimization) {
@@ -768,9 +802,14 @@ processBuffer(MLIRContext &context, TimingScope &ts, llvm::SourceMgr &sourceMgr,
         modulePM.addPass(createCSEPass());
       }
 
-      pm.nest<hw::HWModuleOp>().addPass(seq::createSeqFIRRTLLowerToSVPass());
-      pm.addPass(sv::createHWMemSimImplPass(replSeqMem, ignoreReadEnableMem,
-                                            stripMuxPragmas));
+      pm.nest<hw::HWModuleOp>().addPass(seq::createSeqFIRRTLLowerToSVPass(
+          {/*disableRandomization=*/!isRandomEnabled(RandomKind::Reg),
+           /*addVivadoRAMAddressConflictSynthesisBugWorkaround=*/
+           addVivadoRAMAddressConflictSynthesisBugWorkaround}));
+      pm.addPass(sv::createHWMemSimImplPass(
+          replSeqMem, ignoreReadEnableMem, stripMuxPragmas,
+          !isRandomEnabled(RandomKind::Mem), !isRandomEnabled(RandomKind::Reg),
+          addVivadoRAMAddressConflictSynthesisBugWorkaround));
 
       if (extractTestCode)
         pm.addPass(sv::createSVExtractTestCodePass(etcDisableInstanceExtraction,
@@ -1002,6 +1041,10 @@ static LogicalResult executeFirtool(MLIRContext &context) {
 /// MLIRContext and modules inside of it (reducing compile time).
 int main(int argc, char **argv) {
   InitLLVM y(argc, argv);
+
+  // Set the bug report message to indicate users should file issues on
+  // llvm/circt and not llvm/llvm-project.
+  setBugReportMsg(circtBugReportMsg);
 
   // Hide default LLVM options, other than for this tool.
   // MLIR options are added below.

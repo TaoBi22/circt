@@ -148,7 +148,7 @@ def MemOp : ReferableDeclOp<"mem"> {
 
   let hasVerifier = 1;
 
-  let hasCanonicalizeMethod = true;
+  let hasCanonicalizer = true;
 
   let extraClassDeclaration = [{
     enum class PortKind { Read, Write, ReadWrite, Debug };
@@ -355,6 +355,8 @@ def WireOp : ReferableDeclOp<"wire"> {
                        AnnotationArrayAttr:$annotations,
                        OptionalAttr<InnerSymAttr>:$inner_sym);
   let results = (outs AnyType:$result);
+
+  let hasCanonicalizer = true;
 
   let builders = [
     OpBuilder<(ins "::mlir::Type":$elementType,

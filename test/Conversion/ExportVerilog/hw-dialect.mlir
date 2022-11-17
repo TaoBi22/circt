@@ -185,9 +185,24 @@ hw.module @TESTSIMPLE(%a: i4, %b: i4, %c: i2, %cond: i1,
 // CHECK-NEXT:      assign r38 = {[[WIRE0]], [[WIRE0]]};
 // CHECK-NEXT:      assign r40 = '{foo: structA.foo, bar: a};
 // CHECK-NEXT:      assign r41 = '{foo: [[WIRE1]].foo, bar: b};
-// CHECK-NEXT:      assign r42 = array1[/*Zero width: 0'h0*/ 1'b0];
+// CHECK-NEXT:      assign r42 = array1[/*Zero width*/ 1'b0];
 // CHECK-NEXT: endmodule
 
+hw.module @i0Inst() {
+  %c0_i0 = hw.constant 0 : i0
+  hw.instance "i0" sym @i0Module @i0Module(arg1: %c0_i0: i0) -> ()
+}
+hw.module @i0Module(%arg1: i0) -> () {}
+// CHECK-LABEL: module i0Inst();
+// CHECK-NEXT:    i0Module i0 (
+// CHECK-NEXT:    //.arg1 (/* Zero width */)
+// CHECK-NEXT:     );
+// CHECK-NEXT:  endmodule
+// CHECK-LABEL: module i0Module(
+// CHECK-NEXT:    // input /*Zero Width*/ arg1
+// CHECK-NEXT:     );
+// CHECK-EMPTY:
+// CHECK-NEXT:  endmodule
 
 hw.module @B(%a: i1) -> (b: i1, c: i1) {
   %0 = comb.or %a, %a : i1
@@ -475,10 +490,10 @@ hw.module @TestZeroInstance(%aa: i4, %azeroBit: i0, %aarrZero: !hw.array<3xi0>)
 }
 
 // CHECK: module TestZeroStruct(
-// CHECK-NEXT:  // input  /*Zero Width*/                           structZero,
-// CHECK-NEXT:  // input  struct packed {logic /*Zero Width*/ a; } structZeroNest,
-// CHECK-NEXT:  // output /*Zero Width*/                           structZero_0,
-// CHECK-NEXT:  // output struct packed {logic /*Zero Width*/ a; } structZeroNest_0
+// CHECK-NEXT:  // input  /*Zero Width*/ structZero,
+// CHECK-NEXT:  // input  /*Zero Width*/ structZeroNest,
+// CHECK-NEXT:  // output /*Zero Width*/ structZero_0,
+// CHECK-NEXT:  // output /*Zero Width*/ structZeroNest_0
 // CHECK-NEXT: );
 hw.module @TestZeroStruct(%structZero: !hw.struct<>, %structZeroNest: !hw.struct<a: !hw.struct<>>)
   -> (structZero_0: !hw.struct<>, structZeroNest_0: !hw.struct<a: !hw.struct<>>) {
@@ -487,6 +502,24 @@ hw.module @TestZeroStruct(%structZero: !hw.struct<>, %structZeroNest: !hw.struct
   // CHECK:      // Zero width: assign structZero_0 = structZero;
   // CHECK-NEXT: // Zero width: assign structZeroNest_0 = structZeroNest;
   // CHECK-NEXT: endmodule
+}
+
+// CHECK-LABEL: module zeroElements
+// CHECK-NEXT:   // input  /*Zero Width*/                                                                                              in0,
+// CHECK-NEXT:      input  [31:0]                                                                                                      in1,
+// CHECK-NEXT:      output struct packed {/*z1: Zero Width;*/ logic [31:0] a; /*z2: Zero Width;*/ logic [31:0] b; /*c: Zero Width;*/ struct packed {logic [31:0] d1; /*z: Zero Width;*/ } d; } out0)
+hw.module @zeroElements(%in0: i0, %in1: i32) -> (out0: !hw.struct<z1: i0, a: i32, z2: i0, b: i32, c: !hw.struct<z: i0>, d: !hw.struct<d1:i32, z:i0>>) {
+  // CHECK:      // Zero width: wire /*Zero Width*/
+  // CHECK-SAME: _GEN = '{};
+  // CHECK-NEXT: wire struct packed {logic [31:0] d1; /*z: Zero Width;*/ }
+  // CHECK-SAME: _GEN_0 = '{d1: in1};
+  // CHECK-NEXT: wire struct packed {/*z1: Zero Width;*/ logic [31:0] a; /*z2: Zero Width;*/ logic [31:0] b; /*c: Zero Width;*/ struct packed {logic [31:0] d1; /*z: Zero Width;*/ } d; } _GEN_1 = '{a: in1, b: in1, d: _GEN_0};
+  // CHECK-NEXT: assign out0 = '{a: in1, b: _GEN_1.b, d: _GEN_1.d};
+  %0 = hw.struct_create (%in0) : !hw.struct<z: i0>
+  %1 = hw.struct_create (%in1, %in0) : !hw.struct<d1:i32, z:i0>
+  %2 = hw.struct_create (%in0, %in1, %in0, %in1, %0, %1) : !hw.struct<z1: i0, a: i32, z2: i0, b: i32, c: !hw.struct<z: i0>, d: !hw.struct<d1:i32, z:i0>>
+  %3 = hw.struct_inject %2["a"], %in1 : !hw.struct<z1: i0, a: i32, z2: i0, b: i32, c: !hw.struct<z: i0>, d: !hw.struct<d1:i32, z:i0>>
+  hw.output %3 : !hw.struct<z1: i0, a: i32, z2: i0, b: i32, c: !hw.struct<z: i0>, d: !hw.struct<d1:i32, z:i0>>
 }
 
 // CHECK-LABEL: TestZeroStructInstance
@@ -513,8 +546,8 @@ hw.module @TestZeroStructInstance(%structZero: !hw.struct<>, %structZeroNest: !h
 // CHECK-NEXT:                            out1
 // CHECK-NEXT:   // output /*Zero Width*/ out2
 
-// CHECK:   assign out = arg1[/*Zero width: arg0 + arg0*/ 1'b0];	
-// CHECK-NEXT:   assign out1 = arg1[/*Zero width: arg0*/ 1'b0];	
+// CHECK:   assign out = arg1[/*Zero width*/ 1'b0];	
+// CHECK-NEXT:   assign out1 = arg1[/*Zero width*/ 1'b0];	
 // CHECK-NEXT:   // Zero width: assign out2 = arg0;	
 
 hw.module @testZeroArrayGet(%arg0: i0, %arg1 : !hw.array<1xi32>) -> (out: i32, out1: i32, out2: i0) {
@@ -818,6 +851,13 @@ hw.module @Chi() -> (Chi_output : i0) {
   // CHECK: endmodule
 }
 
+// CHECK-LABEL: module Choochoo(
+hw.module @Choochoo() -> (out : i0) {
+  %0 = hw.constant 0 : i0
+  // CHECK: // Zero width: assign out = /*Zero width*/;
+  hw.output %0 : i0
+}
+
 // CHECK-LABEL: module Foo1360(
 // Issue #1360: https://github.com/llvm/circt/issues/1360
 
@@ -951,19 +991,19 @@ hw.module @structExplodeLowering(%a: !hw.struct<a: i1, b: i1>) -> (outA: i1, out
 
 // Rename field names
 // CHECK-LABEL: renameKeyword(
-// CHECK-NEXT:  input  struct packed {logic repeat_0; logic repeat_0_1; } a,
-// CHECK-NEXT:  output struct packed {logic repeat_0; logic repeat_0_1; } r1);
+// CHECK-NEXT:  input  struct packed {logic repeat_0; logic repeat_0_0; } a,
+// CHECK-NEXT:  output struct packed {logic repeat_0; logic repeat_0_0; } r1);
 hw.module @renameKeyword(%a: !hw.struct<repeat: i1, repeat_0: i1>) -> (r1: !hw.struct<repeat: i1, repeat_0: i1>){
   hw.output %a : !hw.struct<repeat: i1, repeat_0: i1>
 }
 
 // CHECK-LABEL: useRenamedStruct(
-// CHECK-NEXT:  inout  struct packed {logic repeat_0; logic repeat_0_1; } a,
+// CHECK-NEXT:  inout  struct packed {logic repeat_0; logic repeat_0_0; } a,
 // CHECK-NEXT:  output                                                    r1,
 // CHECK-NEXT:                                                            r2,
-// CHECK-NEXT:  output struct packed {logic repeat_0; logic repeat_0_1; } r3);
+// CHECK-NEXT:  output struct packed {logic repeat_0; logic repeat_0_0; } r3);
 hw.module @useRenamedStruct(%a: !hw.inout<struct<repeat: i1, repeat_0: i1>>) -> (r1: i1, r2: i1, r3: !hw.struct<repeat: i1, repeat_0: i1>) {
-  // CHECK: wire struct packed {logic repeat_0; logic repeat_0_1; } _inst1_r1;
+  // CHECK: wire struct packed {logic repeat_0; logic repeat_0_0; } _inst1_r1;
   %read = sv.read_inout %a : !hw.inout<struct<repeat: i1, repeat_0: i1>>
 
   %i0 = hw.instance "inst1" @renameKeyword(a: %read: !hw.struct<repeat: i1, repeat_0: i1>) -> (r1: !hw.struct<repeat: i1, repeat_0: i1>)
@@ -979,7 +1019,7 @@ hw.module @useRenamedStruct(%a: !hw.inout<struct<repeat: i1, repeat_0: i1>>) -> 
   // assign r2 = a.repeat_0_1;
   %true = hw.constant true
   %3 = hw.struct_inject %read["repeat_0"], %true : !hw.struct<repeat: i1, repeat_0: i1>
-  // assign r3 = '{repeat_0: a.repeat_0, repeat_0_1: (1'h1)};
+  // assign r3 = '{repeat_0: a.repeat_0, repeat_0_0: (1'h1)};
   hw.output %1, %2, %3 : i1, i1, !hw.struct<repeat: i1, repeat_0: i1>
 }
 
@@ -1039,7 +1079,7 @@ hw.module @parameters<p1: i42 = 17, p2: i1>(%arg0: i8) -> (out: i8) {
   %p1 = sv.wire : !hw.inout<i4>
 
   %out = sv.wire : !hw.inout<i4>
-  // CHECK: wire [3:0] out_1;
+  // CHECK: wire [3:0] out_0;
   hw.output %arg0 : i8
 }
 

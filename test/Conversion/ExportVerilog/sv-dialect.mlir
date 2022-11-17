@@ -1340,6 +1340,17 @@ hw.module.extern @extInst(%_h: i1, %_i: i1, %_j: i1, %_k: i1, %_z :i0) -> ()
 // CHECK-NEXT:                          _k
 hw.module @extInst2(%signed: i1, %_i: i1, %_j: i1, %_k: i1, %_z :i0) -> () {}
 
+// CHECK-LABEL: module zeroWidthArrayIndex
+hw.module @zeroWidthArrayIndex(%clock : i1, %data : i64) -> () {
+  %reg = sv.reg  : !hw.inout<uarray<1xi64>>
+  sv.alwaysff(posedge %clock) {
+    %c0_i0_1 = hw.constant 0 : i0
+    // CHECK: reg_0[/*Zero width*/ 1'b0] <= data;
+    %0 = sv.array_index_inout %reg[%c0_i0_1] : !hw.inout<uarray<1xi64>>, i0
+    sv.passign %0, %data : i64
+  }
+}
+
 // CHECK-LABEL: module remoteInstDut
 hw.module @remoteInstDut(%i: i1, %j: i1, %z: i0) -> () {
   %mywire = sv.wire : !hw.inout<i1>
@@ -1360,13 +1371,13 @@ hw.module @remoteInstDut(%i: i1, %j: i1, %z: i0) -> () {
 // CHECK-NEXT: wire mywire
 // CHECK-NEXT: myreg
 // CHECK-NEXT: wire signed_0
-// CHECK-NEXT: reg  output_1
+// CHECK-NEXT: reg  output_0
 // CHECK-NEXT: /* This instance is elsewhere emitted as a bind statement
 // CHECK-NEXT:    extInst a1
 // CHECK: /* This instance is elsewhere emitted as a bind statement
 // CHECK-NEXT:    extInst a2
 // CHECK:      /* This instance is elsewhere emitted as a bind statement
-// CHECK-NEXT:    extInst2 signed_2
+// CHECK-NEXT:    extInst2 signed_1
 // CHECK-NEXT:    .signed_0 (signed_0)
 }
 
@@ -1641,9 +1652,9 @@ hw.module @bindInMod() {
 // CHECK-NEXT:   ._k (_a1__k)
 // CHECK-NEXT: //._z (z)
 // CHECK-NEXT: );
-// CHECK-NEXT:  bind remoteInstDut extInst2 signed_2 (
+// CHECK-NEXT:  bind remoteInstDut extInst2 signed_1 (
 // CHECK-NEXT:    .signed_0 (signed_0),
-// CHECK-NEXT:    ._i       (output_1),
+// CHECK-NEXT:    ._i       (output_0),
 // CHECK-NEXT:    ._j       (j),
 // CHECK-NEXT:    ._k       (_signed__k)
 // CHECK: endmodule
@@ -1681,4 +1692,4 @@ sv.bind #hw.innerNameRef<@NastyPortParent::@foo>
 
 // CHECK-LABEL:  hw.module @remoteInstDut
 // CHECK:    %signed = sv.wire  {hw.verilogName = "signed_0"} : !hw.inout<i1>
-// CHECK:    %output = sv.reg  {hw.verilogName = "output_1"} : !hw.inout<i1>
+// CHECK:    %output = sv.reg  {hw.verilogName = "output_0"} : !hw.inout<i1>

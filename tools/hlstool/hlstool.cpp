@@ -51,6 +51,7 @@
 #include "circt/Dialect/Seq/SeqPasses.h"
 #include "circt/Support/LoweringOptions.h"
 #include "circt/Support/LoweringOptionsParser.h"
+#include "circt/Support/Version.h"
 #include "circt/Transforms/Passes.h"
 
 #include "circt/InitAllDialects.h"
@@ -174,6 +175,10 @@ static cl::opt<unsigned> bufferSize("buffer-size",
                                     cl::desc("Number of slots in each buffer"),
                                     cl::init(2), cl::cat(mainCategory));
 
+static cl::opt<bool> withESI("with-esi",
+                             cl::desc("Create ESI compatible modules"),
+                             cl::init(false), cl::cat(mainCategory));
+
 static LoweringOptionsOption loweringOptions(mainCategory);
 
 // --------------------------------------------------------------------------
@@ -192,7 +197,13 @@ static void loadDHLSPipeline(OpPassManager &pm) {
   // Software lowering
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createConvertSCFToCFPass());
+
+  // Memref legalization.
   pm.addPass(circt::createFlattenMemRefPass());
+  pm.nest<func::FuncOp>().addPass(
+      circt::handshake::createHandshakeLegalizeMemrefsPass());
+  pm.addPass(mlir::createConvertSCFToCFPass());
+  pm.nest<handshake::FuncOp>().addPass(createSimpleCanonicalizerPass());
 
   // DHLS conversion
   pm.addPass(circt::createStandardToHandshakePass(
@@ -351,7 +362,7 @@ doHLSFlowDynamic(PassManager &pm, ModuleOp module,
   } else {
     // HW path.
     addIRLevel(HLSFlowDynamicIRLevel::Firrtl, [&]() {
-      pm.addPass(circt::handshake::createHandshakeLowerExtmemToHWPass());
+      pm.addPass(circt::handshake::createHandshakeLowerExtmemToHWPass(withESI));
       pm.nest<handshake::FuncOp>().addPass(createSimpleCanonicalizerPass());
       pm.addPass(circt::createHandshakeToHWPass());
       pm.addPass(createSimpleCanonicalizerPass());
@@ -503,6 +514,10 @@ static LogicalResult executeHlstool(MLIRContext &context) {
 /// MLIRContext and modules inside of it (reducing compile time).
 int main(int argc, char **argv) {
   InitLLVM y(argc, argv);
+
+  // Set the bug report message to indicate users should file issues on
+  // llvm/circt and not llvm/llvm-project.
+  setBugReportMsg(circtBugReportMsg);
 
   // Hide default LLVM options, other than for this tool.
   // MLIR options are added below.
