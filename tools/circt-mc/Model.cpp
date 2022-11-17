@@ -11,10 +11,27 @@
 //===----------------------------------------------------------------------===//
 
 #include "Model.h"
+#include <z3++.h>
 
+Model::Model(z3::context *c) { z3Context = c; }
 
-mlir::LogicalResult Model::constructModel(mlir::OwningOpRef<mlir::ModuleOp>) {
-	return mlir::failure();
-}	
+mlir::LogicalResult
+Model::constructModel(mlir::OwningOpRef<mlir::ModuleOp> *mod) {
+  return mlir::failure();
+}
 
-	
+void Model::setInitialState() { return; }
+
+void Model::loadCircuitConstraints(z3::solver *s) {
+  z3::expr x = z3Context->bool_const("x");
+  s->add(x);
+}
+
+void Model::loadStateConstraints(z3::solver *s) {
+  z3::expr x = z3Context->bool_const("x");
+  s->add(x);
+}
+
+void Model::runClockCycle() { return; }
+
+void Model::updateInputs() { return; }

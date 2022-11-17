@@ -10,10 +10,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "Model.h"
 #include "circt/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
 #include "llvm/Support/CommandLine.h"
-
+#include <z3++.h>
 
 namespace cl = llvm::cl;
 
@@ -23,20 +24,65 @@ namespace cl = llvm::cl;
 
 static cl::OptionCategory mainCategory("circt-lec Options");
 
-static cl::opt<std::string> moduleName1(
-    "c1",
-    cl::desc("Specify a named module to verify properties over."),
-    cl::value_desc("module name"), cl::cat(mainCategory));
+static cl::opt<std::string>
+    moduleName1("c1",
+                cl::desc("Specify a named module to verify properties over."),
+                cl::value_desc("module name"), cl::cat(mainCategory));
 
 static cl::opt<std::string> inputFileName(cl::Positional, cl::Required,
-                                      cl::desc("<input file>"),
-                                      cl::cat(mainCategory));
+                                          cl::desc("<input file>"),
+                                          cl::cat(mainCategory));
 
-static mlir::LogicalResult checkProperty(mlir::MLIRContext &context) {
+static bool explore(Model *m, z3::solver *s) {
+  m->runClockCycle();
+  s->push();
+  m->loadStateConstraints(s);
+  switch (s->check()) {
+  case z3::sat:
+    return false;
+  case z3::unsat:
+    return true;
+  default:
+    // TODO: maybe add handler for other return vals?
+    return false;
+  }
+
+  return true;
+}
+
+static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
+                                         int bound) {
+
   mlir::OwningOpRef<mlir::ModuleOp> inputFile =
       mlir::parseSourceFile<mlir::ModuleOp>(inputFileName, &context);
   if (!inputFile)
     return mlir::failure();
+
+  // Create z3 context
+  z3::context c;
+
+  // Construct the circuit model
+  Model circuitModel = Model(&c);
+  if (mlir::succeeded(circuitModel.constructModel(&inputFile)))
+    return mlir::failure();
+
+  // Create solver and load universal (circuit-level) constraints
+  z3::solver s(c);
+  circuitModel.loadCircuitConstraints(&s);
+
+  // TODO: load property constraints
+
+  // Set initial state of model
+  circuitModel.setInitialState();
+
+  for (int i = 0; i < bound; i++) {
+    if (explore(&circuitModel, &s)) {
+      circuitModel.updateInputs();
+    } else {
+      return mlir::failure();
+    }
+  }
+
   return mlir::success();
 }
 
@@ -57,5 +103,5 @@ int main(int argc, char **argv) {
   circt::registerAllDialects(registry);
   mlir::MLIRContext context(registry);
 
-  exit(failed(checkProperty(context)));
+  exit(failed(checkProperty(context, 1000)));
 }

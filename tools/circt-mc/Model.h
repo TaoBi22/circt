@@ -14,12 +14,20 @@
 #define MC_MODEL_H
 
 #include "mlir/IR/BuiltinOps.h"
+#include <z3++.h>
 
 class Model {
-	public:
-		mlir::LogicalResult constructModel(mlir::OwningOpRef<mlir::ModuleOp>);
+public:
+  Model(z3::context *);
+  mlir::LogicalResult constructModel(mlir::OwningOpRef<mlir::ModuleOp> *mod);
+  void setInitialState();
+  void loadCircuitConstraints(z3::solver *s);
+  void loadStateConstraints(z3::solver *s);
+  void runClockCycle();
+  void updateInputs();
 
-	
+private:
+  z3::context *z3Context;
 };
 
 #endif // MC_MODEL_H

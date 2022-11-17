@@ -24,4 +24,6 @@ target_link_libraries(circt-mc
 
   MLIRIR
   MLIRParser
+  ${Z3_LIBRARIES}
+
 )
