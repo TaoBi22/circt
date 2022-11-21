@@ -5,6 +5,7 @@ set(LLVM_LINK_COMPONENTS
 add_llvm_tool(circt-mc
   circt-mc.cpp
   Model.cpp
+  LogicExporter.cpp
 )
 llvm_update_compile_flags(circt-mc)
 target_link_libraries(circt-mc
