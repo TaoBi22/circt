@@ -6,6 +6,8 @@ add_llvm_tool(circt-mc
   circt-mc.cpp
   Model.cpp
   LogicExporter.cpp
+  Solver.cpp
+  Circuit.cpp
 )
 llvm_update_compile_flags(circt-mc)
 target_link_libraries(circt-mc
