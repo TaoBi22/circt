@@ -43,6 +43,12 @@ public:
   /// Recover the outputs.
   llvm::ArrayRef<z3::expr> getOutputs();
 
+  void setInitialState();
+  void loadCircuitConstraints(Solver *s);
+  void loadStateConstraints(Solver *s);
+  void runClockCycle();
+  void updateInputs();
+
   // `hw` dialect operations.
   void addConstant(mlir::Value result, mlir::APInt value);
   void addInstance(llvm::StringRef instanceName, circt::hw::HWModuleOp op,

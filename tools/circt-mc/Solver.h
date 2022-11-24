@@ -34,6 +34,11 @@ public:
   /// Solve the equivalence problem between the two circuits, then present the
   /// results to the user.
   mlir::LogicalResult solve();
+  void setInitialState();
+  void loadCircuitConstraints(z3::solver *s);
+  void loadStateConstraints(z3::solver *s);
+  void runClockCycle();
+  void updateInputs();
 
   class Circuit;
   /// Create a new circuit to be compared and return it.

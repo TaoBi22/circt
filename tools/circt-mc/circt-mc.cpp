@@ -10,7 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Model.h"
+#include "Solver.h"
+#include "Circuit.h"
+#include "Utility.h"
 #include "circt/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
 #include "llvm/Support/CommandLine.h"
@@ -33,19 +35,20 @@ static cl::opt<std::string> inputFileName(cl::Positional, cl::Required,
                                           cl::desc("<input file>"),
                                           cl::cat(mainCategory));
 
-static bool explore(Model *m, z3::solver *s) {
-  m->runClockCycle();
-  s->push();
-  m->loadStateConstraints(s);
-  switch (s->check()) {
-  case z3::sat:
-    return false;
-  case z3::unsat:
-    return true;
-  default:
-    // TODO: maybe add handler for other return vals?
-    return false;
-  }
+static bool explore(Solver::Circuit *c, Solver *s) {
+  c->runClockCycle();
+  // TODO: encapsulate these solver ops into Solver class
+  // s->push();
+  c->loadStateConstraints(s);
+  // switch (s->check()) {
+  // case z3::sat:
+  //   return false;
+  // case z3::unsat:
+  //   return true;
+  // default:
+  //   // TODO: maybe add handler for other return vals?
+  //   return false;
+  // }
 
   return true;
 }
@@ -58,26 +61,19 @@ static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
   if (!inputFile)
     return mlir::failure();
 
-  // Create z3 context
-  z3::context c;
-
-  // Construct the circuit model
-  Model circuitModel = Model(&c);
-  if (mlir::succeeded(circuitModel.constructModel(&inputFile)))
-    return mlir::failure();
-
-  // Create solver and load universal (circuit-level) constraints
-  z3::solver s(c);
-  circuitModel.loadCircuitConstraints(&s);
+  // Create solver and add circuit
+  Solver s(&context);
+  Solver::Circuit *circuitModel = s.addCircuit(inputFileName, true);
+  
 
   // TODO: load property constraints
 
   // Set initial state of model
-  circuitModel.setInitialState();
+  circuitModel->setInitialState();
 
   for (int i = 0; i < bound; i++) {
-    if (explore(&circuitModel, &s)) {
-      circuitModel.updateInputs();
+    if (explore(circuitModel, &s)) {
+      circuitModel->updateInputs();
     } else {
       return mlir::failure();
     }

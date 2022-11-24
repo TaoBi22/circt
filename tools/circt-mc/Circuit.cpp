@@ -380,4 +380,19 @@ z3::expr Solver::Circuit::boolToBv(z3::expr condition) {
                  solver->context.bv_val(0, 1));
 }
 
+
+void Solver::Circuit::setInitialState() { return; }
+
+void Solver::Circuit::loadCircuitConstraints(Solver *s) {
+  return;
+}
+
+void Solver::Circuit::loadStateConstraints(Solver *s) {
+  return;
+}
+
+void Solver::Circuit::runClockCycle() { return; }
+
+void Solver::Circuit::updateInputs() { return; }
+
 #undef DEBUG_TYPE
