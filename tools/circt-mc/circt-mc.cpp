@@ -39,7 +39,7 @@ static bool explore(Solver::Circuit *c, Solver *s) {
   c->runClockCycle();
   // TODO: encapsulate these solver ops into Solver class
   // s->push();
-  c->loadStateConstraints(s);
+  c->loadStateConstraints();
   // switch (s->check()) {
   // case z3::sat:
   //   return false;

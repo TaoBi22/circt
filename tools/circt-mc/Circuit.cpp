@@ -35,6 +35,14 @@ void Solver::Circuit::addOutput(mlir::Value value) {
   outputs.insert(outputs.end(), output);
 }
 
+/// Add a register to the circuit.
+void Solver::Circuit::addRegister(mlir::Value value) {
+  LLVM_DEBUG(lec::dbgs << name << " addOutput\n");
+  INDENT();
+  z3::expr reg = allocateValue(value);
+  regs.insert(regs.end(), reg);
+}
+
 /// Recover the inputs.
 llvm::ArrayRef<z3::expr> Solver::Circuit::getInputs() { return inputs; }
 
@@ -318,6 +326,10 @@ z3::expr Solver::Circuit::allocateValue(mlir::Value value) {
   LLVM_DEBUG(lec::printValue(value));
   auto exprInsertion = exprTable.insert(std::pair(value, expr));
   assert(exprInsertion.second && "Value not inserted in expression table");
+  // Populate state table
+  z3::expr stateExpr = solver->context.bv_const((valueName + std::string("_state")).c_str(), width);
+  //auto stateInsertion = stateTable.insert(std::pair(expr, stateExpr));
+  //assert(stateInsertion.second && "Value not inserted in state table");
   mlir::Builder builder(solver->mlirCtx);
   mlir::StringAttr symbol = builder.getStringAttr(valueName);
   auto symInsertion = solver->symbolTable.insert(std::pair(symbol, value));
@@ -381,13 +393,19 @@ z3::expr Solver::Circuit::boolToBv(z3::expr condition) {
 }
 
 
-void Solver::Circuit::setInitialState() { return; }
-
-void Solver::Circuit::loadCircuitConstraints(Solver *s) {
+void Solver::Circuit::setInitialState() {
+  // Reset state to initial state (i.e. all values are independent symbols)
+  // TODO - not necessary if just verifying once
   return;
 }
 
-void Solver::Circuit::loadStateConstraints(Solver *s) {
+void Solver::Circuit::loadStateConstraints() {
+  // Add constraints for all current state values
+  // solver->solver.push();
+  // for (auto input = begin(inputs); input != end(inputs); ++input) {
+  //   mlir::Value = symbolTable.find(symbol)->second;
+  //   //solver->solver.add(input == )
+  // }
   return;
 }
 

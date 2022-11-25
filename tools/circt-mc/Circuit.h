@@ -38,14 +38,17 @@ public:
   void addInput(mlir::Value);
   /// Add an output to the circuit.
   void addOutput(mlir::Value);
+  /// Add a register to the circuit.
+  void addRegister(mlir::Value);
+  /// Add a wire to the circuit.
+  void addWire(mlir::Value);
   /// Recover the inputs.
   llvm::ArrayRef<z3::expr> getInputs();
   /// Recover the outputs.
   llvm::ArrayRef<z3::expr> getOutputs();
 
   void setInitialState();
-  void loadCircuitConstraints(Solver *s);
-  void loadStateConstraints(Solver *s);
+  void loadStateConstraints();
   void runClockCycle();
   void updateInputs();
 
@@ -113,8 +116,15 @@ private:
   llvm::SmallVector<z3::expr> inputs;
   /// The list for the circuit's outputs.
   llvm::SmallVector<z3::expr> outputs;
+  /// The list for the circuit's registers.
+  llvm::SmallVector<z3::expr> regs;
+  /// The list for the circuit's wires.
+  llvm::SmallVector<z3::expr> wires;
   /// A map from IR values to their corresponding logical representation.
   llvm::DenseMap<mlir::Value, z3::expr> exprTable;
+  /// A map from logical values to their corresponding state.
+  llvm::DenseMap<z3::expr, z3::expr> stateTable;
+
 };
 
 #endif // LEC_CIRCUIT_H
