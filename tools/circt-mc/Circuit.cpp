@@ -25,6 +25,7 @@ void Solver::Circuit::addInput(mlir::Value value) {
   INDENT();
   z3::expr input = allocateValue(value);
   inputs.insert(inputs.end(), input);
+  inputsByVal.insert(inputsByVal.end(), value);
 }
 
 /// Add an output to the circuit.
@@ -32,7 +33,7 @@ void Solver::Circuit::addOutput(mlir::Value value) {
   LLVM_DEBUG(lec::dbgs << name << " addOutput\n");
   // Referenced value already assigned, fetching from expression table.
   z3::expr output = fetchExpr(value);
-  outputs.insert(outputs.end(), output);
+  outputsByVal.insert(outputsByVal.end(), value);
 }
 
 /// Add a register to the circuit.
@@ -40,7 +41,7 @@ void Solver::Circuit::addRegister(mlir::Value value) {
   LLVM_DEBUG(lec::dbgs << name << " addOutput\n");
   INDENT();
   z3::expr reg = allocateValue(value);
-  regs.insert(regs.end(), reg);
+  regs.insert(regs.end(), value);
 }
 
 /// Recover the inputs.

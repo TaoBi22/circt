@@ -116,14 +116,22 @@ private:
   llvm::SmallVector<z3::expr> inputs;
   /// The list for the circuit's outputs.
   llvm::SmallVector<z3::expr> outputs;
+
+  // Duplicates of these lists are, for now, created holding the corresponding MLIR value.
+  // It may eventually be nicer to have a dedicated ID that can be mapped to different Z3 constructs
+  /// The list for the circuit's inputs.
+  llvm::SmallVector<mlir::Value> inputsByVal;
+  /// The list for the circuit's outputs.
+  llvm::SmallVector<mlir::Value> outputsByVal;
+
   /// The list for the circuit's registers.
-  llvm::SmallVector<z3::expr> regs;
+  llvm::SmallVector<mlir::Value> regs;
   /// The list for the circuit's wires.
-  llvm::SmallVector<z3::expr> wires;
+  llvm::SmallVector<mlir::Value> wires;
   /// A map from IR values to their corresponding logical representation.
   llvm::DenseMap<mlir::Value, z3::expr> exprTable;
   /// A map from logical values to their corresponding state.
-  llvm::DenseMap<z3::expr, z3::expr> stateTable;
+  llvm::DenseMap<mlir::Value, z3::expr> stateTable;
 
 };
 
