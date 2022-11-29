@@ -50,7 +50,7 @@ public:
   void setInitialState();
   void loadStateConstraints();
   void runClockCycle();
-  void updateInputs();
+  void updateInputs(int count);
 
   // `hw` dialect operations.
   void addConstant(mlir::Value result, mlir::APInt value);
@@ -130,9 +130,10 @@ private:
   llvm::SmallVector<mlir::Value> wires;
   /// A map from IR values to their corresponding logical representation.
   llvm::DenseMap<mlir::Value, z3::expr> exprTable;
-  /// A map from logical values to their corresponding state.
+  /// A map from IR values to their corresponding state.
   llvm::DenseMap<mlir::Value, z3::expr> stateTable;
-
+  /// A map from IR values to their corresponding name.
+  llvm::DenseMap<mlir::Value, std::string> nameTable;
 };
 
 #endif // LEC_CIRCUIT_H

@@ -73,7 +73,7 @@ static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
 
   for (int i = 0; i < bound; i++) {
     if (explore(circuitModel, &s)) {
-      circuitModel->updateInputs();
+      circuitModel->updateInputs(i);
     } else {
       return mlir::failure();
     }

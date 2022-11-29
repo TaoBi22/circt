@@ -314,6 +314,8 @@ void Solver::Circuit::variadicOperation(
 /// expression.
 z3::expr Solver::Circuit::allocateValue(mlir::Value value) {
   std::string valueName = name + "%" + std::to_string(assignments++);
+  auto nameInsertion = nameTable.insert(std::pair(value, valueName));
+  assert(nameInsertion.second && "Name not inserted in state table");
   LLVM_DEBUG(lec::dbgs << "allocating value:\n");
   INDENT();
   mlir::Type type = value.getType();
@@ -329,8 +331,8 @@ z3::expr Solver::Circuit::allocateValue(mlir::Value value) {
   assert(exprInsertion.second && "Value not inserted in expression table");
   // Populate state table
   z3::expr stateExpr = solver->context.bv_const((valueName + std::string("_state")).c_str(), width);
-  //auto stateInsertion = stateTable.insert(std::pair(expr, stateExpr));
-  //assert(stateInsertion.second && "Value not inserted in state table");
+  auto stateInsertion = stateTable.insert(std::pair(value, stateExpr));
+  assert(stateInsertion.second && "Value not inserted in state table");
   mlir::Builder builder(solver->mlirCtx);
   mlir::StringAttr symbol = builder.getStringAttr(valueName);
   auto symInsertion = solver->symbolTable.insert(std::pair(symbol, value));
@@ -393,25 +395,44 @@ z3::expr Solver::Circuit::boolToBv(z3::expr condition) {
                  solver->context.bv_val(0, 1));
 }
 
-
+/// Reset the solver to its initial state (i.e. all values undefined and independent)
 void Solver::Circuit::setInitialState() {
-  // Reset state to initial state (i.e. all values are independent symbols)
   // TODO - not necessary if just verifying once
   return;
 }
 
+/// Add constraints to set the state of all inputs and registers (wires and outputs are handled by combinatorial constraints)
 void Solver::Circuit::loadStateConstraints() {
-  // Add constraints for all current state values
-  // solver->solver.push();
-  // for (auto input = begin(inputs); input != end(inputs); ++input) {
-  //   mlir::Value = symbolTable.find(symbol)->second;
-  //   //solver->solver.add(input == )
-  // }
+  // TODO: assert find results are not end
+  solver->solver.push();
+  for (auto input = std::begin (inputsByVal); input != std::end (inputsByVal); ++input) {
+    z3::expr symbol = exprTable.find(*input)->second;
+    z3::expr state = stateTable.find(*input)->second;
+    solver->solver.add(symbol == state);
+  }
+  for (auto reg = std::begin (regs); reg != std::end (regs); ++reg) {
+    z3::expr symbol = exprTable.find(*reg)->second;
+    z3::expr state = stateTable.find(*reg)->second;
+    solver->solver.add(symbol == state);
+  }
   return;
 }
 
-void Solver::Circuit::runClockCycle() { return; }
+void Solver::Circuit::runClockCycle() { 
+  return;
+}
 
-void Solver::Circuit::updateInputs() { return; }
+/// Set a new input state by creating new symbols for all inputs
+void Solver::Circuit::updateInputs(int iterationCount) {
+  for (auto input = std::begin (inputsByVal); input != std::end (inputsByVal); ++input) {
+    llvm::DenseMap<mlir::Value, z3::expr>::iterator currentStatePair = stateTable.find(*input);
+    if (currentStatePair != stateTable.end()){
+      int width = input->getType().getIntOrFloatBitWidth();
+      std::string valueName = nameTable.find(*input)->second;
+      currentStatePair->second = solver->context.bv_const((valueName + std::to_string(iterationCount)).c_str() , width);
+    }
+  }
+  return; 
+}
 
 #undef DEBUG_TYPE
