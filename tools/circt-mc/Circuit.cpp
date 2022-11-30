@@ -427,6 +427,7 @@ void Solver::Circuit::updateInputs(int iterationCount) {
   for (auto input = std::begin (inputsByVal); input != std::end (inputsByVal); ++input) {
     llvm::DenseMap<mlir::Value, z3::expr>::iterator currentStatePair = stateTable.find(*input);
     if (currentStatePair != stateTable.end()){
+      // TODO: maybe store this in a map
       int width = input->getType().getIntOrFloatBitWidth();
       std::string valueName = nameTable.find(*input)->second;
       currentStatePair->second = solver->context.bv_const((valueName + std::to_string(iterationCount)).c_str() , width);

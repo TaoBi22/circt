@@ -184,7 +184,8 @@ LogicExporter::Visitor::visitInvalidTypeOp(mlir::Operation *op,
                                            Solver::Circuit *circuit) {
   // op is neither valid for StmtVisitor nor TypeOpVisitor.
   // Attempt dispatching it to CombinationalVisitor next.
-  return dispatchCombinationalVisitor(op, circuit);
+  //return dispatchCombinationalVisitor(op, circuit);
+  return visitSeqOp(op, circuit);
 }
 
 //===----------------------------------------------------------------------===//
@@ -312,6 +313,38 @@ visitBinaryCombOp(ShrU, comb.shru, circt::comb::ShrUOp &);
 visitVariadicCombOp(Sub, comb.sub, circt::comb::SubOp &);
 
 visitVariadicCombOp(Xor, comb.xor, circt::comb::XorOp &);
+
+//===----------------------------------------------------------------------===//
+// Sequential Visitor implementation
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult LogicExporter::Visitor::visitSeqOp(mlir::Operation *op,
+                                                  Solver::Circuit *circuit) {
+  mlir::LogicalResult outcome =
+      llvm::TypeSwitch<mlir::Operation *, mlir::LogicalResult>(op)
+          .Case<circt::hw::ConstantOp>([&](circt::seq::CompRegOp &op) {
+            return LogicExporter::Visitor::visitCompRegOp(op, circuit);
+          })
+          .Default([&](mlir::Operation &op) {
+            return dispatchCombinationalVisitor(&op, circuit);
+          });
+
+  return outcome;
+}
+
+mlir::LogicalResult
+LogicExporter::Visitor::visitCompRegOp(circt::seq::CompRegOp &op,
+                                  Solver::Circuit *circuit) {
+  LLVM_DEBUG(lec::dbgs << "Visiting comb.mux\n");
+  INDENT();
+  LLVM_DEBUG(debugOperands(op));
+  mlir::Value input = op.getInput();
+  mlir::Value data = op.getData();
+  mlir::Value resetValue = op.getResetValue();
+  // LLVM_DEBUG(debugOpResult(result));
+  // circuit->performMux(result, cond, trueValue, falseValue);
+  return mlir::success();
+}
 
 //===----------------------------------------------------------------------===//
 // Additional Visitor implementations
