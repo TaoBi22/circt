@@ -50,6 +50,9 @@ llvm::ArrayRef<z3::expr> Solver::Circuit::getInputs() { return inputs; }
 /// Recover the outputs.
 llvm::ArrayRef<z3::expr> Solver::Circuit::getOutputs() { return outputs; }
 
+/// Recover the outputs.
+llvm::ArrayRef<mlir::Value> Solver::Circuit::getClks() { return clks; }
+
 //===----------------------------------------------------------------------===//
 // `hw` dialect operations
 //===----------------------------------------------------------------------===//

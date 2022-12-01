@@ -46,6 +46,9 @@ public:
   llvm::ArrayRef<z3::expr> getInputs();
   /// Recover the outputs.
   llvm::ArrayRef<z3::expr> getOutputs();
+  /// Recover the clocks.
+  llvm::ArrayRef<mlir::Value> getClks();
+
 
   void setInitialState();
   void loadStateConstraints();
@@ -81,7 +84,7 @@ public:
   void performXor(mlir::Value result, mlir::OperandRange operands);
 
   // `comb` dialect operations.
-  void performCompReg(mlir::Value result, mlir::Value clk, mlir::Value data, mlir::Value reset, mlir::Value reseValue);
+  void performCompReg(mlir::Value result, mlir::Value clk, mlir::Value data, mlir::Value reset, mlir::Value resetValue);
 
 private:
   /// Helper function for performing a variadic operation: it executes a lambda
