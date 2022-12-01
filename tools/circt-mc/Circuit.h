@@ -135,6 +135,7 @@ private:
   /// The list for the circuit's wires.
   llvm::SmallVector<mlir::Value> wires;
   /// The list for the circuit's clocks.
+  // Note: currently circt-mc supports only single clocks, but this is a vector to avoid later reworking.
   llvm::SmallVector<mlir::Value> clks;
   /// A map from IR values to their corresponding logical representation.
   llvm::DenseMap<mlir::Value, z3::expr> exprTable;
