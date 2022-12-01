@@ -120,9 +120,9 @@ private:
                                          Solver::Circuit *circuit);
 
     // Seq Visitor definitions
-    static mlir::LogicalResult visitSeqOp(mlir::Operation *op,
+    mlir::LogicalResult visitSeq(mlir::Operation *op,
                                       Solver::Circuit *circuit);
-    static mlir::LogicalResult visitCompRegOp(circt::seq::CompRegOp &op,
+    static mlir::LogicalResult visitSeqOp(circt::seq::CompRegOp &op,
                                       Solver::Circuit *circuit);
 
     // Additional definitions

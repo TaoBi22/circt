@@ -80,6 +80,9 @@ public:
   void performSub(mlir::Value result, mlir::OperandRange operands);
   void performXor(mlir::Value result, mlir::OperandRange operands);
 
+  // `comb` dialect operations.
+  void performCompReg(mlir::Value result, mlir::Value clk, mlir::Value data, mlir::Value reset, mlir::Value reseValue);
+
 private:
   /// Helper function for performing a variadic operation: it executes a lambda
   /// over a range of operands.
@@ -128,6 +131,8 @@ private:
   llvm::SmallVector<mlir::Value> regs;
   /// The list for the circuit's wires.
   llvm::SmallVector<mlir::Value> wires;
+  /// The list for the circuit's clocks.
+  llvm::SmallVector<mlir::Value> clks;
   /// A map from IR values to their corresponding logical representation.
   llvm::DenseMap<mlir::Value, z3::expr> exprTable;
   /// A map from IR values to their corresponding state.
