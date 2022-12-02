@@ -42,13 +42,12 @@ public:
   void addRegister(mlir::Value);
   /// Add a wire to the circuit.
   void addWire(mlir::Value);
+  /// Add a new clock to the list of clocks.
+  void addClk(mlir::Value);
   /// Recover the inputs.
   llvm::ArrayRef<z3::expr> getInputs();
   /// Recover the outputs.
   llvm::ArrayRef<z3::expr> getOutputs();
-  /// Recover the clocks.
-  llvm::ArrayRef<mlir::Value> getClks();
-
 
   void setInitialState();
   void loadStateConstraints();
@@ -83,7 +82,7 @@ public:
   void performSub(mlir::Value result, mlir::OperandRange operands);
   void performXor(mlir::Value result, mlir::OperandRange operands);
 
-  // `comb` dialect operations.
+  // `seq` dialect operations.
   void performCompReg(mlir::Value result, mlir::Value clk, mlir::Value data, mlir::Value reset, mlir::Value resetValue);
 
 private:

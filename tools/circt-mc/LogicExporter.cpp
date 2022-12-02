@@ -342,12 +342,7 @@ LogicExporter::Visitor::visitSeqOp(circt::seq::CompRegOp &op,
   mlir::Value reset = op.getReset();
   mlir::Value resetValue = op.getResetValue();
   // circt-mc currently only handles one clock - make sure that we have no clocks or only this clock
-  llvm::ArrayRef<mlir::Value> clks = circuit->getClks();
-  if (clks.size() == 1) {
-    assert(clks[0] == clk && "More than one clock detected - currently circt-mc only supports one clock in designs.");
-  } else {
-    assert(clks.size() == 0 && "Too many clocks added to circuit model.");
-  }
+
   // LLVM_DEBUG(debugOpResult(result));
   // circuit->performMux(result, cond, trueValue, falseValue);
   return mlir::success();

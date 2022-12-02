@@ -44,14 +44,22 @@ void Solver::Circuit::addRegister(mlir::Value value) {
   regs.insert(regs.end(), value);
 }
 
+/// Add a clock to the list of clocks.
+void Solver::Circuit::addClk(mlir::Value value) {
+  if (clks.size() == 1) {
+    assert(clks[0] == value && "More than one clock detected - currently circt-mc only supports one clock in designs.");
+  } else {
+    assert(clks.size() == 0 && "Too many clocks added to circuit model.");
+    //clks.insert(clks.end(), value);
+    clks.push_back(value);
+  }
+}
+
 /// Recover the inputs.
 llvm::ArrayRef<z3::expr> Solver::Circuit::getInputs() { return inputs; }
 
 /// Recover the outputs.
 llvm::ArrayRef<z3::expr> Solver::Circuit::getOutputs() { return outputs; }
-
-/// Recover the outputs.
-llvm::ArrayRef<mlir::Value> Solver::Circuit::getClks() { return clks; }
 
 //===----------------------------------------------------------------------===//
 // `hw` dialect operations
