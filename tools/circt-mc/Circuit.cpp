@@ -414,8 +414,8 @@ void Solver::Circuit::setInitialState() {
 
 /// Add constraints to set the state of all inputs and registers (wires and outputs are handled by combinatorial constraints)
 void Solver::Circuit::loadStateConstraints() {
-  // TODO: assert find results are not end
   solver->solver.push();
+  // TODO: assert find results are not end
   for (auto input = std::begin (inputsByVal); input != std::end (inputsByVal); ++input) {
     z3::expr symbol = exprTable.find(*input)->second;
     z3::expr state = stateTable.find(*input)->second;
@@ -431,7 +431,35 @@ void Solver::Circuit::loadStateConstraints() {
   return;
 }
 
-void Solver::Circuit::runClockCycle() { 
+void Solver::Circuit::runClockPosedge() { 
+  for (auto clk = std::begin (clks); clk != std::end (clks); ++clk) {
+    // Currently we explicitly handle only one clock, so we can just update every clock in clks (of which there are 0 or 1)
+      stateTable.find(*clk)->second = solver->context.bv_val(1, 1);
+  }
+  for (auto reg = std::begin (regs); reg != std::end (regs); ++reg) {
+    llvm::SmallVector<mlir::Value> values = reg->second;
+    mlir::Value input = values[0];
+    mlir::Value clk = values[1];
+    mlir::Value data = values[2];
+    mlir::Value reset = values[3];
+    mlir::Value resetValue = values[4];
+    z3::expr resetVal = stateTable.find(reset)->second;
+    if (bvToBool(resetVal)) {
+      // TODO: unsure about this, are consts sufficiently handled???
+      stateTable[data] = stateTable[resetValue];
+    } else {
+      z3::expr inputState = stateTable[input];
+      stateTable[data] = inputState;
+    }
+  }
+  return;
+}
+
+void Solver::Circuit::runClockNegedge() {
+  for (auto clk = std::begin (clks); clk != std::end (clks); ++clk) {
+    // Currently we explicitly handle only one clock, so we can just update every clock in clks (of which there are 0 or 1)
+      stateTable.find(*clk)->second = solver->context.bv_val(0, 1);
+  }
   return;
 }
 
@@ -449,9 +477,39 @@ void Solver::Circuit::updateInputs(int iterationCount) {
   return; 
 }
 
+bool Solver::Circuit::checkState(){
+  solver->solver.push();
+  loadStateConstraints();
+  auto result = solver->solver.check();
+  solver->solver.pop();
+  switch (result) {
+  case z3::sat:
+    return false;
+  case z3::unsat:
+    return true;
+  default:
+    // TODO: maybe add handler for other return vals?
+    return false;
+  }  
+}
+
+bool Solver::Circuit::checkCycle(){
+  runClockPosedge();
+  if (!checkState()){
+    return false;
+  }
+  runClockNegedge();
+  if (!checkState()){
+    return false;
+  }
+  return true;  
+}
+
+
 //===----------------------------------------------------------------------===//
 // `comb` dialect operations
 //===----------------------------------------------------------------------===//
+//TODO: use OperandRange here?
 void Solver::Circuit::performCompReg(mlir::Value result, mlir::Value clk, mlir::Value data, mlir::Value reset, mlir::Value resetValue){
   z3::expr regData = allocateValue(data);
   //regs.insert(regs.end(), value);

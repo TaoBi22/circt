@@ -35,24 +35,6 @@ static cl::opt<std::string> inputFileName(cl::Positional, cl::Required,
                                           cl::desc("<input file>"),
                                           cl::cat(mainCategory));
 
-static bool explore(Solver::Circuit *c, Solver *s) {
-  c->runClockCycle();
-  // TODO: encapsulate these solver ops into Solver class
-  // s->push();
-  c->loadStateConstraints();
-  // switch (s->check()) {
-  // case z3::sat:
-  //   return false;
-  // case z3::unsat:
-  //   return true;
-  // default:
-  //   // TODO: maybe add handler for other return vals?
-  //   return false;
-  // }
-
-  return true;
-}
-
 static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
                                          int bound) {
 
@@ -64,7 +46,6 @@ static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
   // Create solver and add circuit
   Solver s(&context);
   Solver::Circuit *circuitModel = s.addCircuit(inputFileName, true);
-  
 
   // TODO: load property constraints
 
@@ -72,13 +53,13 @@ static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
   circuitModel->setInitialState();
 
   for (int i = 0; i < bound; i++) {
-    if (explore(circuitModel, &s)) {
+    if (circuitModel->checkCycle()) {
       circuitModel->updateInputs(i);
     } else {
       return mlir::failure();
     }
   }
-
+  lec::outs << "Success!\n";
   return mlir::success();
 }
 

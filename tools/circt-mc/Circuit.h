@@ -51,8 +51,11 @@ public:
 
   void setInitialState();
   void loadStateConstraints();
-  void runClockCycle();
+  void runClockPosedge();
+  void runClockNegedge();
   void updateInputs(int count);
+  bool checkState();
+  bool checkCycle();
 
   // `hw` dialect operations.
   void addConstant(mlir::Value result, mlir::APInt value);

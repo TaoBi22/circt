@@ -338,12 +338,9 @@ LogicExporter::Visitor::visitSeqOp(circt::seq::CompRegOp &op,
   mlir::Value input = op.getInput();
   mlir::Value clk = op.getClk();
   mlir::Value data = op.getData();
-  mlir::Value result = op.getResult();
   mlir::Value reset = op.getReset();
   mlir::Value resetValue = op.getResetValue();
-  // circt-mc currently only handles one clock - make sure that we have no clocks or only this clock
-
-  // LLVM_DEBUG(debugOpResult(result));
+  circuit->performCompReg(input, clk, data, reset, resetValue);
   // circuit->performMux(result, cond, trueValue, falseValue);
   return mlir::success();
 }
