@@ -129,8 +129,9 @@ private:
   /// The list for the circuit's outputs.
   llvm::SmallVector<mlir::Value> outputsByVal;
 
+  // TODO: MASSIVE PoC - this vec of vecs really needs some other datatype, but this works while I iron out the algorithm
   /// The list for the circuit's registers.
-  llvm::SmallVector<mlir::Value> regs;
+  llvm::SmallVector<std::pair<char,llvm::SmallVector<mlir::Value>>> regs;
   /// The list for the circuit's wires.
   llvm::SmallVector<mlir::Value> wires;
   /// The list for the circuit's clocks.

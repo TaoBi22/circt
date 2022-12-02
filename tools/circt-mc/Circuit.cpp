@@ -41,7 +41,7 @@ void Solver::Circuit::addRegister(mlir::Value value) {
   LLVM_DEBUG(lec::dbgs << name << " addOutput\n");
   INDENT();
   z3::expr reg = allocateValue(value);
-  regs.insert(regs.end(), value);
+  //regs.insert(regs.end(), value);
 }
 
 /// Add a clock to the list of clocks.
@@ -422,8 +422,10 @@ void Solver::Circuit::loadStateConstraints() {
     solver->solver.add(symbol == state);
   }
   for (auto reg = std::begin (regs); reg != std::end (regs); ++reg) {
-    z3::expr symbol = exprTable.find(*reg)->second;
-    z3::expr state = stateTable.find(*reg)->second;
+    llvm::SmallVector<mlir::Value> values = reg->second;
+    mlir::Value regData = values[2];
+    z3::expr symbol = exprTable.find(regData)->second;
+    z3::expr state = stateTable.find(regData)->second;
     solver->solver.add(symbol == state);
   }
   return;
@@ -446,5 +448,18 @@ void Solver::Circuit::updateInputs(int iterationCount) {
   }
   return; 
 }
+
+//===----------------------------------------------------------------------===//
+// `comb` dialect operations
+//===----------------------------------------------------------------------===//
+void Solver::Circuit::performCompReg(mlir::Value result, mlir::Value clk, mlir::Value data, mlir::Value reset, mlir::Value resetValue){
+  z3::expr regData = allocateValue(data);
+  //regs.insert(regs.end(), value);
+  char regId = 0;
+  llvm::SmallVector<mlir::Value> values = {result, clk, data, reset, resetValue};
+  std::pair<char, llvm::SmallVector<mlir::Value>> regPair {regId, values};
+  regs.insert(regs.end(), regPair);
+}
+
 
 #undef DEBUG_TYPE
