@@ -51,7 +51,9 @@ static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
 
   mlir::PassManager pm(&context);
   pm.addPass(std::make_unique<LogicExporter>(moduleName1, circuitModel));
-
+  mlir::ModuleOp m = inputFile.get();
+  if (failed(pm.run(m)))
+    return mlir::failure();
 
   // TODO: load property constraints
   //circuitModel->loadProperty();

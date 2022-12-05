@@ -324,10 +324,13 @@ mlir::LogicalResult LogicExporter::Visitor::visitSeq(mlir::Operation *op,
           .Case<circt::seq::CompRegOp>([&](circt::seq::CompRegOp &op) {
             return LogicExporter::Visitor::visitSeqOp(op, circuit);
           })
-          .Default(LogicExporter::Visitor::dispatchCombinationalVisitor(op, circuit));
-
+          .Default([&](mlir::Operation *op) {
+            return LogicExporter::Visitor::dispatchCombinationalVisitor(op, circuit);
+          });
   return outcome;
 }
+
+
 
 mlir::LogicalResult
 LogicExporter::Visitor::visitSeqOp(circt::seq::CompRegOp &op,

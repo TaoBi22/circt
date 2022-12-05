@@ -147,6 +147,8 @@ private:
   static circt::hw::HWModuleOp fetchModuleOp(mlir::ModuleOp builtinModule,
                                              llvm::StringRef targetModule);
 
+
+
   // For Solver::Circuit::addInstance to access Visitor::visitHW.
   friend Solver::Circuit;
 

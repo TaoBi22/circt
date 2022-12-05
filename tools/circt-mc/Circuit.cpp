@@ -361,6 +361,8 @@ void Solver::Circuit::allocateConstant(mlir::Value result,
       solver->context.bv_val(value.getZExtValue(), value.getBitWidth());
   auto insertion = exprTable.insert(std::pair(result, constant));
   assert(insertion.second && "Constant not inserted in expression table");
+  auto stateInsertion = stateTable.insert(std::pair(result, constant));
+  assert(stateInsertion.second && "Value not inserted in state table");
   LLVM_DEBUG(lec::printExpr(constant));
   LLVM_DEBUG(lec::printValue(result));
 }
@@ -412,7 +414,7 @@ void Solver::Circuit::setInitialState() {
   return;
 }
 
-/// Add constraints to set the state of all inputs and registers (wires and outputs are handled by combinatorial constraints)
+/// Add constraints to set the state of all inputs and registers (wires and outputs are handled by combinational constraints)
 void Solver::Circuit::loadStateConstraints() {
   solver->solver.push();
   // TODO: assert find results are not end
@@ -432,6 +434,7 @@ void Solver::Circuit::loadStateConstraints() {
 }
 
 void Solver::Circuit::runClockPosedge() { 
+  
   for (auto clk = std::begin (clks); clk != std::end (clks); ++clk) {
     // Currently we explicitly handle only one clock, so we can just update every clock in clks (of which there are 0 or 1)
       stateTable.find(*clk)->second = solver->context.bv_val(1, 1);
@@ -443,8 +446,9 @@ void Solver::Circuit::runClockPosedge() {
     mlir::Value data = values[2];
     mlir::Value reset = values[3];
     mlir::Value resetValue = values[4];
-    z3::expr resetVal = stateTable.find(reset)->second;
-    if (bvToBool(resetVal)) {
+    auto resetValPair = stateTable.find(reset);
+    if (resetValPair != stateTable.end() && bvToBool(resetValPair->second)) {
+      lec::dbgs << "Resetting\n";
       // TODO: unsure about this, are consts sufficiently handled???
       z3::expr resetValueState = stateTable.find(resetValue)->second;
       stateTable.insert({data, resetValueState});
