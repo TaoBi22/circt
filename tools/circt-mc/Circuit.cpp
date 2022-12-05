@@ -446,10 +446,11 @@ void Solver::Circuit::runClockPosedge() {
     z3::expr resetVal = stateTable.find(reset)->second;
     if (bvToBool(resetVal)) {
       // TODO: unsure about this, are consts sufficiently handled???
-      stateTable[data] = stateTable[resetValue];
+      z3::expr resetValueState = stateTable.find(resetValue)->second;
+      stateTable.insert({data, resetValueState});
     } else {
-      z3::expr inputState = stateTable[input];
-      stateTable[data] = inputState;
+      z3::expr inputState = stateTable.find(input)->second;
+      stateTable.insert({data, inputState});
     }
   }
   return;
@@ -481,14 +482,20 @@ bool Solver::Circuit::checkState(){
   solver->solver.push();
   loadStateConstraints();
   auto result = solver->solver.check();
+  solver->printModel();
   solver->solver.pop();
   switch (result) {
   case z3::sat:
+    lec::outs << "Failed\n";
     return false;
+    break;
   case z3::unsat:
+    lec::outs << "Succeeded\n";
     return true;
+    break;
   default:
     // TODO: maybe add handler for other return vals?
+    lec::outs << "Defaulted\n";
     return false;
   }  
 }
@@ -510,13 +517,17 @@ bool Solver::Circuit::checkCycle(){
 // `comb` dialect operations
 //===----------------------------------------------------------------------===//
 //TODO: use OperandRange here?
-void Solver::Circuit::performCompReg(mlir::Value result, mlir::Value clk, mlir::Value data, mlir::Value reset, mlir::Value resetValue){
+void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk, mlir::Value data, mlir::Value reset, mlir::Value resetValue){
   z3::expr regData = allocateValue(data);
   //regs.insert(regs.end(), value);
   char regId = 0;
-  llvm::SmallVector<mlir::Value> values = {result, clk, data, reset, resetValue};
+  llvm::SmallVector<mlir::Value> values = {input, clk, data, reset, resetValue};
   std::pair<char, llvm::SmallVector<mlir::Value>> regPair {regId, values};
   regs.insert(regs.end(), regPair);
+  // TODO THIS IS TEMPORARY FOR TESTING
+  z3::expr inExpr = stateTable.find(input)->second;
+  z3::expr outExpr = stateTable.find(data)->second;
+  solver->solver.add(inExpr == outExpr);
 }
 
 

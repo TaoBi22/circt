@@ -10,11 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "LogicExporter.h"
 #include "Solver.h"
 #include "Circuit.h"
 #include "Utility.h"
 #include "circt/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"\
 #include "llvm/Support/CommandLine.h"
 #include <z3++.h>
 
@@ -47,7 +49,12 @@ static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
   Solver s(&context);
   Solver::Circuit *circuitModel = s.addCircuit(inputFileName, true);
 
+  mlir::PassManager pm(&context);
+  pm.addPass(std::make_unique<LogicExporter>(moduleName1, circuitModel));
+
+
   // TODO: load property constraints
+  //circuitModel->loadProperty();
 
   // Set initial state of model
   circuitModel->setInitialState();
