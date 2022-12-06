@@ -434,7 +434,6 @@ void Solver::Circuit::loadStateConstraints() {
 }
 
 void Solver::Circuit::runClockPosedge() { 
-  
   for (auto clk = std::begin (clks); clk != std::end (clks); ++clk) {
     // Currently we explicitly handle only one clock, so we can just update every clock in clks (of which there are 0 or 1)
       stateTable.find(*clk)->second = solver->context.bv_val(1, 1);
@@ -446,10 +445,8 @@ void Solver::Circuit::runClockPosedge() {
     mlir::Value data = values[2];
     mlir::Value reset = values[3];
     mlir::Value resetValue = values[4];
-    auto resetValPair = stateTable.find(reset);
-    if (resetValPair != stateTable.end() && bvToBool(resetValPair->second)) {
+    if (reset && bvToBool(stateTable.find(reset)->second)) {
       lec::dbgs << "Resetting\n";
-      // TODO: unsure about this, are consts sufficiently handled???
       z3::expr resetValueState = stateTable.find(resetValue)->second;
       stateTable.insert({data, resetValueState});
     } else {
@@ -486,7 +483,7 @@ bool Solver::Circuit::checkState(){
   solver->solver.push();
   loadStateConstraints();
   auto result = solver->solver.check();
-  solver->printModel();
+  //solver->printModel();
   solver->solver.pop();
   switch (result) {
   case z3::sat:
@@ -531,7 +528,7 @@ void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk, mlir::V
   // TODO THIS IS TEMPORARY FOR TESTING
   z3::expr inExpr = stateTable.find(input)->second;
   z3::expr outExpr = stateTable.find(data)->second;
-  solver->solver.add(inExpr == outExpr);
+  solver->solver.add(!(inExpr == outExpr));
 }
 
 
