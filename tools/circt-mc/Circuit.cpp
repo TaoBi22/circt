@@ -122,6 +122,9 @@ void Solver::Circuit::addInstance(llvm::StringRef instanceName,
                                          mlir::OperandRange operands) {        \
     LLVM_DEBUG(lec::dbgs << name << " perform" #OP_NAME "\n");                 \
     INDENT();                                                                  \
+    combTransformTable.insert(std::pair(result, std::pair(operands,            \
+                      [](auto op1, auto op2) { return Z3_OPERATION; })));      \
+    wires.insert(wires.end(), result);                                                      \
     variadicOperation(result, operands,                                        \
                       [](auto op1, auto op2) { return Z3_OPERATION; });        \
   }
@@ -138,6 +141,8 @@ void Solver::Circuit::addInstance(llvm::StringRef instanceName,
     LLVM_DEBUG(lec::dbgs << "rhs:\n");                                         \
     z3::expr rhsExpr = fetchExpr(rhs);                                         \
     z3::expr op = z3::Z3_OPERATION(lhsExpr, rhsExpr);                          \
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),\
+                      [](auto op1, auto op2) { return z3::Z3_OPERATION(op1, op2); })));      \
     constrainResult(result, op);                                               \
   }
 
@@ -341,13 +346,17 @@ z3::expr Solver::Circuit::allocateValue(mlir::Value value) {
   auto exprInsertion = exprTable.insert(std::pair(value, expr));
   assert(exprInsertion.second && "Value not inserted in expression table");
   // Populate state table
-  z3::expr stateExpr = solver->context.bv_const((valueName + std::string("_state")).c_str(), width);
+  std::string stateName = valueName + std::string("_state");
+  z3::expr stateExpr = solver->context.bv_const(stateName.c_str(), width);
   auto stateInsertion = stateTable.insert(std::pair(value, stateExpr));
   assert(stateInsertion.second && "Value not inserted in state table");
   mlir::Builder builder(solver->mlirCtx);
   mlir::StringAttr symbol = builder.getStringAttr(valueName);
   auto symInsertion = solver->symbolTable.insert(std::pair(symbol, value));
   assert(symInsertion.second && "Value not inserted in symbol table");
+  mlir::StringAttr stateSymbol = builder.getStringAttr(stateName);
+  auto symStateInsertion = solver->symbolTable.insert(std::pair(stateSymbol, value));
+  assert(symStateInsertion.second && "State not inserted in symbol table");
   return expr;
 }
 
@@ -379,6 +388,8 @@ z3::expr Solver::Circuit::fetchExpr(mlir::Value &value) {
 /// Constrains the result of a MLIR operation to be equal a given logical
 /// express, simulating an assignment.
 void Solver::Circuit::constrainResult(mlir::Value &result, z3::expr &expr) {
+  // Add the result as a wire
+  wires.push_back(result);
   LLVM_DEBUG(lec::dbgs << "constraining result:\n");
   INDENT();
   {
@@ -416,7 +427,6 @@ void Solver::Circuit::setInitialState() {
 
 /// Add constraints to set the state of all inputs and registers (wires and outputs are handled by combinational constraints)
 void Solver::Circuit::loadStateConstraints() {
-  solver->solver.push();
   // TODO: assert find results are not end
   for (auto input = std::begin (inputsByVal); input != std::end (inputsByVal); ++input) {
     z3::expr symbol = exprTable.find(*input)->second;
@@ -424,16 +434,21 @@ void Solver::Circuit::loadStateConstraints() {
     solver->solver.add(symbol == state);
   }
   for (auto reg = std::begin (regs); reg != std::end (regs); ++reg) {
+    lec::dbgs << "SIOAHFOASEUFHIWEUKHFILSEUHFILUSEHFUIESFHISU\n";
     llvm::SmallVector<mlir::Value> values = reg->second;
     mlir::Value regData = values[2];
     z3::expr symbol = exprTable.find(regData)->second;
     z3::expr state = stateTable.find(regData)->second;
+
     solver->solver.add(symbol == state);
+    LLVM_DEBUG(lec::dbgs << "Name: " << nameTable.find(regData)->second << "\n");
+
   }
   return;
 }
 
 void Solver::Circuit::runClockPosedge() { 
+  lec::dbgs << "RUNNING POSEDGE" << "\n";
   for (auto clk = std::begin (clks); clk != std::end (clks); ++clk) {
     // Currently we explicitly handle only one clock, so we can just update every clock in clks (of which there are 0 or 1)
       stateTable.find(*clk)->second = solver->context.bv_val(1, 1);
@@ -445,13 +460,17 @@ void Solver::Circuit::runClockPosedge() {
     mlir::Value data = values[2];
     mlir::Value reset = values[3];
     mlir::Value resetValue = values[4];
-    if (reset && bvToBool(stateTable.find(reset)->second)) {
-      lec::dbgs << "Resetting\n";
+    z3::expr inputState = stateTable.find(input)->second;
+    // Make sure that a reset value is present
+    if (reset) {
+      z3::expr resetState = stateTable.find(reset)->second;
       z3::expr resetValueState = stateTable.find(resetValue)->second;
-      stateTable.insert({data, resetValueState});
+      z3::expr newState = z3::ite(bvToBool(resetState), resetValueState, inputState);
+      stateTable.find(data)->second = newState;
+      lec::dbgs << "assigned new var conditionally" << "\n";
     } else {
-      z3::expr inputState = stateTable.find(input)->second;
-      stateTable.insert({data, inputState});
+      stateTable.find(data)->second = inputState;
+      lec::dbgs << "assigned new var unconditionally" << "\n";
     }
   }
   return;
@@ -467,13 +486,18 @@ void Solver::Circuit::runClockNegedge() {
 
 /// Set a new input state by creating new symbols for all inputs
 void Solver::Circuit::updateInputs(int iterationCount) {
+  mlir::Builder builder(solver->mlirCtx);
   for (auto input = std::begin (inputsByVal); input != std::end (inputsByVal); ++input) {
     llvm::DenseMap<mlir::Value, z3::expr>::iterator currentStatePair = stateTable.find(*input);
     if (currentStatePair != stateTable.end()){
       // TODO: maybe store this in a map
       int width = input->getType().getIntOrFloatBitWidth();
       std::string valueName = nameTable.find(*input)->second;
-      currentStatePair->second = solver->context.bv_const((valueName + std::to_string(iterationCount)).c_str() , width);
+      std::string symbolName = (valueName + std::to_string(iterationCount)).c_str();
+      currentStatePair->second = solver->context.bv_const(symbolName.c_str() , width);
+      mlir::StringAttr symbol = builder.getStringAttr(symbolName);
+      auto symInsertion = solver->symbolTable.insert(std::pair(symbol, *input));
+      assert(symInsertion.second && "Value not inserted in symbol table");
     }
   }
   return; 
@@ -483,7 +507,7 @@ bool Solver::Circuit::checkState(){
   solver->solver.push();
   loadStateConstraints();
   auto result = solver->solver.check();
-  //solver->printModel();
+  solver->printModel();
   solver->solver.pop();
   switch (result) {
   case z3::sat:
@@ -513,6 +537,39 @@ bool Solver::Circuit::checkCycle(){
   return true;  
 }
 
+/// Helper function for performing a variadic operation: it executes a lambda
+/// over a range of operands.
+void Solver::Circuit::applyCompVariadicOperation(
+    mlir::Value result, std::pair<mlir::OperandRange,
+    llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>>
+        operationPair) {
+  LLVM_DEBUG(lec::dbgs << "comb variadic operation\n");
+  INDENT();
+  mlir::OperandRange operands = operationPair.first;
+  llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)> operation = operationPair.second;
+  // Vacuous base case.
+  auto it = operands.begin();
+  mlir::Value operand = *it;
+  z3::expr varOp = exprTable.find(operand)->second;
+  {
+    LLVM_DEBUG(lec::dbgs << "first operand:\n");
+    INDENT();
+    LLVM_DEBUG(lec::printValue(operand));
+  }
+  ++it;
+  // Inductive step.
+  while (it != operands.end()) {
+    operand = *it;
+    varOp = operation(varOp, exprTable.find(operand)->second);
+    {
+      LLVM_DEBUG(lec::dbgs << "next operand:\n");
+      INDENT();
+      LLVM_DEBUG(lec::printValue(operand));
+    }
+    ++it;
+  };
+  stateTable.find(result)->second = varOp;
+}
 
 //===----------------------------------------------------------------------===//
 // `comb` dialect operations
@@ -528,7 +585,12 @@ void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk, mlir::V
   // TODO THIS IS TEMPORARY FOR TESTING
   z3::expr inExpr = stateTable.find(input)->second;
   z3::expr outExpr = stateTable.find(data)->second;
-  solver->solver.add(!(inExpr == outExpr));
+  auto rstPair = stateTable.find(reset);
+  z3::expr clkExpr = stateTable.find(clk)->second;
+  LLVM_DEBUG(lec::dbgs << "Input: " << nameTable.find(input)->second << "\n");
+  LLVM_DEBUG(lec::dbgs << "Output: " << nameTable.find(data)->second << "\n");
+  if (rstPair != stateTable.end())
+    solver->solver.add(!z3::implies(bvToBool(clkExpr) && !bvToBool(rstPair->second), inExpr == outExpr));
 }
 
 
