@@ -434,7 +434,6 @@ void Solver::Circuit::loadStateConstraints() {
     solver->solver.add(symbol == state);
   }
   for (auto reg = std::begin (regs); reg != std::end (regs); ++reg) {
-    lec::dbgs << "SIOAHFOASEUFHIWEUKHFILSEUHFILUSEHFUIESFHISU\n";
     llvm::SmallVector<mlir::Value> values = reg->second;
     mlir::Value regData = values[2];
     z3::expr symbol = exprTable.find(regData)->second;
@@ -448,7 +447,6 @@ void Solver::Circuit::loadStateConstraints() {
 }
 
 void Solver::Circuit::runClockPosedge() { 
-  lec::dbgs << "RUNNING POSEDGE" << "\n";
   for (auto clk = std::begin (clks); clk != std::end (clks); ++clk) {
     // Currently we explicitly handle only one clock, so we can just update every clock in clks (of which there are 0 or 1)
       stateTable.find(*clk)->second = solver->context.bv_val(1, 1);
@@ -467,10 +465,8 @@ void Solver::Circuit::runClockPosedge() {
       z3::expr resetValueState = stateTable.find(resetValue)->second;
       z3::expr newState = z3::ite(bvToBool(resetState), resetValueState, inputState);
       stateTable.find(data)->second = newState;
-      lec::dbgs << "assigned new var conditionally" << "\n";
     } else {
       stateTable.find(data)->second = inputState;
-      lec::dbgs << "assigned new var unconditionally" << "\n";
     }
   }
   return;
@@ -507,20 +503,17 @@ bool Solver::Circuit::checkState(){
   solver->solver.push();
   loadStateConstraints();
   auto result = solver->solver.check();
-  solver->printModel();
+  //solver->printModel();
   solver->solver.pop();
   switch (result) {
   case z3::sat:
-    lec::outs << "Failed\n";
     return false;
     break;
   case z3::unsat:
-    lec::outs << "Succeeded\n";
     return true;
     break;
   default:
     // TODO: maybe add handler for other return vals?
-    lec::outs << "Defaulted\n";
     return false;
   }  
 }
@@ -583,13 +576,13 @@ void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk, mlir::V
   std::pair<char, llvm::SmallVector<mlir::Value>> regPair {regId, values};
   regs.insert(regs.end(), regPair);
   // TODO THIS IS TEMPORARY FOR TESTING
-  z3::expr inExpr = stateTable.find(input)->second;
-  z3::expr outExpr = stateTable.find(data)->second;
-  auto rstPair = stateTable.find(reset);
-  z3::expr clkExpr = stateTable.find(clk)->second;
+  z3::expr inExpr = exprTable.find(input)->second;
+  z3::expr outExpr = exprTable.find(data)->second;
+  auto rstPair = exprTable.find(reset);
+  z3::expr clkExpr = exprTable.find(clk)->second;
   LLVM_DEBUG(lec::dbgs << "Input: " << nameTable.find(input)->second << "\n");
   LLVM_DEBUG(lec::dbgs << "Output: " << nameTable.find(data)->second << "\n");
-  if (rstPair != stateTable.end())
+  if (rstPair != exprTable.end())
     solver->solver.add(!z3::implies(bvToBool(clkExpr) && !bvToBool(rstPair->second), inExpr == outExpr));
 }
 
