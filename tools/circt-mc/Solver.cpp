@@ -104,6 +104,14 @@ void Solver::printModel() {
     lec::dbgs << "internal symbol: " << symbol << "\n";
     lec::dbgs << "model interpretation: " << e.to_string() << "\n\n";
   }
+  // Fetch constraints from the solver
+  z3::expr_vector constraints = solver.assertions();
+  // Print a list of all the constraints
+  lec::dbgs << "Constraints:";
+  for (auto constraint: constraints) {
+    // Convert constraint to string
+    lec::dbgs << "	" << constraint.to_string() << "\n";
+  }
 }
 
 /// Prints the constraints which were added to the solver.
