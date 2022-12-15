@@ -165,6 +165,8 @@ void Solver::Circuit::performExtract(mlir::Value result, mlir::Value input,
   unsigned width = result.getType().getIntOrFloatBitWidth();
   LLVM_DEBUG(lec::dbgs << "width: " << width << "\n");
   z3::expr extract = inputExpr.extract(lowBit + width - 1, lowBit);
+  combTransformTable.insert(std::pair(result, std::pair(std::make_tuple(input),            
+                    [lowBit, width](auto op1) { return op1.extract(lowBit + width - 1, lowBit); })));      
   constrainResult(result, extract);
 }
 
@@ -240,6 +242,8 @@ void Solver::Circuit::performMux(mlir::Value result, mlir::Value cond,
   z3::expr fvalue = fetchExpr(falseValue);
   // Conversion due to z3::ite requiring a bool rather than a bitvector.
   z3::expr mux = z3::ite(bvToBool(condExpr), tvalue, fvalue);
+  combTransformTable.insert(std::pair(result, std::pair(std::make_tuple(cond, trueValue, falseValue),            
+                    [](auto op1, auto op2, auto op3) { return z3::ite(Solver::Circuit::bvToBool(op1), op2, op3); })));      
   constrainResult(result, mux);
 }
 
@@ -260,6 +264,17 @@ void Solver::Circuit::performParity(mlir::Value result, mlir::Value input) {
     parity = parity ^ inputExpr.extract(i, i);
   }
 
+  combTransformTable.insert(std::pair(result, std::pair(std::make_tuple(input),            
+                    [width](auto op1) { 
+                      z3::expr parity = op1.extract(0, 0);
+                      // calculate parity with every other bit
+                      for (unsigned int i = 1; i < width; i++) {
+                        parity = parity ^ op1.extract(i, i);
+                      }
+                      return parity;
+                    })));      
+
+
   constrainResult(result, parity);
 }
 
@@ -278,6 +293,16 @@ void Solver::Circuit::performReplicate(mlir::Value result, mlir::Value input) {
   for (unsigned int i = 1; i < times; i++) {
     replicate = z3::concat(replicate, inputExpr);
   }
+
+  combTransformTable.insert(std::pair(result, std::pair(std::make_tuple(input),            
+                    [times](auto op1) { 
+                      z3::expr replicate = op1;
+                      for (unsigned int i = 1; i < times; i++) {
+                        replicate = z3::concat(replicate, op1);
+                      }
+                      return replicate;
+                    })));      
+
 
   constrainResult(result, replicate);
 }
@@ -530,6 +555,40 @@ bool Solver::Circuit::checkCycle(){
   return true;  
 }
 
+/// Update combinational logic (to allow new inputs to propagate)
+void Solver::Circuit::applyCombUpdates(){
+  for (auto wire = std::begin (wires); wire != std::end (wires); ++wire) {
+    auto wireTransformPair = combTransformTable.find(*wire);
+    //assert(wireTransformPair != wires.end() && "Combinational value to update has no update function");
+    auto wireTransform = wireTransformPair->second;
+    if (auto* transform = std::get_if<std::pair<mlir::OperandRange, llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>>>(&wireTransform)) {
+      applyCompVariadicOperation(*wire, *transform);
+    } else if (auto* transform = std::get_if<std::pair<std::tuple<mlir::Value>, llvm::function_ref<z3::expr(const z3::expr &)>>>(&wireTransform)) {
+      mlir::Value operand = std::get<0>(transform->first);
+      llvm::function_ref<z3::expr(const z3::expr &)> transformFunc = transform->second;
+      z3::expr operandExpr = stateTable.find(operand)->second;
+      stateTable.find(*wire)->second = transformFunc(operandExpr);
+    } else if (auto* transform = std::get_if<std::pair<std::tuple<mlir::Value, mlir::Value>, llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>>>(&wireTransform)) {
+      mlir::Value firstOperand = std::get<0>(transform->first);
+      mlir::Value secondOperand = std::get<1>(transform->first);
+      llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)> transformFunc = transform->second;
+      z3::expr firstOperandExpr = stateTable.find(firstOperand)->second;
+      z3::expr secondOperandExpr = stateTable.find(secondOperand)->second;
+      stateTable.find(*wire)->second = transformFunc(firstOperandExpr, secondOperandExpr);
+    } else if (auto* transform = std::get_if<std::pair<std::tuple<mlir::Value, mlir::Value, mlir::Value>, llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &, const z3::expr &)>>>(&wireTransform)) {
+      mlir::Value firstOperand = std::get<0>(transform->first);
+      mlir::Value secondOperand = std::get<1>(transform->first);
+      mlir::Value thirdOperand = std::get<2>(transform->first);
+      llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &, const z3::expr &)> transformFunc = transform->second;
+      z3::expr firstOperandExpr = stateTable.find(firstOperand)->second;
+      z3::expr secondOperandExpr = stateTable.find(secondOperand)->second;
+      z3::expr thirdOperandExpr = stateTable.find(thirdOperand)->second;
+      stateTable.find(*wire)->second = transformFunc(firstOperandExpr, secondOperandExpr, thirdOperandExpr);
+    }
+  }
+}
+
+
 /// Helper function for performing a variadic operation: it executes a lambda
 /// over a range of operands.
 void Solver::Circuit::applyCompVariadicOperation(
@@ -565,7 +624,7 @@ void Solver::Circuit::applyCompVariadicOperation(
 }
 
 //===----------------------------------------------------------------------===//
-// `comb` dialect operations
+// `seq` dialect operations
 //===----------------------------------------------------------------------===//
 //TODO: use OperandRange here?
 void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk, mlir::Value data, mlir::Value reset, mlir::Value resetValue){

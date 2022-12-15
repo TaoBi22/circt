@@ -63,6 +63,7 @@ static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
 
   for (int i = 0; i < bound; i++) {
     if (circuitModel->checkCycle()) {
+      // TODO: also update inputs before negedge
       circuitModel->updateInputs(i);
     } else {
       return mlir::failure();

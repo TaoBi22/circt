@@ -49,6 +49,7 @@ public:
   /// Recover the outputs.
   llvm::ArrayRef<z3::expr> getOutputs();
 
+  // TODO: Some of these can be private
   void setInitialState();
   void loadStateConstraints();
   void runClockPosedge();
@@ -56,6 +57,8 @@ public:
   void updateInputs(int count);
   bool checkState();
   bool checkCycle();
+  void applyCombUpdates();
+
 
   // `hw` dialect operations.
   void addConstant(mlir::Value result, mlir::APInt value);
@@ -108,7 +111,7 @@ private:
   void constrainResult(mlir::Value &result, z3::expr &expr);
 
   /// Convert from bitvector to bool sort.
-  z3::expr bvToBool(z3::expr &condition);
+  static z3::expr bvToBool(z3::expr &condition);
   /// Convert from a boolean sort to the corresponding 1-width bitvector.
   z3::expr boolToBv(z3::expr condition);
 
