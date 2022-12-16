@@ -10,13 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "Circuit.h"
 #include "LogicExporter.h"
 #include "Solver.h"
-#include "Circuit.h"
 #include "Utility.h"
 #include "circt/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
-#include "mlir/Pass/PassManager.h"\
+#include "mlir/Pass/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include <z3++.h>
 
@@ -56,7 +56,7 @@ static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
     return mlir::failure();
 
   // TODO: load property constraints
-  //circuitModel->loadProperty();
+  // circuitModel->loadProperty();
 
   // Set initial state of model
   circuitModel->setInitialState();

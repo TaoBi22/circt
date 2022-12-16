@@ -318,23 +318,22 @@ visitVariadicCombOp(Xor, comb.xor, circt::comb::XorOp &);
 //===----------------------------------------------------------------------===//
 
 mlir::LogicalResult LogicExporter::Visitor::visitSeq(mlir::Operation *op,
-                                                  Solver::Circuit *circuit) {
+                                                     Solver::Circuit *circuit) {
   mlir::LogicalResult outcome =
       llvm::TypeSwitch<mlir::Operation *, mlir::LogicalResult>(op)
           .Case<circt::seq::CompRegOp>([&](circt::seq::CompRegOp &op) {
             return LogicExporter::Visitor::visitSeqOp(op, circuit);
           })
           .Default([&](mlir::Operation *op) {
-            return LogicExporter::Visitor::dispatchCombinationalVisitor(op, circuit);
+            return LogicExporter::Visitor::dispatchCombinationalVisitor(
+                op, circuit);
           });
   return outcome;
 }
 
-
-
 mlir::LogicalResult
 LogicExporter::Visitor::visitSeqOp(circt::seq::CompRegOp &op,
-                                  Solver::Circuit *circuit) {
+                                   Solver::Circuit *circuit) {
   LLVM_DEBUG(lec::dbgs << "Visiting CompReg\n");
   INDENT();
   LLVM_DEBUG(debugOperands(op));

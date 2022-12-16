@@ -120,10 +120,9 @@ private:
                                          Solver::Circuit *circuit);
 
     // Seq Visitor definitions
-    mlir::LogicalResult visitSeq(mlir::Operation *op,
-                                      Solver::Circuit *circuit);
+    mlir::LogicalResult visitSeq(mlir::Operation *op, Solver::Circuit *circuit);
     static mlir::LogicalResult visitSeqOp(circt::seq::CompRegOp &op,
-                                      Solver::Circuit *circuit);
+                                          Solver::Circuit *circuit);
 
     // Additional definitions
     /// Handles `builtin.module` logic exporting.
@@ -146,8 +145,6 @@ private:
   /// and returns it.
   static circt::hw::HWModuleOp fetchModuleOp(mlir::ModuleOp builtinModule,
                                              llvm::StringRef targetModule);
-
-
 
   // For Solver::Circuit::addInstance to access Visitor::visitHW.
   friend Solver::Circuit;

@@ -35,7 +35,6 @@ public:
   /// results to the user.
   mlir::LogicalResult solve();
 
-
   class Circuit;
   /// Create a new circuit to be compared and return it.
   Circuit *addCircuit(llvm::StringRef name, bool firstCircuit);
