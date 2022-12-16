@@ -14,6 +14,9 @@
 #ifndef LEC_CIRCUIT_H
 #define LEC_CIRCUIT_H
 
+#define COMPREGID 0
+#define FIRREGID 1
+
 #include "Solver.h"
 #include "circt/Dialect/Comb/CombDialect.h"
 #include "circt/Dialect/HW/HWOps.h"
@@ -88,8 +91,11 @@ public:
   void performXor(mlir::Value result, mlir::OperandRange operands);
 
   // `seq` dialect operations.
-  void performCompReg(mlir::Value result, mlir::Value clk, mlir::Value data,
+  void performCompReg(mlir::Value input, mlir::Value clk, mlir::Value data,
                       mlir::Value reset, mlir::Value resetValue);
+  void performFirReg(mlir::Value next, mlir::Value clk, mlir::Value data,
+                      mlir::Value reset, mlir::Value resetValue);
+
 
 private:
   /// Helper function for performing a variadic operation: it executes a lambda

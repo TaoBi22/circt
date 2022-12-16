@@ -123,6 +123,8 @@ private:
     mlir::LogicalResult visitSeq(mlir::Operation *op, Solver::Circuit *circuit);
     static mlir::LogicalResult visitSeqOp(circt::seq::CompRegOp &op,
                                           Solver::Circuit *circuit);
+    static mlir::LogicalResult visitSeqOp(circt::seq::FirRegOp &op,
+                                          Solver::Circuit *circuit);
 
     // Additional definitions
     /// Handles `builtin.module` logic exporting.

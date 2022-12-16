@@ -324,6 +324,9 @@ mlir::LogicalResult LogicExporter::Visitor::visitSeq(mlir::Operation *op,
           .Case<circt::seq::CompRegOp>([&](circt::seq::CompRegOp &op) {
             return LogicExporter::Visitor::visitSeqOp(op, circuit);
           })
+          .Case<circt::seq::FirRegOp>([&](circt::seq::FirRegOp &op) {
+            return LogicExporter::Visitor::visitSeqOp(op, circuit);
+          })
           .Default([&](mlir::Operation *op) {
             return LogicExporter::Visitor::dispatchCombinationalVisitor(
                 op, circuit);
@@ -343,6 +346,23 @@ LogicExporter::Visitor::visitSeqOp(circt::seq::CompRegOp &op,
   mlir::Value reset = op.getReset();
   mlir::Value resetValue = op.getResetValue();
   circuit->performCompReg(input, clk, data, reset, resetValue);
+  // circuit->performMux(result, cond, trueValue, falseValue);
+  return mlir::success();
+}
+
+mlir::LogicalResult
+LogicExporter::Visitor::visitSeqOp(circt::seq::FirRegOp &op,
+                                   Solver::Circuit *circuit) {
+  LLVM_DEBUG(lec::dbgs << "Visiting FirReg\n");
+  INDENT();
+  LLVM_DEBUG(debugOperands(op));
+  assert(!op.getIsAsync() && "Async resets not supported.");
+  mlir::Value next = op.getNext();
+  mlir::Value clk = op.getClk();
+  mlir::Value data = op.getData();
+  mlir::Value reset = op.getReset();
+  mlir::Value resetValue = op.getResetValue();
+  circuit->performCompReg(next, clk, data, reset, resetValue);
   // circuit->performMux(result, cond, trueValue, falseValue);
   return mlir::success();
 }

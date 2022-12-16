@@ -530,21 +530,26 @@ void Solver::Circuit::runClockPosedge() {
     stateTable.find(*clk)->second = solver->context.bv_val(1, 1);
   }
   for (auto reg = std::begin(regs); reg != std::end(regs); ++reg) {
+    char id = reg->first;
     llvm::SmallVector<mlir::Value> values = reg->second;
-    mlir::Value input = values[0];
-    mlir::Value data = values[2];
-    mlir::Value reset = values[3];
-    mlir::Value resetValue = values[4];
-    z3::expr inputState = stateTable.find(input)->second;
-    // Make sure that a reset value is present
-    if (reset) {
-      z3::expr resetState = stateTable.find(reset)->second;
-      z3::expr resetValueState = stateTable.find(resetValue)->second;
-      z3::expr newState =
-          z3::ite(bvToBool(resetState), resetValueState, inputState);
-      stateTable.find(data)->second = newState;
-    } else {
-      stateTable.find(data)->second = inputState;
+    // Currently, there is no difference in CompReg and FirReg handling, as async resets aren't supported
+    // The branch on ID is here so that FirRegOps can have async resets handled later without a big refactor
+    if (id == COMPREGID || id == FIRREGID) {
+      mlir::Value input = values[0];
+      mlir::Value data = values[2];
+      mlir::Value reset = values[3];
+      mlir::Value resetValue = values[4];
+      z3::expr inputState = stateTable.find(input)->second;
+      // Make sure that a reset value is present
+      if (reset) {
+        z3::expr resetState = stateTable.find(reset)->second;
+        z3::expr resetValueState = stateTable.find(resetValue)->second;
+        z3::expr newState =
+            z3::ite(bvToBool(resetState), resetValueState, inputState);
+        stateTable.find(data)->second = newState;
+      } else {
+        stateTable.find(data)->second = inputState;
+      }
     }
   }
   return;
@@ -706,13 +711,12 @@ void Solver::Circuit::applyCompVariadicOperation(
 //===----------------------------------------------------------------------===//
 // `seq` dialect operations
 //===----------------------------------------------------------------------===//
-// TODO: use OperandRange here?
 void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk,
                                      mlir::Value data, mlir::Value reset,
                                      mlir::Value resetValue) {
   z3::expr regData = allocateValue(data);
   // regs.insert(regs.end(), value);
-  char regId = 0;
+  char regId = COMPREGID;
   llvm::SmallVector<mlir::Value> values = {input, clk, data, reset, resetValue};
   std::pair<char, llvm::SmallVector<mlir::Value>> regPair{regId, values};
   regs.insert(regs.end(), regPair);
@@ -727,5 +731,27 @@ void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk,
     solver->solver.add(!z3::implies(
         bvToBool(clkExpr) && !bvToBool(rstPair->second), inExpr == outExpr));
 }
+
+void Solver::Circuit::performFirReg(mlir::Value next, mlir::Value clk,
+                                     mlir::Value data, mlir::Value reset,
+                                     mlir::Value resetValue) {
+  z3::expr regData = allocateValue(data);
+  // regs.insert(regs.end(), value);
+  char regId = FIRREGID;
+  llvm::SmallVector<mlir::Value> values = {next, clk, data, reset, resetValue};
+  std::pair<char, llvm::SmallVector<mlir::Value>> regPair{regId, values};
+  regs.insert(regs.end(), regPair);
+  // TODO THIS IS TEMPORARY FOR TESTING
+  z3::expr inExpr = exprTable.find(next)->second;
+  z3::expr outExpr = exprTable.find(data)->second;
+  auto rstPair = exprTable.find(reset);
+  z3::expr clkExpr = exprTable.find(clk)->second;
+  LLVM_DEBUG(lec::dbgs << "Input: " << nameTable.find(next)->second << "\n");
+  LLVM_DEBUG(lec::dbgs << "Output: " << nameTable.find(data)->second << "\n");
+  if (rstPair != exprTable.end())
+    solver->solver.add(!z3::implies(
+        bvToBool(clkExpr) && !bvToBool(rstPair->second), inExpr == outExpr));
+}
+
 
 #undef DEBUG_TYPE
