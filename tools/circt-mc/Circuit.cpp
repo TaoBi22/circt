@@ -187,36 +187,56 @@ void Solver::Circuit::performICmp(mlir::Value result,
   case circt::comb::ICmpPredicate::ceq:
   case circt::comb::ICmpPredicate::weq:
     icmp = boolToBv(lhsExpr == rhsExpr);
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),
+                      [this](auto op1, auto op2) { return boolToBv(op1 == op2);})));
     break;
   case circt::comb::ICmpPredicate::ne:
   // Multi-valued logic is not accounted for.
   case circt::comb::ICmpPredicate::cne:
   case circt::comb::ICmpPredicate::wne:
     icmp = boolToBv(lhsExpr != rhsExpr);
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),
+                      [this](auto op1, auto op2) { return boolToBv(op1 != op2); })));
     break;
   case circt::comb::ICmpPredicate::slt:
     icmp = boolToBv(z3::slt(lhsExpr, rhsExpr));
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),
+                      [this](auto op1, auto op2) { return boolToBv(z3::slt(op1, op2)); })));
     break;
   case circt::comb::ICmpPredicate::sle:
     icmp = boolToBv(z3::sle(lhsExpr, rhsExpr));
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),
+                      [this](auto op1, auto op2) { return boolToBv(z3::sle(op1, op2)); })));
     break;
   case circt::comb::ICmpPredicate::sgt:
     icmp = boolToBv(z3::sgt(lhsExpr, rhsExpr));
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),
+                      [this](auto op1, auto op2) { return boolToBv(z3::sgt(op1, op2)); })));
     break;
   case circt::comb::ICmpPredicate::sge:
     icmp = boolToBv(z3::sge(lhsExpr, rhsExpr));
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),
+                      [this](auto op1, auto op2) { return boolToBv(z3::sge(op1, op2)); })));
     break;
   case circt::comb::ICmpPredicate::ult:
     icmp = boolToBv(z3::ult(lhsExpr, rhsExpr));
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),
+                      [this](auto op1, auto op2) { return boolToBv(z3::ult(op1, op2)); })));
     break;
   case circt::comb::ICmpPredicate::ule:
     icmp = boolToBv(z3::ule(lhsExpr, rhsExpr));
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),
+                      [this](auto op1, auto op2) { return boolToBv(z3::ule(op1, op2)); })));
     break;
   case circt::comb::ICmpPredicate::ugt:
     icmp = boolToBv(z3::ugt(lhsExpr, rhsExpr));
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),
+                      [this](auto op1, auto op2) { return boolToBv(z3::ugt(op1, op2)); })));
     break;
   case circt::comb::ICmpPredicate::uge:
     icmp = boolToBv(z3::uge(lhsExpr, rhsExpr));
+    combTransformTable.insert(std::pair(result, std::pair(std::tuple(lhs, rhs),
+                      [this](auto op1, auto op2) { return boolToBv(z3::uge(op1, op2)); })));
     break;
   };
 
