@@ -14,9 +14,6 @@
 #ifndef LEC_CIRCUIT_H
 #define LEC_CIRCUIT_H
 
-#define COMPREGID 0
-#define FIRREGID 1
-
 #include "Solver.h"
 #include "circt/Dialect/Comb/CombDialect.h"
 #include "circt/Dialect/HW/HWOps.h"
@@ -97,6 +94,23 @@ public:
                      mlir::Value reset, mlir::Value resetValue);
 
 private:
+  /// Struct to represent computational registers
+  struct CompRegStruct {
+    mlir::Value input;
+    mlir::Value clk;
+    mlir::Value data;
+    mlir::Value reset;
+    mlir::Value resetValue;
+  };
+  /// Struct to contain FIRTLL registers
+  struct FirRegStruct {
+    mlir::Value next;
+    mlir::Value clk;
+    mlir::Value data;
+    mlir::Value reset;
+    mlir::Value resetValue;
+    bool isAsync;
+  };
   /// Helper function for performing a variadic operation: it executes a lambda
   /// over a range of operands.
   void variadicOperation(
@@ -146,10 +160,8 @@ private:
   /// The list for the circuit's outputs.
   llvm::SmallVector<mlir::Value> outputsByVal;
 
-  // TODO: MASSIVE PoC - this vec of vecs really needs some other datatype, but
-  // this works while I iron out the algorithm
   /// The list for the circuit's registers.
-  llvm::SmallVector<std::pair<char, llvm::SmallVector<mlir::Value>>> regs;
+  llvm::SmallVector<std::variant<CompRegStruct, FirRegStruct>> regs;
   /// The list for the circuit's wires.
   llvm::SmallVector<mlir::Value> wires;
   /// The list for the circuit's clocks.

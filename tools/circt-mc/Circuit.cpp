@@ -516,8 +516,12 @@ void Solver::Circuit::loadStateConstraints() {
     solver->solver.add(symbol == state);
   }
   for (auto reg = std::begin(regs); reg != std::end(regs); ++reg) {
-    llvm::SmallVector<mlir::Value> values = reg->second;
-    mlir::Value regData = values[2];
+    mlir::Value regData;
+    if (auto *compReg = std::get_if<CompRegStruct>(reg)) {
+      regData = compReg->data;
+    } else if (auto *firReg = std::get_if<FirRegStruct>(reg)) {
+      regData = firReg->data;
+    }
     z3::expr symbol = exprTable.find(regData)->second;
     z3::expr state = stateTable.find(regData)->second;
 
@@ -535,27 +539,35 @@ void Solver::Circuit::runClockPosedge() {
     stateTable.find(*clk)->second = solver->context.bv_val(1, 1);
   }
   for (auto reg = std::begin(regs); reg != std::end(regs); ++reg) {
-    char id = reg->first;
-    llvm::SmallVector<mlir::Value> values = reg->second;
+    // Fetch values from reg structs
+    mlir::Value input;
+    mlir::Value data;
+    mlir::Value reset;
+    mlir::Value resetValue;
+    if (auto *compReg = std::get_if<CompRegStruct>(reg)) {
+      input = compReg->input;
+      data = compReg->data;
+      reset = compReg->reset;
+      resetValue = compReg->resetValue;
+    } else if (auto *firReg = std::get_if<FirRegStruct>(reg)) {
+      input = firReg->next;
+      data = firReg->data;
+      reset = firReg->reset;
+      resetValue = firReg->resetValue;
+    }
     // Currently, there is no difference in CompReg and FirReg handling, as
-    // async resets aren't supported. The branch on ID is here so that FirRegOps
-    // can have async resets handled later without a big refactor
-    if (id == COMPREGID || id == FIRREGID) {
-      mlir::Value input = values[0];
-      mlir::Value data = values[2];
-      mlir::Value reset = values[3];
-      mlir::Value resetValue = values[4];
-      z3::expr inputState = stateTable.find(input)->second;
-      // Make sure that a reset value is present
-      if (reset) {
-        z3::expr resetState = stateTable.find(reset)->second;
-        z3::expr resetValueState = stateTable.find(resetValue)->second;
-        z3::expr newState =
-            z3::ite(bvToBool(resetState), resetValueState, inputState);
-        stateTable.find(data)->second = newState;
-      } else {
-        stateTable.find(data)->second = inputState;
-      }
+    // async resets aren't supported
+    z3::expr inputState = stateTable.find(input)->second;
+    // Make sure that a reset value is present
+    if (reset) {
+      z3::expr resetState = stateTable.find(reset)->second;
+      z3::expr resetValueState = stateTable.find(resetValue)->second;
+      z3::expr newState =
+          z3::ite(bvToBool(resetState), resetValueState, inputState);
+      stateTable.find(data)->second = newState;
+    } else {
+      // Otherwise, simply update output state to be the same as input state
+      stateTable.find(data)->second = inputState;
     }
   }
   return;
@@ -722,10 +734,16 @@ void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk,
                                      mlir::Value resetValue) {
   z3::expr regData = allocateValue(data);
   // regs.insert(regs.end(), value);
-  char regId = COMPREGID;
-  llvm::SmallVector<mlir::Value> values = {input, clk, data, reset, resetValue};
-  std::pair<char, llvm::SmallVector<mlir::Value>> regPair{regId, values};
-  regs.insert(regs.end(), regPair);
+  // llvm::SmallVector<mlir::Value> values = {input, clk, data, reset,
+  // resetValue}; std::pair<char, llvm::SmallVector<mlir::Value>> regPair{regId,
+  // values};
+  CompRegStruct reg;
+  reg.input = input;
+  reg.clk = clk;
+  reg.data = data;
+  reg.reset = reset;
+  reg.resetValue = resetValue;
+  regs.insert(regs.end(), reg);
   // TODO THIS IS TEMPORARY FOR TESTING
   z3::expr inExpr = exprTable.find(input)->second;
   z3::expr outExpr = exprTable.find(data)->second;
@@ -743,10 +761,13 @@ void Solver::Circuit::performFirReg(mlir::Value next, mlir::Value clk,
                                     mlir::Value resetValue) {
   z3::expr regData = allocateValue(data);
   // regs.insert(regs.end(), value);
-  char regId = FIRREGID;
-  llvm::SmallVector<mlir::Value> values = {next, clk, data, reset, resetValue};
-  std::pair<char, llvm::SmallVector<mlir::Value>> regPair{regId, values};
-  regs.insert(regs.end(), regPair);
+  FirRegStruct reg;
+  reg.next = next;
+  reg.clk = clk;
+  reg.data = data;
+  reg.reset = reset;
+  reg.resetValue = resetValue;
+  regs.insert(regs.end(), reg);
   // TODO THIS IS TEMPORARY FOR TESTING
   z3::expr inExpr = exprTable.find(next)->second;
   z3::expr outExpr = exprTable.find(data)->second;
