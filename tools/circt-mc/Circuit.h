@@ -49,15 +49,8 @@ public:
   /// Recover the outputs.
   llvm::ArrayRef<z3::expr> getOutputs();
 
-  // TODO: Some of these can be private
   void setInitialState();
-  void loadStateConstraints();
-  void runClockPosedge();
-  void runClockNegedge();
-  void updateInputs(int count);
-  bool checkState();
-  bool checkCycle();
-  void applyCombUpdates();
+  bool checkCycle(int count);
 
   // `hw` dialect operations.
   void addConstant(mlir::Value result, mlir::APInt value);
@@ -138,6 +131,13 @@ private:
       mlir::Value,
       std::pair<mlir::OperandRange, llvm::function_ref<z3::expr(
                                         const z3::expr &, const z3::expr &)>>);
+
+  void loadStateConstraints();
+  void runClockPosedge();
+  void runClockNegedge();
+  void updateInputs(int count, bool posedge);
+  bool checkState();
+  void applyCombUpdates();
 
   /// The name of the circuit; it corresponds to its scope within the parsed IR.
   std::string name;

@@ -511,9 +511,11 @@ void Solver::Circuit::loadStateConstraints() {
   // TODO: assert find results are not end
   for (auto input = std::begin(inputsByVal); input != std::end(inputsByVal);
        ++input) {
-    z3::expr symbol = exprTable.find(*input)->second;
-    z3::expr state = stateTable.find(*input)->second;
-    solver->solver.add(symbol == state);
+    auto symbolPair = exprTable.find(*input);
+    assert(symbolPair != exprTable.end() && "Z3 expression not found for input value");
+    auto statePair = stateTable.find(*input);
+    assert(statePair != stateTable.end() && "Z3 state not found for input value");
+    solver->solver.add(symbolPair->second == statePair->second);
   }
   for (auto reg = std::begin(regs); reg != std::end(regs); ++reg) {
     mlir::Value regData;
@@ -522,12 +524,12 @@ void Solver::Circuit::loadStateConstraints() {
     } else if (auto *firReg = std::get_if<FirRegStruct>(reg)) {
       regData = firReg->data;
     }
-    z3::expr symbol = exprTable.find(regData)->second;
-    z3::expr state = stateTable.find(regData)->second;
+    auto symbolPair = exprTable.find(regData);
+    assert(symbolPair != exprTable.end() && "Z3 expression not found for register output");
+    auto statePair = stateTable.find(regData);
+    assert(statePair != stateTable.end() && "Z3 state not found for register output");
 
-    solver->solver.add(symbol == state);
-    LLVM_DEBUG(lec::dbgs << "Name: " << nameTable.find(regData)->second
-                         << "\n");
+    solver->solver.add(symbolPair->second == statePair->second);
   }
   return;
 }
@@ -583,18 +585,22 @@ void Solver::Circuit::runClockNegedge() {
 }
 
 /// Set a new input state by creating new symbols for all inputs
-void Solver::Circuit::updateInputs(int iterationCount) {
+void Solver::Circuit::updateInputs(int count, bool posedge) {
   mlir::Builder builder(solver->mlirCtx);
   for (auto input = std::begin(inputsByVal); input != std::end(inputsByVal);
        ++input) {
+    // We update clocks literally, so skip this for clocks
+    if (std::find(clks.begin(), clks.end(), *input) != clks.end()) {
+      continue;
+    }
     llvm::DenseMap<mlir::Value, z3::expr>::iterator currentStatePair =
         stateTable.find(*input);
     if (currentStatePair != stateTable.end()) {
-      // TODO: maybe store this in a map
       int width = input->getType().getIntOrFloatBitWidth();
       std::string valueName = nameTable.find(*input)->second;
+      std::string edgeString (posedge ? "_pos" : "_neg");
       std::string symbolName =
-          (valueName + std::to_string(iterationCount)).c_str();
+          (valueName + "_" + std::to_string(count) + edgeString).c_str();
       currentStatePair->second =
           solver->context.bv_const(symbolName.c_str(), width);
       mlir::StringAttr symbol = builder.getStringAttr(symbolName);
@@ -609,10 +615,10 @@ bool Solver::Circuit::checkState() {
   solver->solver.push();
   loadStateConstraints();
   auto result = solver->solver.check();
-  // solver->printModel();
   solver->solver.pop();
   switch (result) {
   case z3::sat:
+    solver->printModel();
     return false;
     break;
   case z3::unsat:
@@ -624,11 +630,13 @@ bool Solver::Circuit::checkState() {
   }
 }
 
-bool Solver::Circuit::checkCycle() {
+bool Solver::Circuit::checkCycle(int count) {
+  updateInputs(count, true);
   runClockPosedge();
   if (!checkState()) {
     return false;
   }
+  updateInputs(count, false);
   runClockNegedge();
   if (!checkState()) {
     return false;
@@ -744,6 +752,7 @@ void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk,
   reg.reset = reset;
   reg.resetValue = resetValue;
   regs.insert(regs.end(), reg);
+  clks.insert(clks.end(), clk);
   // TODO THIS IS TEMPORARY FOR TESTING
   z3::expr inExpr = exprTable.find(input)->second;
   z3::expr outExpr = exprTable.find(data)->second;
@@ -768,6 +777,7 @@ void Solver::Circuit::performFirReg(mlir::Value next, mlir::Value clk,
   reg.reset = reset;
   reg.resetValue = resetValue;
   regs.insert(regs.end(), reg);
+  clks.insert(clks.end(), clk);
   // TODO THIS IS TEMPORARY FOR TESTING
   z3::expr inExpr = exprTable.find(next)->second;
   z3::expr outExpr = exprTable.find(data)->second;
