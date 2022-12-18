@@ -94,8 +94,7 @@ public:
   void performCompReg(mlir::Value input, mlir::Value clk, mlir::Value data,
                       mlir::Value reset, mlir::Value resetValue);
   void performFirReg(mlir::Value next, mlir::Value clk, mlir::Value data,
-                      mlir::Value reset, mlir::Value resetValue);
-
+                     mlir::Value reset, mlir::Value resetValue);
 
 private:
   /// Helper function for performing a variadic operation: it executes a lambda

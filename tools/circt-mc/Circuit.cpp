@@ -532,8 +532,9 @@ void Solver::Circuit::runClockPosedge() {
   for (auto reg = std::begin(regs); reg != std::end(regs); ++reg) {
     char id = reg->first;
     llvm::SmallVector<mlir::Value> values = reg->second;
-    // Currently, there is no difference in CompReg and FirReg handling, as async resets aren't supported
-    // The branch on ID is here so that FirRegOps can have async resets handled later without a big refactor
+    // Currently, there is no difference in CompReg and FirReg handling, as
+    // async resets aren't supported. The branch on ID is here so that FirRegOps
+    // can have async resets handled later without a big refactor
     if (id == COMPREGID || id == FIRREGID) {
       mlir::Value input = values[0];
       mlir::Value data = values[2];
@@ -733,8 +734,8 @@ void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk,
 }
 
 void Solver::Circuit::performFirReg(mlir::Value next, mlir::Value clk,
-                                     mlir::Value data, mlir::Value reset,
-                                     mlir::Value resetValue) {
+                                    mlir::Value data, mlir::Value reset,
+                                    mlir::Value resetValue) {
   z3::expr regData = allocateValue(data);
   // regs.insert(regs.end(), value);
   char regId = FIRREGID;
@@ -752,6 +753,5 @@ void Solver::Circuit::performFirReg(mlir::Value next, mlir::Value clk,
     solver->solver.add(!z3::implies(
         bvToBool(clkExpr) && !bvToBool(rstPair->second), inExpr == outExpr));
 }
-
 
 #undef DEBUG_TYPE
