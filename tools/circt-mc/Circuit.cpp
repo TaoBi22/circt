@@ -51,7 +51,12 @@ void Solver::Circuit::addClk(mlir::Value value) {
                                "circt-mc only supports one clock in designs.");
   } else {
     assert(clks.size() == 0 && "Too many clocks added to circuit model.");
-    // clks.insert(clks.end(), value);
+    // Check that value is in inputs (i.e. is an external signal and won't be
+    // affected by design components)
+    auto inputSearch = std::find(inputsByVal.begin(), inputsByVal.end(), value);
+    assert(inputSearch != inputsByVal.end() &&
+           "Clock is not an input signal - circt-mc currently only supports "
+           "external clocks.");
     clks.push_back(value);
   }
 }
