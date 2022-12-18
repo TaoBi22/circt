@@ -508,7 +508,6 @@ void Solver::Circuit::setInitialState() {
 /// Add constraints to set the state of all inputs and registers (wires and
 /// outputs are handled by combinational constraints)
 void Solver::Circuit::loadStateConstraints() {
-  // TODO: assert find results are not end
   for (auto input = std::begin(inputsByVal); input != std::end(inputsByVal);
        ++input) {
     auto symbolPair = exprTable.find(*input);
