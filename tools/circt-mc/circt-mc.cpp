@@ -10,9 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Model.h"
+#include "Circuit.h"
+#include "LogicExporter.h"
+#include "Solver.h"
+#include "Utility.h"
 #include "circt/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Pass/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include <z3++.h>
 
@@ -33,23 +37,6 @@ static cl::opt<std::string> inputFileName(cl::Positional, cl::Required,
                                           cl::desc("<input file>"),
                                           cl::cat(mainCategory));
 
-static bool explore(Model *m, z3::solver *s) {
-  m->runClockCycle();
-  s->push();
-  m->loadStateConstraints(s);
-  switch (s->check()) {
-  case z3::sat:
-    return false;
-  case z3::unsat:
-    return true;
-  default:
-    // TODO: maybe add handler for other return vals?
-    return false;
-  }
-
-  return true;
-}
-
 static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
                                          int bound) {
 
@@ -58,31 +45,31 @@ static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
   if (!inputFile)
     return mlir::failure();
 
-  // Create z3 context
-  z3::context c;
+  // Create solver and add circuit
+  Solver s(&context);
+  Solver::Circuit *circuitModel = s.addCircuit(inputFileName, true);
 
-  // Construct the circuit model
-  Model circuitModel = Model(&c);
-  if (mlir::succeeded(circuitModel.constructModel(&inputFile)))
+  mlir::PassManager pm(&context);
+  pm.addPass(std::make_unique<LogicExporter>(moduleName1, circuitModel));
+  mlir::ModuleOp m = inputFile.get();
+  if (failed(pm.run(m)))
     return mlir::failure();
 
-  // Create solver and load universal (circuit-level) constraints
-  z3::solver s(c);
-  circuitModel.loadCircuitConstraints(&s);
-
   // TODO: load property constraints
+  // circuitModel->loadProperty();
 
   // Set initial state of model
-  circuitModel.setInitialState();
+  circuitModel->setInitialState();
 
   for (int i = 0; i < bound; i++) {
-    if (explore(&circuitModel, &s)) {
-      circuitModel.updateInputs();
+    if (circuitModel->checkCycle()) {
+      // TODO: also update inputs before negedge
+      circuitModel->updateInputs(i);
     } else {
       return mlir::failure();
     }
   }
-
+  lec::outs << "Success!\n";
   return mlir::success();
 }
 
