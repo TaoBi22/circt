@@ -49,7 +49,9 @@ public:
   /// Recover the outputs.
   llvm::ArrayRef<z3::expr> getOutputs();
 
+  /// Reset the circuit to its initial state
   void setInitialState();
+  /// Execute a clock cycle and check that the properties hold throughout
   bool checkCycle(int count);
 
   // `hw` dialect operations.
@@ -95,7 +97,7 @@ private:
     mlir::Value reset;
     mlir::Value resetValue;
   };
-  /// Struct to contain FIRTLL registers
+  /// Struct to represent FIRTLL registers
   struct FirRegStruct {
     mlir::Value next;
     mlir::Value clk;
@@ -127,16 +129,25 @@ private:
   /// Convert from a boolean sort to the corresponding 1-width bitvector.
   z3::expr boolToBv(z3::expr condition);
 
-  void applyCompVariadicOperation(
+  /// Apply variadic operation and update the state given a variadic comb
+  /// transform
+  void applyCombVariadicOperation(
       mlir::Value,
       std::pair<mlir::OperandRange, llvm::function_ref<z3::expr(
                                         const z3::expr &, const z3::expr &)>>);
 
+  /// Push solver constraints assigning registers and inputs to their current
+  /// state
   void loadStateConstraints();
+  /// Execute a clock posedge (i.e. update registers and combinatorial logic)
   void runClockPosedge();
+  /// Execute a clock negedge (i.e. update combinatorial logic)
   void runClockNegedge();
+  /// Assign a new set of symbolic values to all inputs
   void updateInputs(int count, bool posedge);
+  /// Check that the properties hold for the current state
   bool checkState();
+  /// Update combinatorial logic states (to propagate new inputs/reg outputs)
   void applyCombUpdates();
 
   /// The name of the circuit; it corresponds to its scope within the parsed IR.

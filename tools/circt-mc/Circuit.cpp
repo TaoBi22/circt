@@ -505,15 +505,17 @@ void Solver::Circuit::setInitialState() {
   return;
 }
 
-/// Add constraints to set the state of all inputs and registers (wires and
-/// outputs are handled by combinational constraints)
+/// Push solver constraints assigning registers and inputs to their current
+/// state
 void Solver::Circuit::loadStateConstraints() {
   for (auto input = std::begin(inputsByVal); input != std::end(inputsByVal);
        ++input) {
     auto symbolPair = exprTable.find(*input);
-    assert(symbolPair != exprTable.end() && "Z3 expression not found for input value");
+    assert(symbolPair != exprTable.end() &&
+           "Z3 expression not found for input value");
     auto statePair = stateTable.find(*input);
-    assert(statePair != stateTable.end() && "Z3 state not found for input value");
+    assert(statePair != stateTable.end() &&
+           "Z3 state not found for input value");
     solver->solver.add(symbolPair->second == statePair->second);
   }
   for (auto reg = std::begin(regs); reg != std::end(regs); ++reg) {
@@ -524,15 +526,20 @@ void Solver::Circuit::loadStateConstraints() {
       regData = firReg->data;
     }
     auto symbolPair = exprTable.find(regData);
-    assert(symbolPair != exprTable.end() && "Z3 expression not found for register output");
+    assert(symbolPair != exprTable.end() &&
+           "Z3 expression not found for register output");
     auto statePair = stateTable.find(regData);
-    assert(statePair != stateTable.end() && "Z3 state not found for register output");
+    assert(statePair != stateTable.end() &&
+           "Z3 state not found for register output");
 
     solver->solver.add(symbolPair->second == statePair->second);
   }
+  // Combinatorial values are handled by the constraints we already have, so we
+  // do not need their state
   return;
 }
 
+/// Execute a clock posedge (i.e. update registers and combinatorial logic)
 void Solver::Circuit::runClockPosedge() {
   for (auto clk = std::begin(clks); clk != std::end(clks); ++clk) {
     // Currently we explicitly handle only one clock, so we can just update
@@ -574,6 +581,7 @@ void Solver::Circuit::runClockPosedge() {
   return;
 }
 
+/// Execute a clock negedge (i.e. update combinatorial logic)
 void Solver::Circuit::runClockNegedge() {
   for (auto clk = std::begin(clks); clk != std::end(clks); ++clk) {
     // Currently we explicitly handle only one clock, so we can just update
@@ -583,7 +591,7 @@ void Solver::Circuit::runClockNegedge() {
   return;
 }
 
-/// Set a new input state by creating new symbols for all inputs
+/// Assign a new set of symbolic values to all inputs
 void Solver::Circuit::updateInputs(int count, bool posedge) {
   mlir::Builder builder(solver->mlirCtx);
   for (auto input = std::begin(inputsByVal); input != std::end(inputsByVal);
@@ -597,7 +605,7 @@ void Solver::Circuit::updateInputs(int count, bool posedge) {
     if (currentStatePair != stateTable.end()) {
       int width = input->getType().getIntOrFloatBitWidth();
       std::string valueName = nameTable.find(*input)->second;
-      std::string edgeString (posedge ? "_pos" : "_neg");
+      std::string edgeString(posedge ? "_pos" : "_neg");
       std::string symbolName =
           (valueName + "_" + std::to_string(count) + edgeString).c_str();
       currentStatePair->second =
@@ -610,6 +618,7 @@ void Solver::Circuit::updateInputs(int count, bool posedge) {
   return;
 }
 
+/// Check that the properties hold for the current state
 bool Solver::Circuit::checkState() {
   solver->solver.push();
   loadStateConstraints();
@@ -629,6 +638,7 @@ bool Solver::Circuit::checkState() {
   }
 }
 
+/// Execute a clock cycle and check that the properties hold throughout
 bool Solver::Circuit::checkCycle(int count) {
   updateInputs(count, true);
   runClockPosedge();
@@ -643,18 +653,18 @@ bool Solver::Circuit::checkCycle(int count) {
   return true;
 }
 
-/// Update combinational logic (to allow new inputs to propagate)
+/// Update combinatorial logic states (to propagate new inputs/reg outputs)
 void Solver::Circuit::applyCombUpdates() {
   for (auto wire = std::begin(wires); wire != std::end(wires); ++wire) {
     auto wireTransformPair = combTransformTable.find(*wire);
-    // assert(wireTransformPair != wires.end() && "Combinational value to update
-    // has no update function");
+    assert(wireTransformPair != combTransformTable.end() &&
+           "Combinational value to update has no update function");
     auto wireTransform = wireTransformPair->second;
     if (auto *transform = std::get_if<std::pair<
             mlir::OperandRange,
             llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>>>(
             &wireTransform)) {
-      applyCompVariadicOperation(*wire, *transform);
+      applyCombVariadicOperation(*wire, *transform);
     } else if (auto *transform = std::get_if<
                    std::pair<std::tuple<mlir::Value>,
                              llvm::function_ref<z3::expr(const z3::expr &)>>>(
@@ -697,9 +707,9 @@ void Solver::Circuit::applyCombUpdates() {
   }
 }
 
-/// Helper function for performing a variadic operation: it executes a lambda
-/// over a range of operands.
-void Solver::Circuit::applyCompVariadicOperation(
+/// Helper function for applying a variadic update operation: it executes a
+/// lambda over a range of operands and updates the state.
+void Solver::Circuit::applyCombVariadicOperation(
     mlir::Value result,
     std::pair<mlir::OperandRange,
               llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>>
@@ -740,10 +750,6 @@ void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk,
                                      mlir::Value data, mlir::Value reset,
                                      mlir::Value resetValue) {
   z3::expr regData = allocateValue(data);
-  // regs.insert(regs.end(), value);
-  // llvm::SmallVector<mlir::Value> values = {input, clk, data, reset,
-  // resetValue}; std::pair<char, llvm::SmallVector<mlir::Value>> regPair{regId,
-  // values};
   CompRegStruct reg;
   reg.input = input;
   reg.clk = clk;
@@ -768,7 +774,6 @@ void Solver::Circuit::performFirReg(mlir::Value next, mlir::Value clk,
                                     mlir::Value data, mlir::Value reset,
                                     mlir::Value resetValue) {
   z3::expr regData = allocateValue(data);
-  // regs.insert(regs.end(), value);
   FirRegStruct reg;
   reg.next = next;
   reg.clk = clk;

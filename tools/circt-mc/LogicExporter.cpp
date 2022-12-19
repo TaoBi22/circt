@@ -317,6 +317,7 @@ visitVariadicCombOp(Xor, comb.xor, circt::comb::XorOp &);
 // Sequential Visitor implementation
 //===----------------------------------------------------------------------===//
 
+/// Visits seq dialect operations
 mlir::LogicalResult LogicExporter::Visitor::visitSeq(mlir::Operation *op,
                                                      Solver::Circuit *circuit) {
   mlir::LogicalResult outcome =
@@ -346,7 +347,6 @@ LogicExporter::Visitor::visitSeqOp(circt::seq::CompRegOp &op,
   mlir::Value reset = op.getReset();
   mlir::Value resetValue = op.getResetValue();
   circuit->performCompReg(input, clk, data, reset, resetValue);
-  // circuit->performMux(result, cond, trueValue, falseValue);
   return mlir::success();
 }
 
@@ -363,7 +363,6 @@ LogicExporter::Visitor::visitSeqOp(circt::seq::FirRegOp &op,
   mlir::Value reset = op.getReset();
   mlir::Value resetValue = op.getResetValue();
   circuit->performCompReg(next, clk, data, reset, resetValue);
-  // circuit->performMux(result, cond, trueValue, falseValue);
   return mlir::success();
 }
 

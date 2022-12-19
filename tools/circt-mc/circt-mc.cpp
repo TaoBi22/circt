@@ -33,6 +33,11 @@ static cl::opt<std::string>
                 cl::desc("Specify a named module to verify properties over."),
                 cl::value_desc("module name"), cl::cat(mainCategory));
 
+static cl::opt<int> clockBound(
+    "b", cl::Required,
+    cl::desc("Specify a number of clock cycles to model check up to."),
+    cl::value_desc("clock cycle count"), cl::cat(mainCategory));
+
 static cl::opt<std::string> inputFileName(cl::Positional, cl::Required,
                                           cl::desc("<input file>"),
                                           cl::cat(mainCategory));
@@ -88,5 +93,5 @@ int main(int argc, char **argv) {
   circt::registerAllDialects(registry);
   mlir::MLIRContext context(registry);
 
-  exit(failed(checkProperty(context, 1000)));
+  exit(failed(checkProperty(context, clockBound)));
 }
