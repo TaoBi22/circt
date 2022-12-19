@@ -28,6 +28,11 @@ firrtl.module @Constants() {
   firrtl.specialconstant 1 : !firrtl.asyncreset
   // CHECK: firrtl.constant 4 : !firrtl.uint<8> {name = "test"}
   firrtl.constant 4 : !firrtl.uint<8> {name = "test"}
+
+  firrtl.aggregateconstant [1, 2, 3] : !firrtl.bundle<a: uint<8>, b: uint<5>, c: uint<4>>
+  firrtl.aggregateconstant [1, 2, 3] : !firrtl.vector<uint<8>, 3>
+  firrtl.aggregateconstant [[1, 2], [3, 4]] : !firrtl.vector<bundle<a: uint<8>, b: uint<5>>, 2>
+
 }
 
 //module MyModule :
@@ -138,24 +143,9 @@ firrtl.module @TestNodeName(in %in1 : !firrtl.uint<8>) {
   %n2 = firrtl.node %in1 {name = "n1"} : !firrtl.uint<8>
 }
 
-// CHECK-LABEL: @TestInvalidAttr
-firrtl.module @TestInvalidAttr() {
-  // This just shows we can parse and print the InvalidAttr.
-
-  // CHECK: firrtl.constant 42 : !firrtl.uint<8>
-  %x = firrtl.constant 42 : !firrtl.uint<8> {
-    // CHECK-SAME: {test.thing1 = #firrtl.invalidvalue : !firrtl.clock,
-    test.thing1 = #firrtl.invalidvalue : !firrtl.clock,
-    // CHECK-SAME: test.thing2 = #firrtl.invalidvalue : !firrtl.sint<3>,
-    test.thing2 = #firrtl.invalidvalue : !firrtl.sint<3>,
-    // CHECK-SAME: test.thing3 = #firrtl.invalidvalue : !firrtl.uint}
-    test.thing3 = #firrtl.invalidvalue : !firrtl.uint
-  }
-}
-
 // Basic test for NLA operations.
-// CHECK: firrtl.hierpath private @nla [@Parent::@child, @Child]
-firrtl.hierpath private @nla [@Parent::@child, @Child]
+// CHECK: hw.hierpath private @nla [@Parent::@child, @Child]
+hw.hierpath private @nla [@Parent::@child, @Child]
 firrtl.module @Child() {
   %w = firrtl.wire sym @w : !firrtl.uint<1>
 }

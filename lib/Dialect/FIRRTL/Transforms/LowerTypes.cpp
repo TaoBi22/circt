@@ -268,7 +268,7 @@ static MemOp cloneMemWithNewType(ImplicitLocOpBuilder *b, MemOp op,
       op.getNameKind(), op.getAnnotations().getValue(),
       op.getPortAnnotations().getValue(), op.getInnerSymAttr());
   if (auto oldName = getInnerSymName(op))
-    newMem.setInnerSymAttr(InnerSymAttr::get(StringAttr::get(
+    newMem.setInnerSymAttr(hw::InnerSymAttr::get(StringAttr::get(
         b->getContext(), oldName.getValue() + (op.getName() + field.suffix))));
 
   SmallVector<Attribute> newAnnotations;
@@ -510,7 +510,7 @@ ArrayAttr TypeLoweringVisitor::filterAnnotations(MLIRContext *ctxt,
   if (!annotations || annotations.empty())
     return ArrayAttr::get(ctxt, retval);
   for (auto opAttr : annotations) {
-    Optional<int64_t> maybeFieldID = None;
+    Optional<int64_t> maybeFieldID = std::nullopt;
     DictionaryAttr annotation;
     annotation = opAttr.dyn_cast<DictionaryAttr>();
     if (annotations)
@@ -526,7 +526,7 @@ ArrayAttr TypeLoweringVisitor::filterAnnotations(MLIRContext *ctxt,
           updateAnnotationFieldID(ctxt, opAttr, field.fieldID, cache.i64ty));
       continue;
     }
-    auto fieldID = maybeFieldID.value();
+    auto fieldID = *maybeFieldID;
     // Check whether the annotation falls into the range of the current field.
     if (fieldID != 0 &&
         !(fieldID >= field.fieldID &&
@@ -1134,7 +1134,7 @@ bool TypeLoweringVisitor::visitExpr(BitCastOp op) {
     // Loop over the leaf aggregates and concat each of them to get a UInt.
     // Bitcast the fields to handle nested aggregate types.
     for (const auto &field : llvm::enumerate(fields)) {
-      auto fieldBitwidth = getBitWidth(field.value().type).value();
+      auto fieldBitwidth = *getBitWidth(field.value().type);
       // Ignore zero width fields, like empty bundles.
       if (fieldBitwidth == 0)
         continue;
@@ -1161,7 +1161,7 @@ bool TypeLoweringVisitor::visitExpr(BitCastOp op) {
     auto clone = [&](const FlatBundleFieldEntry &field,
                      ArrayAttr attrs) -> Value {
       // All the fields must have valid bitwidth, a requirement for BitCastOp.
-      auto fieldBits = getBitWidth(field.type).value();
+      auto fieldBits = *getBitWidth(field.type);
       // If empty field, then it doesnot have any use, so replace it with an
       // invalid op, which should be trivially removed.
       if (fieldBits == 0)
@@ -1256,7 +1256,7 @@ bool TypeLoweringVisitor::visitDecl(InstanceOp op) {
       op.getNameKindAttr(), direction::packAttribute(context, newDirs),
       builder->getArrayAttr(newNames), op.getAnnotations(),
       builder->getArrayAttr(newPortAnno), op.getLowerToBindAttr(),
-      sym ? InnerSymAttr::get(sym) : InnerSymAttr());
+      sym ? hw::InnerSymAttr::get(sym) : hw::InnerSymAttr());
 
   SmallVector<Value> lowered;
   for (size_t aggIndex = 0, eAgg = op.getNumResults(); aggIndex != eAgg;

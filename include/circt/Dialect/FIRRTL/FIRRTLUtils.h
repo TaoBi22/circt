@@ -30,6 +30,9 @@ IntegerAttr getIntAttr(Type type, const APInt &value);
 /// Utility for generating a constant zero attribute.
 IntegerAttr getIntZerosAttr(Type type);
 
+/// Utility for generating a constant all ones attribute.
+IntegerAttr getIntOnesAttr(Type type);
+
 /// Return the module-scoped driver of a value only looking through one connect.
 Value getDriverFromConnect(Value val);
 
@@ -78,9 +81,19 @@ bool walkDrivers(Value value, bool lookThroughWires,
 /// location.
 FieldRef getFieldRefFromValue(Value value);
 
-/// Get a string identifier representing the FieldRef.
-std::string getFieldName(const FieldRef &fieldRef);
-std::string getFieldName(const FieldRef &fieldRef, bool &rootKnown);
+/// Get a string identifier representing the FieldRef.  Return this string and a
+/// boolean indicating if a valid "root" for the identifier was found.  If
+/// nameSafe is true, this will generate a string that is better suited for
+/// naming something in the IR.  E.g., if the fieldRef is a subfield of a
+/// subindex, without name safe the output would be:
+///
+///   foo[42].bar
+///
+/// With nameSafe, this would be:
+///
+///   foo_42_bar
+std::pair<std::string, bool> getFieldName(const FieldRef &fieldRef,
+                                          bool nameSafe = false);
 
 Value getValueByFieldID(ImplicitLocOpBuilder builder, Value value,
                         unsigned fieldID);
@@ -112,7 +125,7 @@ getInnerRefTo(FModuleLike mod, size_t portIdx, StringRef nameHint,
               std::function<ModuleNamespace &(FModuleLike)> getNamespace);
 
 //===----------------------------------------------------------------------===//
-// RefType and BaseType utilities.
+// Type utilities
 //===----------------------------------------------------------------------===//
 
 /// If reftype, return wrapped base type.  Otherwise (if base), return as-is.
@@ -130,6 +143,11 @@ inline FIRRTLType mapBaseType(FIRRTLType type,
       .Case<FIRRTLBaseType>([&](auto base) { return fn(base); })
       .Case<RefType>([&](auto ref) { return RefType::get(fn(ref.getType())); });
 }
+
+/// Given a type, return the corresponding lowered type for the HW dialect.
+/// Non-FIRRTL types are simply passed through. This returns a null type if it
+/// cannot be lowered.
+Type lowerType(Type type);
 
 //===----------------------------------------------------------------------===//
 // Parser-related utilities

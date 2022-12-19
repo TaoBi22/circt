@@ -14,6 +14,8 @@
 #include "circt/Dialect/FIRRTL/FIRRTLInstanceGraph.h"
 #include "circt/Dialect/FIRRTL/FIRRTLUtils.h"
 #include "circt/Dialect/FIRRTL/Passes.h"
+#include "circt/Dialect/SV/SVOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
@@ -48,6 +50,11 @@ using hw::InnerRefAttr;
 class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
 
   void runOnOperation() override {
+    // Populate a CircuitNamespace that can be used to generate unique
+    // circuit-level symbols.
+    auto ns = CircuitNamespace(getOperation());
+    circuitNamespace = &ns;
+
     dataFlowClasses = llvm::EquivalenceClasses<Value, ValueComparator>();
     InstanceGraph &instanceGraph = getAnalysis<InstanceGraph>();
     SmallVector<RefResolveOp> resolveOps;
@@ -59,6 +66,10 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
             // Get a reference to the actual signal to which the XMR will be
             // generated.
             Value xmrDef = send.getBase();
+            if (isZeroWidth(send.getType().getType())) {
+              markForRemoval(send);
+              return success();
+            }
             // Get an InnerRefAttr to the xmrDef op. If the operation does not
             // take any InnerSym (like firrtl.add, firrtl.or etc) then create a
             // NodeOp to add the InnerSym.
@@ -78,7 +89,7 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
                   markForRemoval(send);
                   return success();
                 }
-              if (!isa<InnerSymbolOpInterface>(xmrDefOp) ||
+              if (!isa<hw::InnerSymbolOpInterface>(xmrDefOp) ||
                   xmrDefOp->getResults().size() > 1) {
                 // Add a node, for non-innerSym ops. Otherwise the sym will be
                 // dropped after LowerToHW.
@@ -130,6 +141,9 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
             if (!connect.getSrc().getType().isa<RefType>())
               return success();
             markForRemoval(connect);
+            if (isZeroWidth(
+                    connect.getSrc().getType().cast<RefType>().getType()))
+              return success();
             // Merge the dataflow classes of destination into the source of the
             // Connect. This handles two cases:
             // 1. If the dataflow at the source is known, then the
@@ -147,6 +161,8 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
           })
           .Case<RefSubOp>([&](RefSubOp op) {
             markForRemoval(op);
+            if (isZeroWidth(op.getType().getType()))
+              return success();
             auto defMem = dyn_cast<MemOp>(op.getInput().getDefiningOp());
             if (!defMem) {
               defMem.emitOpError("can only lower RefSubOp of Memory");
@@ -169,9 +185,10 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
             // XMRs. That is, RefResolveOp can be visited before the
             // corresponding RefSendOp is recorded.
 
-            dataFlowClasses.unionSets(resolve.getRef(), resolve.getResult());
-            resolveOps.push_back(resolve);
             markForRemoval(resolve);
+            if (!isZeroWidth(resolve.getType()))
+              dataFlowClasses.unionSets(resolve.getRef(), resolve.getResult());
+            resolveOps.push_back(resolve);
             return success();
           })
           .Default([&](auto) { return success(); });
@@ -209,7 +226,7 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
         auto iter = dataflowAt.find(I->getData());
         if (iter != dataflowAt.end()) {
           for (auto init = refSendPathList[iter->getSecond()]; init.second;
-               init = refSendPathList[init.second.value()])
+               init = refSendPathList[*init.second])
             llvm::dbgs() << "\n path ::" << init.first << "::" << init.second;
         }
         llvm::dbgs() << "\n Done\n"; // Finish set.
@@ -224,7 +241,7 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
   // Replace the RefResolveOp with verbatim op representing the XMR.
   LogicalResult handleRefResolve(RefResolveOp resolve) {
     auto resWidth = getBitWidth(resolve.getType());
-    if (resWidth.has_value() && resWidth.value() == 0) {
+    if (resWidth.has_value() && *resWidth == 0) {
       // Donot emit 0 width XMRs, replace it with constant 0.
       ImplicitLocOpBuilder builder(resolve.getLoc(), resolve);
       auto zeroUintType = UIntType::get(builder.getContext(), 0);
@@ -238,58 +255,40 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
     if (!remoteOpPath)
       return failure();
     SmallVector<Attribute> refSendPath;
-    // Verbatim XMR begins with the Top level module.
-    refSendPath.push_back(refSendPathList[remoteOpPath.value()]
-                              .first.cast<InnerRefAttr>()
-                              .getModuleRef());
     SmallString<128> xmrString;
-    Attribute lastInnerRef;
     size_t lastIndex;
-    unsigned index = 0;
-    for (; remoteOpPath; ++index) {
-      lastIndex = remoteOpPath.value();
-      auto entr = refSendPathList[remoteOpPath.value()];
+    while (remoteOpPath) {
+      lastIndex = *remoteOpPath;
+      auto entr = refSendPathList[*remoteOpPath];
       refSendPath.push_back(entr.first);
-      lastInnerRef = entr.first;
       remoteOpPath = entr.second;
-      ("{{" + Twine(index) + "}}").toVector(xmrString);
-      xmrString += '.';
     }
-    ("{{" + Twine(index) + "}}").toVector(xmrString);
     auto iter = xmrPathSuffix.find(lastIndex);
+
     // If this xmr has a suffix string (internal path into a module, that is not
     // yet generated).
     if (iter != xmrPathSuffix.end())
       xmrString += ("." + iter->getSecond()).str();
-    if (auto vec = resolve.getResult().getType().dyn_cast<FVectorType>()) {
-      // If the RefType is a vector, then replace all its users with [i] suffix,
-      // instead of creatign a temp wire to the vector xmr, and then followup
-      // index into it.
-      bool hasOtherUses = false;
-      for (Operation *user : resolve.getResult().getUsers()) {
-        if (auto sub = dyn_cast<SubindexOp>(user)) {
-          auto index = sub.getIndex();
-          ImplicitLocOpBuilder builder(sub.getLoc(), sub);
-          auto xmrVerbatim = builder.create<VerbatimExprOp>(
-              vec.getElementType(), xmrString + "[" + Twine(index) + "]",
-              ValueRange{}, refSendPath);
-          sub.getResult().replaceAllUsesWith(xmrVerbatim);
-          opsToRemove.push_back(sub);
-        } else
-          hasOtherUses = true;
-      }
-      if (!hasOtherUses)
-        return success();
-    }
 
-    // The source of the dataflow for this RefResolveOp is established. So
-    // replace the RefResolveOp with the coresponding VerbatimExpr to
-    // generate the XMR.
+    // Compute the reference given to the SVXMRRefOp.  If the path is size 1,
+    // then this is just an InnerRefAttr (module--component pair).  Otehrwise,
+    // we need to use the symbol of a HierPathOp that stores the path.
     ImplicitLocOpBuilder builder(resolve.getLoc(), resolve);
-    auto xmrVerbatim =
-        builder.create<VerbatimExprOp>(resolve.getType().cast<FIRRTLType>(),
-                                       xmrString, ValueRange{}, refSendPath);
-    resolve.getResult().replaceAllUsesWith(xmrVerbatim);
+    Attribute ref;
+    if (refSendPath.size() == 1)
+      ref = refSendPath.front();
+    else
+      ref = FlatSymbolRefAttr::get(
+          getOrCreatePath(builder.getArrayAttr(refSendPath), builder)
+              .getSymNameAttr());
+
+    // Create the XMR op and replace users of the result of the resolve with the
+    // result of the XMR.
+    auto xmr = builder.create<sv::XMRRefOp>(
+        sv::InOutType::get(lowerType(resolve.getType())), ref, xmrString);
+    auto conversion = builder.create<mlir::UnrealizedConversionCastOp>(
+        resolve.getType(), xmr.getResult());
+    resolve.getResult().replaceAllUsesWith(conversion.getResult(0));
     return success();
   }
 
@@ -343,7 +342,8 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
       // Reference ports must be removed.
       setPortToRemove(inst, portNum, numPorts);
       // Drop the dead-instance-ports.
-      if (instanceResult.use_empty())
+      if (instanceResult.use_empty() ||
+          isZeroWidth(instanceResult.getType().cast<RefType>().getType()))
         continue;
       auto refModuleArg = refMod.getArgument(portNum);
       if (inst.getPortDirection(portNum) == Direction::Out) {
@@ -421,20 +421,20 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
       val.getDefiningOp()->emitOpError(
           "reference dataflow cannot be traced back to the remote read op");
     signalPassFailure();
-    return None;
+    return std::nullopt;
   }
 
   size_t addReachingSendsEntry(Value atRefVal, Attribute newRef,
-                               Optional<size_t> continueFrom = None) {
+                               Optional<size_t> continueFrom = std::nullopt) {
     auto leader = dataFlowClasses.getOrInsertLeaderValue(atRefVal);
     auto indx = refSendPathList.size();
     dataflowAt[leader] = indx;
     if (continueFrom.has_value()) {
-      if (!refSendPathList[continueFrom.value()].first) {
+      if (!refSendPathList[*continueFrom].first) {
         // This handles the case when the InnerRef is set to null at the
         // following path, that implies the path ends at this node, so copy the
         // xmrPathSuffix and end the path here.
-        auto xmrIter = xmrPathSuffix.find(continueFrom.value());
+        auto xmrIter = xmrPathSuffix.find(*continueFrom);
         if (xmrIter != xmrPathSuffix.end()) {
           SmallString<128> xmrSuffix = xmrIter->getSecond();
           // The following assignment to the DenseMap can potentially reallocate
@@ -442,7 +442,7 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
           // to a temp, and then insert it back to the Map.
           xmrPathSuffix[indx] = xmrSuffix;
         }
-        continueFrom = None;
+        continueFrom = std::nullopt;
       }
     }
     refSendPathList.push_back(std::make_pair(newRef, continueFrom));
@@ -499,6 +499,8 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
     refSendPathList.clear();
   }
 
+  bool isZeroWidth(FIRRTLBaseType t) { return t.getBitWidthOrSentinel() == 0; }
+
   /// Cached module namespaces.
   DenseMap<Operation *, ModuleNamespace> moduleNamespaces;
 
@@ -516,8 +518,7 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
   /// nextNodeOnPath. Only the node representing the final XMR defining op has
   /// no nextNodeOnPath, which denotes a leaf node on the path.
   using nextNodeOnPath = Optional<size_t>;
-  using innerRefToVal = Attribute;
-  using node = std::pair<innerRefToVal, nextNodeOnPath>;
+  using node = std::pair<Attribute, nextNodeOnPath>;
   SmallVector<node> refSendPathList;
 
   /// llvm::EquivalenceClasses wants comparable elements. This comparator uses
@@ -537,6 +538,51 @@ class LowerXMRPass : public LowerXMRBase<LowerXMRPass> {
 
   /// Record the internal path to an external module or a memory.
   DenseMap<size_t, SmallString<128>> xmrPathSuffix;
+
+  CircuitNamespace *circuitNamespace;
+
+  /// A cache of already created HierPathOps.  This is used to avoid repeatedly
+  /// creating the same HierPathOp.
+  DenseMap<Attribute, hw::HierPathOp> pathCache;
+
+  /// The insertion point where the pass inserts HierPathOps.
+  OpBuilder::InsertPoint pathInsertPoint = {};
+
+  /// Return a HierPathOp for the provided pathArray.  This will either return
+  /// an existing HierPathOp or it will create and return a new one.
+  hw::HierPathOp getOrCreatePath(ArrayAttr pathArray,
+                                 ImplicitLocOpBuilder &builder) {
+    // Return an existing HierPathOp if one exists with the same path.
+    auto pathIter = pathCache.find(pathArray);
+    if (pathIter != pathCache.end())
+      return pathIter->second;
+
+    // Reset the insertion point after this function returns.
+    OpBuilder::InsertionGuard guard(builder);
+
+    // Set the insertion point to either the known location where the pass
+    // inserts HierPathOps or to the start of the circuit.
+    if (pathInsertPoint.isSet())
+      builder.restoreInsertionPoint(pathInsertPoint);
+    else
+      builder.setInsertionPointToStart(getOperation().getBodyBlock());
+
+    // Create the new HierPathOp and insert it into the pathCache.
+    hw::HierPathOp path =
+        pathCache
+            .insert({pathArray,
+                     builder.create<hw::HierPathOp>(
+                         circuitNamespace->newName("xmrPath"), pathArray)})
+            .first->second;
+    path.setVisibility(SymbolTable::Visibility::Private);
+
+    // Save the insertion point so other unique HierPathOps will be created
+    // after this one.
+    pathInsertPoint = builder.saveInsertionPoint();
+
+    // Return the new path.
+    return path;
+  }
 };
 
 std::unique_ptr<mlir::Pass> circt::firrtl::createLowerXMRPass() {

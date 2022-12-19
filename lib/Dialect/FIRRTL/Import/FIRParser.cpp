@@ -370,7 +370,7 @@ ParseResult FIRParser::parseOptionalInfoLocator(LocationAttr &result) {
     return success();
 
   // Otherwise, set the location attribute and return.
-  result = locationPair.second.value();
+  result = *locationPair.second;
   return success();
 }
 
@@ -1718,36 +1718,21 @@ ParseResult FIRStmtParser::parseIntegerLiteralExp(Value &result) {
       parseToken(FIRToken::r_paren, "expected ')' in integer expression"))
     return failure();
 
-  if (width == 0)
-    return emitError(loc, "zero bit constants are not allowed"), failure();
-
   // Construct an integer attribute of the right width.
   auto type = IntType::get(builder.getContext(), isSigned, width);
 
-  IntegerType::SignednessSemantics signedness;
-  if (isSigned) {
-    signedness = IntegerType::Signed;
-    if (width != -1) {
-      // Check for overlow if we are truncating bits.
-      if (unsigned(width) < value.getBitWidth() &&
-          value.getNumSignBits() <= value.getBitWidth() - width) {
-        return emitError(loc, "initializer too wide for declared width"),
-               failure();
-      }
-
-      value = value.sextOrTrunc(width);
-    }
-  } else {
-    signedness = IntegerType::Unsigned;
-    if (width != -1) {
-      // Check for overlow if we are truncating bits.
-      if (unsigned(width) < value.getBitWidth() &&
-          value.countLeadingZeros() < value.getBitWidth() - width) {
-        return emitError(loc, "initializer too wide for declared width"),
-               failure();
-      }
-      value = value.zextOrTrunc(width);
-    }
+  IntegerType::SignednessSemantics signedness =
+      isSigned ? IntegerType::Signed : IntegerType::Unsigned;
+  if (width == 0) {
+    if (!value.isZero())
+      return emitError(loc, "zero bit constant must be zero");
+    value = value.trunc(0);
+  } else if (width != -1) {
+    // Convert to the type's width, checking value fits in destination width.
+    bool valueFits = isSigned ? value.isSignedIntN(width) : value.isIntN(width);
+    if (!valueFits)
+      return emitError(loc, "initializer too wide for declared width");
+    value = isSigned ? value.sextOrTrunc(width) : value.zextOrTrunc(width);
   }
 
   Type attrType =
@@ -1807,7 +1792,7 @@ FIRStmtParser::parseExpWithLeadingKeyword(FIRToken keyword) {
   switch (getToken().getKind()) {
   default:
     // This isn't part of an expression, and isn't part of a statement.
-    return None;
+    return std::nullopt;
 
   case FIRToken::period:     // exp `.` identifier
   case FIRToken::l_square:   // exp `[` index `]`
@@ -2578,7 +2563,7 @@ ParseResult FIRStmtParser::parseMem(unsigned memIndent) {
   auto result = builder.create<MemOp>(
       resultTypes, readLatency, writeLatency, depth, ruw,
       builder.getArrayAttr(resultNames), id, NameKindEnum::InterestingName,
-      annotations, builder.getArrayAttr(resultAnnotations), InnerSymAttr(),
+      annotations, builder.getArrayAttr(resultAnnotations), hw::InnerSymAttr(),
       IntegerAttr());
 
   UnbundledValueEntry unbundledValueEntry;
@@ -2661,7 +2646,7 @@ ParseResult FIRStmtParser::parseWire() {
 
   auto result = builder.create<WireOp>(
       type, id, NameKindEnum::InterestingName, annotations,
-      sym ? InnerSymAttr::get(sym) : InnerSymAttr());
+      sym ? hw::InnerSymAttr::get(sym) : hw::InnerSymAttr());
   return moduleContext.addSymbolEntry(id, result, startTok.getLoc());
 }
 
@@ -3012,7 +2997,7 @@ ParseResult FIRCircuitParser::parseModule(CircuitOp circuit,
 
   // Otherwise, handle extmodule specific features like parameters.
 
-  // Parse a defname if present.
+  // Parse a defname if present and is an extmodule.
   // TODO(firrtl spec): defname isn't documented at all, what is it?
   StringRef defName;
   if (consumeIf(FIRToken::kw_defname)) {
@@ -3178,7 +3163,7 @@ ParseResult FIRCircuitParser::parseCircuit(
 
   if (!indent.has_value())
     return emitError("'circuit' must be first token on its line"), failure();
-  unsigned circuitIndent = indent.value();
+  unsigned circuitIndent = *indent;
 
   LocWithInfo info(getToken().getLoc(), this);
   StringAttr name;
@@ -3262,7 +3247,7 @@ ParseResult FIRCircuitParser::parseCircuit(
       auto indent = getIndentation();
       if (!indent.has_value())
         return emitError("'module' must be first token on its line"), failure();
-      unsigned moduleIndent = indent.value();
+      unsigned moduleIndent = *indent;
 
       if (moduleIndent <= circuitIndent)
         return emitError("module should be indented more"), failure();

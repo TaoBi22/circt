@@ -101,6 +101,28 @@ def XMROp : SVOp<"xmr", []> {
   let assemblyFormat = "(`isRooted` $isRooted^)? custom<XMRPath>($path, $terminal) attr-dict `:` qualified(type($result))";
 }
 
+def XMRRefOp : SVOp<"xmr.ref", []> {
+  let summary = "Encode a reference to something with a hw.globalRef.";
+  let description = [{
+    This represents a hierarchical path, but using something which the compiler
+    can understand.  In contrast to the XMROp (which models pure Verilog
+    hierarchical paths which may not map to anything knowable in the circuit),
+    this op uses a `hw.globalRef` to refer to something which exists in the
+    circuit.
+
+    Generally, this operation is always preferred for situations where
+    hierarchical paths cannot be known statically and may change.
+  }];
+  let arguments = (
+    ins NameRefAttr:$ref,
+        DefaultValuedAttr<StrAttr, "{}">:$stringLeaf
+  );
+  let results = (outs InOutType:$result);
+  let assemblyFormat = [{
+    $ref ( $stringLeaf^ )? attr-dict `:` qualified(type($result))
+  }];
+}
+
 def ReadInOutOp
  : SVOp<"read_inout",
         [Pure, InOutElementConstraint<"result", "input">]> {
@@ -162,7 +184,7 @@ def IndexedPartSelectInOutOp : SVOp<"indexed_part_select_inout",
   let extraClassDeclaration = [{
     /// Infer the return types of this operation.
     static LogicalResult inferReturnTypes(MLIRContext *context,
-                                          Optional<Location> loc,
+                                          std::optional<Location> loc,
                                           ValueRange operands,
                                           DictionaryAttr attrs,
                                           mlir::RegionRange regions,
@@ -192,7 +214,7 @@ def StructFieldInOutOp : SVOp<"struct_field_inout",
   let extraClassDeclaration = [{
     /// Infer the return types of this operation.
     static LogicalResult inferReturnTypes(MLIRContext *context,
-                                          Optional<Location> loc,
+                                          std::optional<Location> loc,
                                           ValueRange operands,
                                           DictionaryAttr attrs,
                                           mlir::RegionRange regions,

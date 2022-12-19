@@ -34,7 +34,7 @@ class FIRRTLExprOp<string mnemonic, list<Trait> traits = []> :
     /// Infer the return type of this operation.
     static FIRRTLType inferReturnType(ValueRange operands,
                                       ArrayRef<NamedAttribute> attrs,
-                                      Optional<Location> loc);
+                                      std::optional<Location> loc);
   }];
 
   // The operation-specific validator for a parsed list of operands and
@@ -61,7 +61,7 @@ class FIRRTLExprOp<string mnemonic, list<Trait> traits = []> :
     /// `InferTypeOpInterface`. We simply forward to a narrower
     /// operation-specific implementation which is sufficient for FIRRTL ops.
     static LogicalResult inferReturnTypes(MLIRContext *context,
-                                          Optional<Location> loc,
+                                          std::optional<Location> loc,
                                           ValueRange operands,
                                           DictionaryAttr attrs,
                                           mlir::RegionRange regions,
@@ -128,17 +128,17 @@ def SpecialConstantOp : FIRRTLOp<"specialconstant",
 def AggregateConstantOp : FIRRTLOp<"aggregateconstant", [Pure, ConstantLike]> {
   let summary = "Produce a constant of a passive aggregate value";
   let description = [{
-    The constant operations produces a constant value of an aggregate type.  The
+    The constant operation produces a constant value of an aggregate type.  The
     type must be passive.  Clock and reset values are supported.
-    For nested aggregates, values are applied in depth-first fassion.
+    For nested aggregates, embedded arrays are used.
     ```
-      %result = firrtl.aggregateconstant 1, 2, 3 : !firrtl.bundle<a: uint<8>, b: uint<5>, c: uint<4>>
-      %result = firrtl.aggregateconstant 1, 2, 3 : !firrtl.vector<uint<8>, 3>
-
+      %result = firrtl.aggregateconstant [1, 2, 3] : !firrtl.bundle<a: uint<8>, b: uint<5>, c: uint<4>>
+      %result = firrtl.aggregateconstant [1, 2, 3] : !firrtl.vector<uint<8>, 3>
+      %result = firrtl.aggregateconstant [[1, 2], [3, 5]] : !firrtl.vector<!firrtl.bundle<a: uint<8>, b: uint<5>>, 2>
     ```
   }];
 
-  let arguments = (ins TypedArrayAttrBase<APSIntAttr, "field constants">:$fields);
+  let arguments = (ins ArrayAttr:$fields);
   let results = (outs AggregateType:$result);
 
   let assemblyFormat = "$fields attr-dict `:` type($result)";
@@ -186,7 +186,7 @@ def VectorCreateOp : FIRRTLOp<"vectorcreate"> {
 
 
 def InvalidValueOp : FIRRTLOp<"invalidvalue",
-      [Pure, ConstantLike, HasCustomSSAName]> {
+      [MemoryEffects<[MemAlloc]>, HasCustomSSAName]> {
   let summary = "InvalidValue primitive";
   let description = [{
     The InvalidValue operation returns an invalid value of a specified type:
@@ -195,13 +195,13 @@ def InvalidValueOp : FIRRTLOp<"invalidvalue",
     ```
 
     This corresponds to the FIRRTL invalidate operation without the implicit
-    connect semantics.
+    connect semantics.  Each invalid op produces a unique invalid value.  
+    InvalidOp is not constant-like
   }];
 
   let arguments = (ins);
   let results = (outs FIRRTLBaseType:$result);
 
-  let hasFolder = 1;
   let assemblyFormat = "attr-dict `:` qualified(type($result))";
 }
 
@@ -211,7 +211,7 @@ def SubfieldOp : FIRRTLExprOp<"subfield"> {
     The subfield expression refers to a subelement of an expression with a
     bundle type.
     ```
-      %result = firrtl.subfield %input "fieldIndex" : t1, t2
+      %result = firrtl.subfield %input[field-name] : !input-type
     ```
     }];
 
@@ -220,10 +220,7 @@ def SubfieldOp : FIRRTLExprOp<"subfield"> {
   let hasFolder = 1;
   let hasCanonicalizer = 1;
   let hasVerifier = 1;
-  
-  // TODO: Could drop the result type, inferring it from the source.
-  let assemblyFormat =
-    "$input `(` $fieldIndex `)` attr-dict `:` functional-type($input, $result)";
+  let hasCustomAssemblyFormat = 1;
 
   let builders = [
     OpBuilder<(ins "Value":$input, "StringRef":$fieldName), [{
@@ -242,6 +239,12 @@ def SubfieldOp : FIRRTLExprOp<"subfield"> {
     FieldRef getAccessedField() {
       return FieldRef(getInput(), getInput().getType().cast<BundleType>()
                                             .getFieldID(getFieldIndex()));
+    }
+
+    /// Return the name of the accessed field.
+    StringRef getFieldName() {
+      return getInput().getType().cast<BundleType>()
+        .getElementName(getFieldIndex());
     }
   }];
 }
@@ -265,7 +268,6 @@ def SubindexOp : FIRRTLExprOp<"subindex", [
   let hasFolder = 1;
   let hasCanonicalizer = 1;
 
-  // TODO: Could drop the result type, inferring it from the source.
   let assemblyFormat =
      "$input `[` $index `]` attr-dict `:` qualified(type($input))";
 
@@ -313,7 +315,7 @@ def MultibitMuxOp : FIRRTLExprOp<"multibit_mux"> {
     For the example above, if `%index` is 0, then the value is `%v_0`.
     }];
 
-  let arguments = (ins FIRRTLBaseType:$index, Variadic<FIRRTLBaseType>:$inputs);
+  let arguments = (ins UIntType:$index, Variadic<FIRRTLBaseType>:$inputs);
   let results = (outs FIRRTLBaseType:$result);
   let hasCustomAssemblyFormat = 1;
   let hasFolder = true;
@@ -352,13 +354,13 @@ class BinaryPrimOp<string mnemonic, Type lhsType, Type rhsType, Type resultType,
   let inferTypeDecl = !if(!empty(inferType), [{
     /// Infer the return type of this binary operation.
     static FIRRTLType inferBinaryReturnType(FIRRTLType lhs, FIRRTLType rhs,
-                                            Optional<Location> loc);
+                                            std::optional<Location> loc);
     }], "") # !subst("$_infer", !if(!empty(inferType), "inferBinaryReturnType",
       inferType), [{
     /// Infer the return type of this operation.
     static FIRRTLType inferReturnType(ValueRange operands,
                                       ArrayRef<NamedAttribute> attrs,
-                                      Optional<Location> loc) {
+                                      std::optional<Location> loc) {
       return $_infer(operands[0].getType().cast<FIRRTLType>(),
                      operands[1].getType().cast<FIRRTLType>(),
                      loc);
@@ -396,9 +398,11 @@ def DivPrimOp : IntBinaryPrimOp<"div", IntType> {
 }
 def RemPrimOp : IntBinaryPrimOp<"rem", IntType>;
 let inferType = "impl::inferBitwiseResult" in {
-  def AndPrimOp : IntBinaryPrimOp<"and", UIntType, [Commutative]>;
-  def OrPrimOp  : IntBinaryPrimOp<"or",  UIntType, [Commutative]>;
-  def XorPrimOp : IntBinaryPrimOp<"xor", UIntType, [Commutative]>;
+  let hasCanonicalizer = true in {
+    def AndPrimOp : IntBinaryPrimOp<"and", UIntType, [Commutative]>;
+    def OrPrimOp  : IntBinaryPrimOp<"or",  UIntType, [Commutative]>;
+    def XorPrimOp : IntBinaryPrimOp<"xor", UIntType, [Commutative]>;
+  }
 }
 
 // Comparison Operations
@@ -455,19 +459,21 @@ class UnaryPrimOp<string mnemonic, Type srcType, Type resultType,
   let inferTypeDecl = !if(!empty(inferType), [{
     /// Infer the return type of this unary operation.
     static FIRRTLType inferUnaryReturnType(FIRRTLType arg,
-                                           Optional<Location> loc);
+                                           std::optional<Location> loc);
     }], "") # !subst("$_infer", !if(!empty(inferType), "inferUnaryReturnType",
       inferType), [{
     /// Infer the return type of this operation.
     static FIRRTLType inferReturnType(ValueRange operands,
                                       ArrayRef<NamedAttribute> attrs,
-                                      Optional<Location> loc) {
+                                      std::optional<Location> loc) {
       return $_infer(operands[0].getType().cast<FIRRTLType>(), loc);
     }
   }]);
 
   let parseValidator = "impl::validateUnaryOpArguments";
 }
+
+def SizeOfIntrinsicOp : UnaryPrimOp<"int.sizeof", FIRRTLBaseType, UInt32Type>;
 
 def AsSIntPrimOp : UnaryPrimOp<"asSInt", FIRRTLBaseType, SIntType>;
 def AsUIntPrimOp : UnaryPrimOp<"asUInt", FIRRTLBaseType, UIntType>;
@@ -609,20 +615,36 @@ def TailPrimOp : PrimOp<"tail"> {
 // Verif and SV specific
 //===----------------------------------------------------------------------===//
 
-def IsXVerifOp : FIRRTLExprOp<"verif_isX"> {
+def IsXIntrinsicOp : FIRRTLExprOp<"int.isX"> {
   let summary = "Test for 'x";
   let description = [{
-    The verif.isX expression checks that the operand is not a verilog literal 
-    'x.  Firrtl doesn't have a notion of 'x per-se, but x can come in to the 
-    system from external modules and from SV constructs.  Verification 
+    The `int.isX` expression checks that the operand is not a verilog literal
+    'x.  FIRRTL doesn't have a notion of 'x per-se, but x can come in to the
+    system from external modules and from SV constructs.  Verification
     constructs need to explicitly test for 'x.
     }];
 
   let arguments = (ins FIRRTLBaseType:$arg);
   let results = (outs UInt1Type:$result);
-  let assemblyFormat =
-    "$arg attr-dict `:` qualified(type($arg))";
+  let hasFolder = 1;
+  let assemblyFormat = "$arg attr-dict `:` type($arg)";
+}
 
+def PlusArgsTestIntrinsicOp : FIRRTLExprOp<"int.plusargs.test"> {
+  let summary = "SystemVerilog `$test$plusargs` call";
+
+  let arguments = (ins StrAttr:$formatString);
+  let results = (outs UInt1Type:$found);
+  let assemblyFormat = "$formatString attr-dict";
+}
+
+def PlusArgsValueIntrinsicOp 
+: FIRRTLOp<"int.plusargs.value", [HasCustomSSAName, Pure]> {
+  let summary = "SystemVerilog `$value$plusargs` call";
+
+  let arguments = (ins StrAttr:$formatString);
+  let results = (outs UInt1Type:$found, AnyType:$result);
+  let assemblyFormat = "$formatString attr-dict `:` type($result)";
 }
 
 //===----------------------------------------------------------------------===//
@@ -761,12 +783,6 @@ class RefResultTypeConstraint<string base, string ref>
   : TypesMatchWith<"reference base type should match",
                    base, ref,
                    "RefType::get($_self.cast<FIRRTLBaseType>())">;
-
-def RefInstancePortConstraint
-  : PredOpTrait<"it cannot have module port as an operand because it implies"
-  " upward reference XMR, which are not supported."
-  " The reference operand must be a port from firrtl.instance",
-                CPred<"!($ref.isa<BlockArgument>())">>;
 
 //===----------------------------------------------------------------------===//
 // RefOps

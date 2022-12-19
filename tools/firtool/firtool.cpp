@@ -307,10 +307,11 @@ static cl::opt<bool>
                             cl::desc("Disable the MergeConnections pass"),
                             cl::init(false), cl::Hidden, cl::cat(mainCategory));
 
-static cl::opt<bool>
-    mergeConnectionsAgggresively("merge-connections-aggressive-merging",
-                                 cl::desc("Merge connections aggressively"),
-                                 cl::init(false), cl::cat(mainCategory));
+static cl::opt<bool> disableAggressiveMergeConnections(
+    "disable-aggressive-merge-connections",
+    cl::desc("Disable aggressive merge connections (i.e. merge all field-level "
+             "connections into bulk connections)"),
+    cl::init(false), cl::cat(mainCategory));
 
 /// Enable the pass to merge the read and write ports of a memory, if their
 /// enable conditions are mutually exclusive.
@@ -607,9 +608,11 @@ processBuffer(MLIRContext &context, TimingScope &ts, llvm::SourceMgr &sourceMgr,
     if (failed(pm.run(module.get())))
       return failure();
     auto outputTimer = ts.nest("Print .mlir output");
-    printOp(*module, outputFile.value()->os());
+    printOp(*module, (*outputFile)->os());
     return success();
   }
+
+  pm.nest<firrtl::CircuitOp>().addPass(firrtl::createLowerIntrinsicsPass());
 
   // TODO: Move this to the O1 pipeline.
   pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
@@ -746,6 +749,9 @@ processBuffer(MLIRContext &context, TimingScope &ts, llvm::SourceMgr &sourceMgr,
   pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
       firrtl::createDropNamesPass(preserveMode));
 
+  // Run InnerSymbolDCE as late as possible, but before IMDCE.
+  pm.addPass(firrtl::createInnerSymbolDCEPass());
+
   // The above passes, IMConstProp in particular, introduce additional
   // canonicalization opportunities that we should pick up here before we
   // proceed to output-specific pipelines.
@@ -764,7 +770,8 @@ processBuffer(MLIRContext &context, TimingScope &ts, llvm::SourceMgr &sourceMgr,
       preserveAggregate != firrtl::PreserveAggregate::None &&
       !disableMergeConnections)
     pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
-        firrtl::createMergeConnectionsPass(mergeConnectionsAgggresively));
+        firrtl::createMergeConnectionsPass(
+            !disableAggressiveMergeConnections.getValue()));
 
   // Lower if we are going to verilog or if lowering was specifically requested.
   if (outputFormat != OutputIRFir) {
@@ -868,7 +875,7 @@ processBuffer(MLIRContext &context, TimingScope &ts, llvm::SourceMgr &sourceMgr,
     default:
       llvm_unreachable("can't reach this");
     case OutputVerilog:
-      exportPm.addPass(createExportVerilogPass(outputFile.value()->os()));
+      exportPm.addPass(createExportVerilogPass((*outputFile)->os()));
       break;
     case OutputSplitVerilog:
       exportPm.addPass(createExportSplitVerilogPass(outputFilename));
@@ -891,7 +898,7 @@ processBuffer(MLIRContext &context, TimingScope &ts, llvm::SourceMgr &sourceMgr,
   if (outputFormat == OutputIRFir || outputFormat == OutputIRHW ||
       outputFormat == OutputIRSV || outputFormat == OutputIRVerilog) {
     auto outputTimer = ts.nest("Print .mlir output");
-    printOp(*module, outputFile.value()->os());
+    printOp(*module, (*outputFile)->os());
   }
 
   // If requested, print the final MLIR into mlirOutFile.
@@ -1001,7 +1008,7 @@ static LogicalResult executeFirtool(MLIRContext &context) {
   if (outputFormat != OutputSplitVerilog) {
     // Create an output file.
     outputFile.emplace(openOutputFile(outputFilename, &errorMessage));
-    if (!outputFile.value()) {
+    if (!(*outputFile)) {
       llvm::errs() << errorMessage << "\n";
       return failure();
     }
@@ -1030,7 +1037,7 @@ static LogicalResult executeFirtool(MLIRContext &context) {
 
   // If the result succeeded and we're emitting a file, close it.
   if (outputFile.has_value())
-    outputFile.value()->keep();
+    (*outputFile)->keep();
 
   return success();
 }

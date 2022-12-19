@@ -119,7 +119,7 @@ void MemoryPortOp::build(OpBuilder &builder, OperationState &result,
 }
 
 LogicalResult MemoryPortOp::inferReturnTypes(MLIRContext *context,
-                                             Optional<Location> loc,
+                                             std::optional<Location> loc,
                                              ValueRange operands,
                                              DictionaryAttr attrs,
                                              mlir::RegionRange regions,
@@ -193,7 +193,7 @@ void MemoryDebugPortOp::build(OpBuilder &builder, OperationState &result,
 }
 
 LogicalResult MemoryDebugPortOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> loc, ValueRange operands,
+    MLIRContext *context, std::optional<Location> loc, ValueRange operands,
     DictionaryAttr attrs, mlir::RegionRange regions,
     SmallVectorImpl<Type> &results) {
   auto inType = operands[0].getType();
@@ -257,7 +257,7 @@ void CombMemOp::build(OpBuilder &builder, OperationState &result,
   build(builder, result,
         CMemoryType::get(builder.getContext(), elementType, numElements), name,
         nameKind, annotations,
-        innerSym ? InnerSymAttr::get(innerSym) : InnerSymAttr());
+        innerSym ? hw::InnerSymAttr::get(innerSym) : hw::InnerSymAttr());
 }
 
 void CombMemOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {
@@ -285,7 +285,7 @@ void SeqMemOp::build(OpBuilder &builder, OperationState &result,
   build(builder, result,
         CMemoryType::get(builder.getContext(), elementType, numElements), ruw,
         name, nameKind, annotations,
-        innerSym ? InnerSymAttr::get(innerSym) : InnerSymAttr());
+        innerSym ? hw::InnerSymAttr::get(innerSym) : hw::InnerSymAttr());
 }
 
 void SeqMemOp::getAsmResultNames(OpAsmSetValueNameFn setNameFn) {

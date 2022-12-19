@@ -48,41 +48,6 @@ using hw::PortDirection;
 /// annotated module should be dumped to a file.
 static const char moduleHierarchyFileAttrName[] = "firrtl.moduleHierarchyFile";
 
-/// Given a type, return the corresponding lowered type for the HW dialect.
-/// Non-FIRRTL types are simply passed through. This returns a null type if it
-/// cannot be lowered.
-static Type lowerType(Type type) {
-  auto firType = type.dyn_cast<FIRRTLBaseType>();
-  if (!firType)
-    return type;
-
-  // Ignore flip types.
-  firType = firType.getPassiveType();
-
-  if (BundleType bundle = firType.dyn_cast<BundleType>()) {
-    mlir::SmallVector<hw::StructType::FieldInfo, 8> hwfields;
-    for (auto element : bundle) {
-      Type etype = lowerType(element.type);
-      if (!etype)
-        return {};
-      hwfields.push_back(hw::StructType::FieldInfo{element.name, etype});
-    }
-    return hw::StructType::get(type.getContext(), hwfields);
-  }
-  if (FVectorType vec = firType.dyn_cast<FVectorType>()) {
-    auto elemTy = lowerType(vec.getElementType());
-    if (!elemTy)
-      return {};
-    return hw::ArrayType::get(elemTy, vec.getNumElements());
-  }
-
-  auto width = firType.getBitWidthOrSentinel();
-  if (width >= 0) // IntType, analog with known width, clock, etc.
-    return IntegerType::get(type.getContext(), width);
-
-  return {};
-}
-
 /// Return true if the specified type is a sized FIRRTL type (Int or Analog)
 /// with zero bits.
 static bool isZeroBitFIRRTLType(Type type) {
@@ -461,6 +426,8 @@ private:
                            SmallVectorImpl<hw::PortInfo> &ports,
                            Operation *moduleOp,
                            CircuitLoweringState &loweringState);
+  bool handleForceNameAnnos(FModuleLike oldModule, AnnotationSet &annos,
+                            CircuitLoweringState &loweringState);
   hw::HWModuleOp lowerModule(FModuleOp oldModule, Block *topLevelModule,
                              CircuitLoweringState &loweringState);
   hw::HWModuleExternOp lowerExtModule(FExtModuleOp oldModule,
@@ -571,9 +538,6 @@ void FIRRTLModuleLowering::runOnOperation() {
           if (!loweredMod)
             return signalPassFailure();
           state.oldToNewModuleMap[&op] = loweredMod;
-        })
-        .Case<HierPathOp>([&](auto nla) {
-          // Just drop it.
         })
         .Default([&](Operation *op) {
           // We don't know what this op is.  If it has no illegal FIRRTL types,
@@ -951,8 +915,7 @@ LogicalResult FIRRTLModuleLowering::lowerPorts(
                             "not support per field symbols yet.");
         return failure();
       }
-    hwPort.sym = firrtlPort.sym ? firrtlPort.sym.getSymName()
-                                : StringAttr::get(moduleOp->getContext(), "");
+    hwPort.sym = firrtlPort.sym;
 
     // We can't lower all types, so make sure to cleanly reject them.
     if (!hwPort.type) {
@@ -962,8 +925,15 @@ LogicalResult FIRRTLModuleLowering::lowerPorts(
 
     // If this is a zero bit port, just drop it.  It doesn't matter if it is
     // input, output, or inout.  We don't want these at the HW level.
-    if (hwPort.type.isInteger(0))
+    if (hwPort.type.isInteger(0)) {
+      if (hwPort.sym && !hwPort.sym.empty()) {
+        moduleOp->emitError("zero width port ")
+            << hwPort.name << " is referenced by name [" << hwPort.sym
+            << "] (e.g. in an XMR).";
+        return failure();
+      }
       continue;
+    }
 
     // Figure out the direction of the port.
     if (firrtlPort.isOutput()) {
@@ -1012,6 +982,72 @@ static ArrayAttr getHWParameters(FExtModuleOp module, bool ignoreValues) {
   return builder.getArrayAttr(newParams);
 }
 
+bool FIRRTLModuleLowering::handleForceNameAnnos(
+    FModuleLike oldModule, AnnotationSet &annos,
+    CircuitLoweringState &loweringState) {
+  bool failed = false;
+  // Remove ForceNameAnnotations by generating verilogNames on instances.
+  annos.removeAnnotations([&](Annotation anno) {
+    if (!anno.isClass(forceNameAnnoClass))
+      return false;
+
+    auto sym = anno.getMember<FlatSymbolRefAttr>("circt.nonlocal");
+    // This must be a non-local annotation due to how the Chisel API is
+    // implemented.
+    //
+    // TODO: handle this in some sensible way based on what the SFC does with
+    // a local annotation.
+    if (!sym) {
+      auto diag = oldModule.emitOpError()
+                  << "contains a '" << forceNameAnnoClass
+                  << "' that is not a non-local annotation";
+      diag.attachNote() << "the erroneous annotation is '" << anno.getDict()
+                        << "'\n";
+      failed = true;
+      return false;
+    }
+
+    auto nla = loweringState.nlaTable->getNLA(sym.getAttr());
+    // The non-local anchor must exist.
+    //
+    // TODO: handle this with annotation verification.
+    if (!nla) {
+      auto diag = oldModule.emitOpError()
+                  << "contains a '" << forceNameAnnoClass
+                  << "' whose non-local symbol, '" << sym
+                  << "' does not exist in the circuit";
+      diag.attachNote() << "the erroneous annotation is '" << anno.getDict();
+      failed = true;
+      return false;
+    }
+
+    // Add the forced name to global state (keyed by a pseudo-inner name ref).
+    // Error out if this key is alredy in use.
+    //
+    // TODO: this error behavior can be relaxed to always overwrite with the
+    // new forced name (the bug-compatible behavior of the Chisel
+    // implementation) or fixed to duplicate modules such that the naming can
+    // be applied.
+    auto inst =
+        nla.getNamepath().getValue().take_back(2)[0].cast<hw::InnerRefAttr>();
+    auto inserted = loweringState.instanceForceNames.insert(
+        {{inst.getModule(), inst.getName()}, anno.getMember("name")});
+    if (!inserted.second &&
+        (anno.getMember("name") != (inserted.first->second))) {
+      auto diag = oldModule.emitError()
+                  << "contained multiple '" << forceNameAnnoClass
+                  << "' with different names: " << inserted.first->second
+                  << " was not " << anno.getMember("name");
+      diag.attachNote() << "the erroneous annotation is '" << anno.getDict()
+                        << "'";
+      failed = true;
+      return false;
+    }
+    return true;
+  });
+  return failed;
+}
+
 hw::HWModuleExternOp
 FIRRTLModuleLowering::lowerExtModule(FExtModuleOp oldModule,
                                      Block *topLevelModule,
@@ -1045,8 +1081,11 @@ FIRRTLModuleLowering::lowerExtModule(FExtModuleOp oldModule,
       loweringState.isInDUT(oldModule))
     newModule->setAttr("firrtl.extract.cover.extra", builder.getUnitAttr());
 
-  loweringState.processRemainingAnnotations(oldModule,
-                                            AnnotationSet(oldModule));
+  AnnotationSet annos(oldModule);
+  if (handleForceNameAnnos(oldModule, annos, loweringState))
+    return {};
+
+  loweringState.processRemainingAnnotations(oldModule, annos);
   return newModule;
 }
 
@@ -1116,68 +1155,7 @@ FIRRTLModuleLowering::lowerModule(FModuleOp oldModule, Block *topLevelModule,
           builder.getStringAttr("VCS coverage exclude_file"));
     }
 
-  bool failed = false;
-  // Remove ForceNameAnnotations by generating verilogNames on instances.
-  annos.removeAnnotations([&](Annotation anno) {
-    if (!anno.isClass(forceNameAnnoClass))
-      return false;
-
-    auto sym = anno.getMember<FlatSymbolRefAttr>("circt.nonlocal");
-    // This must be a non-local annotation due to how the Chisel API is
-    // implemented.
-    //
-    // TODO: handle this in some sensible way based on what the SFC does with
-    // a local annotation.
-    if (!sym) {
-      auto diag = oldModule.emitOpError()
-                  << "contains a '" << forceNameAnnoClass
-                  << "' that is not a non-local annotation";
-      diag.attachNote() << "the erroneous annotation is '" << anno.getDict()
-                        << "'\n";
-      failed = true;
-      return false;
-    }
-
-    auto nla = loweringState.nlaTable->getNLA(sym.getAttr());
-    // The non-local anchor must exist.
-    //
-    // TODO: handle this with annotation verification.
-    if (!nla) {
-      auto diag = oldModule.emitOpError()
-                  << "contains a '" << forceNameAnnoClass
-                  << "' whose non-local symbol, '" << sym
-                  << "' does not exist in the circuit";
-      diag.attachNote() << "the erroneous annotation is '" << anno.getDict();
-      failed = true;
-      return false;
-    }
-
-    // Add the forced name to global state (keyed by a pseudo-inner name ref).
-    // Error out if this key is alredy in use.
-    //
-    // TODO: this error behavior can be relaxed to always overwrite with the
-    // new forced name (the bug-compatible behavior of the Chisel
-    // implementation) or fixed to duplicate modules such that the naming can
-    // be applied.
-    auto inst =
-        nla.getNamepath().getValue().take_back(2)[0].cast<hw::InnerRefAttr>();
-    auto inserted = loweringState.instanceForceNames.insert(
-        {{inst.getModule(), inst.getName()}, anno.getMember("name")});
-    if (!inserted.second &&
-        (anno.getMember("name") != (inserted.first->second))) {
-      auto diag = oldModule.emitError()
-                  << "contained multiple '" << forceNameAnnoClass
-                  << "' with different names: " << inserted.first->second
-                  << " was not " << anno.getMember("name");
-      diag.attachNote() << "the erroneous annotation is '" << anno.getDict()
-                        << "'";
-      failed = true;
-      return false;
-    }
-    return true;
-  });
-
-  if (failed)
+  if (handleForceNameAnnos(oldModule, annos, loweringState))
     return {};
 
   loweringState.processRemainingAnnotations(oldModule, annos);
@@ -1592,7 +1570,10 @@ struct FIRRTLLowering : public FIRRTLVisitor<FIRRTLLowering, LogicalResult> {
   }
 
   // Verif Operations
-  LogicalResult visitExpr(IsXVerifOp op);
+  LogicalResult visitExpr(IsXIntrinsicOp op);
+  LogicalResult visitExpr(PlusArgsTestIntrinsicOp op);
+  LogicalResult visitExpr(PlusArgsValueIntrinsicOp op);
+  LogicalResult visitExpr(SizeOfIntrinsicOp op);
 
   // Other Operations
   LogicalResult visitExpr(BitsPrimOp op);
@@ -2932,7 +2913,8 @@ LogicalResult FIRRTLLowering::visitDecl(InstanceOp oldInstance) {
       circuitState.getInstanceGraph()->getReferencedModule(oldInstance);
   auto newModule = circuitState.getNewModule(oldModule);
   if (!newModule) {
-    oldInstance->emitOpError("could not find module referenced by instance");
+    oldInstance->emitOpError("could not find module [")
+        << oldInstance.getModuleName() << "] referenced by instance";
     return failure();
   }
 
@@ -3352,7 +3334,7 @@ LogicalResult FIRRTLLowering::visitExpr(CatPrimOp op) {
 // Verif Operations
 //===----------------------------------------------------------------------===//
 
-LogicalResult FIRRTLLowering::visitExpr(IsXVerifOp op) {
+LogicalResult FIRRTLLowering::visitExpr(IsXIntrinsicOp op) {
   auto input = getLoweredValue(op.getArg());
   if (!input)
     return failure();
@@ -3360,6 +3342,33 @@ LogicalResult FIRRTLLowering::visitExpr(IsXVerifOp op) {
   return setLoweringTo<comb::ICmpOp>(
       op, ICmpPredicate::ceq, input,
       getOrCreateXConstant(input.getType().getIntOrFloatBitWidth()), true);
+}
+
+LogicalResult FIRRTLLowering::visitExpr(PlusArgsTestIntrinsicOp op) {
+  auto resultType = builder.getIntegerType(1);
+  auto str = builder.create<sv::ConstantStrOp>(op.getFormatString());
+  return setLoweringTo<sv::SystemFunctionOp>(op, resultType, "test$plusargs",
+                                             ArrayRef<Value>{str});
+}
+
+LogicalResult FIRRTLLowering::visitExpr(PlusArgsValueIntrinsicOp op) {
+  auto resultType = builder.getIntegerType(1);
+  auto type = lowerType(op.getResult().getType());
+  if (!type)
+    return failure();
+
+  auto str = builder.create<sv::ConstantStrOp>(op.getFormatString());
+  auto wire = createTmpWireOp(type, "_pargs");
+  auto wireRead = builder.create<sv::ReadInOutOp>(wire);
+  (void)setLowering(op.getResult(), wireRead);
+  auto svfun = builder.create<sv::SystemFunctionOp>(
+      resultType, "value$plusargs", ArrayRef<Value>{str, wire});
+  return setLowering(op.getFound(), svfun);
+}
+
+LogicalResult FIRRTLLowering::visitExpr(SizeOfIntrinsicOp op) {
+  op.emitError("SizeOf should have been resolved.");
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//
@@ -3397,10 +3406,10 @@ LogicalResult FIRRTLLowering::visitExpr(InvalidValueOp op) {
   // do.
   if (auto bitwidth =
           firrtl::getBitWidth(op.getType().cast<FIRRTLBaseType>())) {
-    if (bitwidth.value() == 0) // Let the caller handle zero width values.
+    if (*bitwidth == 0) // Let the caller handle zero width values.
       return failure();
 
-    auto constant = getOrCreateIntConstant(bitwidth.value(), 0);
+    auto constant = getOrCreateIntConstant(*bitwidth, 0);
     // If the result is an aggregate value, we have to bitcast the constant.
     if (!resultTy.isa<IntegerType>())
       constant = builder.create<hw::BitcastOp>(resultTy, constant);
