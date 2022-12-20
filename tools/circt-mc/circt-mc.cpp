@@ -63,9 +63,6 @@ static mlir::LogicalResult checkProperty(mlir::MLIRContext &context,
   // TODO: load property constraints
   // circuitModel->loadProperty();
 
-  // Set initial state of model
-  circuitModel->setInitialState();
-
   for (int i = 0; i < bound; i++) {
     if (!circuitModel->checkCycle(i)) {
       lec::outs << "Failure\n";

@@ -424,7 +424,7 @@ z3::expr Solver::Circuit::allocateValue(mlir::Value value) {
   auto exprInsertion = exprTable.insert(std::pair(value, expr));
   assert(exprInsertion.second && "Value not inserted in expression table");
   // Populate state table
-  std::string stateName = valueName + std::string("_state");
+  std::string stateName = valueName + std::string("_init");
   z3::expr stateExpr = solver->context.bv_const(stateName.c_str(), width);
   auto stateInsertion = stateTable.insert(std::pair(value, stateExpr));
   assert(stateInsertion.second && "Value not inserted in state table");
@@ -496,13 +496,6 @@ z3::expr Solver::Circuit::bvToBool(z3::expr &condition) {
 z3::expr Solver::Circuit::boolToBv(z3::expr condition) {
   return z3::ite(condition, solver->context.bv_val(1, 1),
                  solver->context.bv_val(0, 1));
-}
-
-/// Reset the solver to its initial state (i.e. all values undefined and
-/// independent)
-void Solver::Circuit::setInitialState() {
-  // TODO - not necessary if just verifying once
-  return;
 }
 
 /// Push solver constraints assigning registers and inputs to their current

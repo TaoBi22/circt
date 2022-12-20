@@ -49,8 +49,6 @@ public:
   /// Recover the outputs.
   llvm::ArrayRef<z3::expr> getOutputs();
 
-  /// Reset the circuit to its initial state
-  void setInitialState();
   /// Execute a clock cycle and check that the properties hold throughout
   bool checkCycle(int count);
 
