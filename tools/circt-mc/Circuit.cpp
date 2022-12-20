@@ -508,21 +508,20 @@ void Solver::Circuit::setInitialState() {
 /// Push solver constraints assigning registers and inputs to their current
 /// state
 void Solver::Circuit::loadStateConstraints() {
-  for (auto input = std::begin(inputsByVal); input != std::end(inputsByVal);
-       ++input) {
-    auto symbolPair = exprTable.find(*input);
+  for (auto input : inputsByVal) {
+    auto symbolPair = exprTable.find(input);
     assert(symbolPair != exprTable.end() &&
            "Z3 expression not found for input value");
-    auto statePair = stateTable.find(*input);
+    auto statePair = stateTable.find(input);
     assert(statePair != stateTable.end() &&
            "Z3 state not found for input value");
     solver->solver.add(symbolPair->second == statePair->second);
   }
-  for (auto reg = std::begin(regs); reg != std::end(regs); ++reg) {
+  for (auto reg : regs) {
     mlir::Value regData;
-    if (auto *compReg = std::get_if<CompRegStruct>(reg)) {
+    if (auto *compReg = std::get_if<CompRegStruct>(&reg)) {
       regData = compReg->data;
-    } else if (auto *firReg = std::get_if<FirRegStruct>(reg)) {
+    } else if (auto *firReg = std::get_if<FirRegStruct>(&reg)) {
       regData = firReg->data;
     }
     auto symbolPair = exprTable.find(regData);
@@ -541,23 +540,23 @@ void Solver::Circuit::loadStateConstraints() {
 
 /// Execute a clock posedge (i.e. update registers and combinatorial logic)
 void Solver::Circuit::runClockPosedge() {
-  for (auto clk = std::begin(clks); clk != std::end(clks); ++clk) {
+  for (auto clk : clks) {
     // Currently we explicitly handle only one clock, so we can just update
     // every clock in clks (of which there are 0 or 1)
-    stateTable.find(*clk)->second = solver->context.bv_val(1, 1);
+    stateTable.find(clk)->second = solver->context.bv_val(1, 1);
   }
-  for (auto reg = std::begin(regs); reg != std::end(regs); ++reg) {
+  for (auto reg : regs) {
     // Fetch values from reg structs
     mlir::Value input;
     mlir::Value data;
     mlir::Value reset;
     mlir::Value resetValue;
-    if (auto *compReg = std::get_if<CompRegStruct>(reg)) {
+    if (auto *compReg = std::get_if<CompRegStruct>(&reg)) {
       input = compReg->input;
       data = compReg->data;
       reset = compReg->reset;
       resetValue = compReg->resetValue;
-    } else if (auto *firReg = std::get_if<FirRegStruct>(reg)) {
+    } else if (auto *firReg = std::get_if<FirRegStruct>(&reg)) {
       input = firReg->next;
       data = firReg->data;
       reset = firReg->reset;
@@ -583,10 +582,10 @@ void Solver::Circuit::runClockPosedge() {
 
 /// Execute a clock negedge (i.e. update combinatorial logic)
 void Solver::Circuit::runClockNegedge() {
-  for (auto clk = std::begin(clks); clk != std::end(clks); ++clk) {
+  for (auto clk : clks) {
     // Currently we explicitly handle only one clock, so we can just update
     // every clock in clks (of which there are 0 or 1)
-    stateTable.find(*clk)->second = solver->context.bv_val(0, 1);
+    stateTable.find(clk)->second = solver->context.bv_val(0, 1);
   }
   return;
 }
@@ -594,24 +593,23 @@ void Solver::Circuit::runClockNegedge() {
 /// Assign a new set of symbolic values to all inputs
 void Solver::Circuit::updateInputs(int count, bool posedge) {
   mlir::Builder builder(solver->mlirCtx);
-  for (auto input = std::begin(inputsByVal); input != std::end(inputsByVal);
-       ++input) {
+  for (auto input : inputsByVal) {
     // We update clocks literally, so skip this for clocks
-    if (std::find(clks.begin(), clks.end(), *input) != clks.end()) {
+    if (std::find(clks.begin(), clks.end(), input) != clks.end()) {
       continue;
     }
     llvm::DenseMap<mlir::Value, z3::expr>::iterator currentStatePair =
-        stateTable.find(*input);
+        stateTable.find(input);
     if (currentStatePair != stateTable.end()) {
-      int width = input->getType().getIntOrFloatBitWidth();
-      std::string valueName = nameTable.find(*input)->second;
+      int width = input.getType().getIntOrFloatBitWidth();
+      std::string valueName = nameTable.find(input)->second;
       std::string edgeString(posedge ? "_pos" : "_neg");
       std::string symbolName =
           (valueName + "_" + std::to_string(count) + edgeString).c_str();
       currentStatePair->second =
           solver->context.bv_const(symbolName.c_str(), width);
       mlir::StringAttr symbol = builder.getStringAttr(symbolName);
-      auto symInsertion = solver->symbolTable.insert(std::pair(symbol, *input));
+      auto symInsertion = solver->symbolTable.insert(std::pair(symbol, input));
       assert(symInsertion.second && "Value not inserted in symbol table");
     }
   }
@@ -655,8 +653,8 @@ bool Solver::Circuit::checkCycle(int count) {
 
 /// Update combinatorial logic states (to propagate new inputs/reg outputs)
 void Solver::Circuit::applyCombUpdates() {
-  for (auto wire = std::begin(wires); wire != std::end(wires); ++wire) {
-    auto wireTransformPair = combTransformTable.find(*wire);
+  for (auto wire : wires) {
+    auto wireTransformPair = combTransformTable.find(wire);
     assert(wireTransformPair != combTransformTable.end() &&
            "Combinational value to update has no update function");
     auto wireTransform = wireTransformPair->second;
@@ -664,7 +662,7 @@ void Solver::Circuit::applyCombUpdates() {
             mlir::OperandRange,
             llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>>>(
             &wireTransform)) {
-      applyCombVariadicOperation(*wire, *transform);
+      applyCombVariadicOperation(wire, *transform);
     } else if (auto *transform = std::get_if<
                    std::pair<std::tuple<mlir::Value>,
                              llvm::function_ref<z3::expr(const z3::expr &)>>>(
@@ -673,7 +671,7 @@ void Solver::Circuit::applyCombUpdates() {
       llvm::function_ref<z3::expr(const z3::expr &)> transformFunc =
           transform->second;
       z3::expr operandExpr = stateTable.find(operand)->second;
-      stateTable.find(*wire)->second = transformFunc(operandExpr);
+      stateTable.find(wire)->second = transformFunc(operandExpr);
     } else if (auto *transform = std::get_if<
                    std::pair<std::tuple<mlir::Value, mlir::Value>,
                              llvm::function_ref<z3::expr(const z3::expr &,
@@ -685,7 +683,7 @@ void Solver::Circuit::applyCombUpdates() {
           transformFunc = transform->second;
       z3::expr firstOperandExpr = stateTable.find(firstOperand)->second;
       z3::expr secondOperandExpr = stateTable.find(secondOperand)->second;
-      stateTable.find(*wire)->second =
+      stateTable.find(wire)->second =
           transformFunc(firstOperandExpr, secondOperandExpr);
     } else if (auto *transform = std::get_if<std::pair<
                    std::tuple<mlir::Value, mlir::Value, mlir::Value>,
@@ -701,7 +699,7 @@ void Solver::Circuit::applyCombUpdates() {
       z3::expr firstOperandExpr = stateTable.find(firstOperand)->second;
       z3::expr secondOperandExpr = stateTable.find(secondOperand)->second;
       z3::expr thirdOperandExpr = stateTable.find(thirdOperand)->second;
-      stateTable.find(*wire)->second =
+      stateTable.find(wire)->second =
           transformFunc(firstOperandExpr, secondOperandExpr, thirdOperandExpr);
     }
   }

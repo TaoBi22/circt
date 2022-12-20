@@ -21,7 +21,7 @@
 #define DEBUG_TYPE "solver"
 
 Solver::~Solver() {
-  for (auto circuit : circuits)
+  for (auto *circuit : circuits)
     delete circuit;
 }
 

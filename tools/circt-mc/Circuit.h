@@ -185,7 +185,7 @@ private:
   llvm::DenseMap<mlir::Value, z3::expr> stateTable;
   /// A type to represent the different representations of combinational
   /// transforms
-  typedef std::variant<
+  using TransformVariant = std::variant<
       std::pair<mlir::OperandRange, llvm::function_ref<z3::expr(
                                         const z3::expr &, const z3::expr &)>>,
       std::pair<std::tuple<mlir::Value>,
@@ -195,8 +195,7 @@ private:
           llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>>,
       std::pair<std::tuple<mlir::Value, mlir::Value, mlir::Value>,
                 llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &,
-                                            const z3::expr &)>>>
-      TransformVariant;
+                                            const z3::expr &)>>>;
   /// A map from wire values to their corresponding transformations.
   llvm::DenseMap<mlir::Value, TransformVariant> combTransformTable;
 
