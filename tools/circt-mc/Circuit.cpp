@@ -570,6 +570,8 @@ void Solver::Circuit::runClockPosedge() {
       stateTable.find(data)->second = inputState;
     }
   }
+  // Update combinational updates so register outputs can propagate
+  applyCombUpdates();
   return;
 }
 
@@ -580,6 +582,8 @@ void Solver::Circuit::runClockNegedge() {
     // every clock in clks (of which there are 0 or 1)
     stateTable.find(clk)->second = solver->context.bv_val(0, 1);
   }
+  // Update combinational updates so changes in inputs can propagate
+  applyCombUpdates();
   return;
 }
 
