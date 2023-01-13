@@ -2,24 +2,10 @@
 if(CIRCT_LEC_ENABLED)
   list(APPEND CIRCT_LEC_SOURCES
     circt-lec.cpp
-    Circuit.cpp
-    LogicExporter.cpp
-    Solver.cpp
   )
 
   list(APPEND CIRCT_LEC_LIBS
-    CIRCTCalyx
-    CIRCTESI
-    CIRCTFIRRTL
-    CIRCTFSM
-    CIRCTHandshake
-    CIRCTHWArith
-    CIRCTInteropDialect
-    CIRCTLLHD
-    CIRCTMoore
-    CIRCTPipelineOps
-    CIRCTSSP
-    CIRCTSystemC
+    CIRCTSMT
   )
 
   add_llvm_tool(circt-lec ${CIRCT_LEC_SOURCES})
