@@ -9,6 +9,43 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
 "sifive.enterprise.firrtl.ExtractCoverageAnnotation", directory = "dir2",  filename = "./dir2/filename2" }, {class =
 "sifive.enterprise.firrtl.ExtractAssertionsAnnotation", directory = "dir3",  filename = "./dir3/filename3" }]}
 {
+  // Headers
+  // CHECK:      sv.ifdef  "PRINTF_COND_" {
+  // CHECK-NEXT: } else {
+  // CHECK-NEXT:   sv.ifdef  "PRINTF_COND" {
+  // CHECK-NEXT:     sv.verbatim "`define PRINTF_COND_ (`PRINTF_COND)"
+  // CHECK-NEXT:   } else {
+  // CHECK-NEXT:     sv.verbatim "`define PRINTF_COND_ 1"
+  // CHECK-NEXT:   }
+  // CHECK-NEXT: }
+  // CHECK:      sv.ifdef  "ASSERT_VERBOSE_COND_" {
+  // CHECK-NEXT: } else {
+  // CHECK-NEXT:   sv.ifdef  "ASSERT_VERBOSE_COND" {
+  // CHECK-NEXT:     sv.verbatim "`define ASSERT_VERBOSE_COND_ (`ASSERT_VERBOSE_COND)"
+  // CHECK-NEXT:   } else {
+  // CHECK-NEXT:     sv.verbatim "`define ASSERT_VERBOSE_COND_ 1"
+  // CHECK-NEXT:   }
+  // CHECK-NEXT: }
+  // CHECK:      sv.ifdef  "STOP_COND_" {
+  // CHECK-NEXT: } else {
+  // CHECK-NEXT:   sv.ifdef  "STOP_COND" {
+  // CHECK-NEXT:     sv.verbatim "`define STOP_COND_ (`STOP_COND)"
+  // CHECK-NEXT:   } else {
+  // CHECK-NEXT:     sv.verbatim "`define STOP_COND_ 1"
+  // CHECK-NEXT:   }
+  // CHECK-NEXT: }
+  // CHECK:      sv.ifdef  "INIT_RANDOM_PROLOG_" {
+  // CHECK-NEXT: } else {
+  // CHECK-NEXT:   sv.ifdef  "RANDOMIZE" {
+  // CHECK-NEXT:     sv.ifdef  "VERILATOR" {
+  // CHECK-NEXT:       sv.verbatim "`define INIT_RANDOM_PROLOG_ `INIT_RANDOM"
+  // CHECK-NEXT:     } else {
+  // CHECK-NEXT:       sv.verbatim "`define INIT_RANDOM_PROLOG_ `INIT_RANDOM #`RANDOMIZE_DELAY begin end"
+  // CHECK-NEXT:     }
+  // CHECK-NEXT:   } else {
+  // CHECK-NEXT:     sv.verbatim "`define INIT_RANDOM_PROLOG_"
+  // CHECK-NEXT:   }
+  // CHECK-NEXT: }
 
   //These come from MemSimple, IncompleteRead, and MemDepth1
   // CHECK-LABEL: hw.generator.schema @FIRRTLMem, "FIRRTL_Memory", ["depth", "numReadPorts", "numWritePorts", "numReadWritePorts", "readLatency", "writeLatency", "width", "maskGran", "readUnderWrite", "writeUnderWrite", "writeClockIDs"]
@@ -298,10 +335,7 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
     // CHECK-NEXT: %[[FILLER:.+]] = hw.array_create %[[GET0]] : i1
     // CHECK-NEXT: %[[EXT:.+]] = hw.array_concat %[[FILLER]], %[[ARRAY]]
     // CHECK-NEXT: %[[ARRAY_GET:.+]] = hw.array_get %[[EXT]][%[[ZEXT_INDEX]]]
-    // CHECK-NEXT: %[[WIRE:.+]] = sv.wire
-    // CHECK-NEXT: sv.assign %[[WIRE]], %[[ARRAY_GET]]
-    // CHECK-NEXT: %[[READ_WIRE:.+]] = sv.read_inout %[[WIRE]] : !hw.inout<i1>
-    // CHECK: hw.output %false, %[[READ_WIRE]] : i1, i1
+    // CHECK: hw.output %false, %[[ARRAY_GET]] : i1, i1
     firrtl.connect %out2, %61 : !firrtl.sint<1>, !firrtl.sint<1>
   }
 
@@ -914,9 +948,9 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
 
   // CHECK-LABEL: hw.module.extern @InnerNamesExt
   // CHECK-SAME:  (
-  // CHECK-SAME:    clockIn: i1 {hw.exportPort = @extClockInSym}
+  // CHECK-SAME:    clockIn: i1 {hw.exportPort = #hw<innerSym@extClockInSym>}
   // CHECK-SAME:  ) -> (
-  // CHECK-SAME:    clockOut: i1 {hw.exportPort = @extClockOutSym}
+  // CHECK-SAME:    clockOut: i1 {hw.exportPort = #hw<innerSym@extClockOutSym>}
   // CHECK-SAME:  )
   firrtl.extmodule @InnerNamesExt(
     in clockIn: !firrtl.clock sym @extClockInSym,
@@ -1019,11 +1053,11 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
 
   // CHECK-LABEL: hw.module private @InnerNames
   // CHECK-SAME:  (
-  // CHECK-SAME:    %value: i42 {hw.exportPort = @portValueSym}
-  // CHECK-SAME:    %clock: i1 {hw.exportPort = @portClockSym}
-  // CHECK-SAME:    %reset: i1 {hw.exportPort = @portResetSym}
+  // CHECK-SAME:    %value: i42 {hw.exportPort = #hw<innerSym@portValueSym>}
+  // CHECK-SAME:    %clock: i1 {hw.exportPort = #hw<innerSym@portClockSym>}
+  // CHECK-SAME:    %reset: i1 {hw.exportPort = #hw<innerSym@portResetSym>}
   // CHECK-SAME:  ) -> (
-  // CHECK-SAME:    out: i1 {hw.exportPort = @portOutSym}
+  // CHECK-SAME:    out: i1 {hw.exportPort = #hw<innerSym@portOutSym>}
   // CHECK-SAME:  )
   firrtl.module private @InnerNames(
     in %value: !firrtl.uint<42> sym @portValueSym,
@@ -1143,10 +1177,7 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
     // CHECK-NEXT: %[[EXTArray:.+]] = hw.array_create %[[EXTValue]], %[[EXTValue]], %[[EXTValue]]
     // CHECK-NEXT: %[[Array:.+]] = hw.array_concat %[[EXTArray]], %a
     // CHECK-NEXT: %[[READ:.+]] = hw.array_get %[[Array]][%3]
-    // CHECK-NEXT: %[[valWire:.+]] = sv.wire  : !hw.inout<i1>
-    // CHECK-NEXT: sv.assign %[[valWire]], %[[READ]]
-    // CHECK-NEXT: %[[RD:.+]] = sv.read_inout %[[valWire]] : !hw.inout<i1>
-    // CHECK-NEXT: sv.assign %2, %[[RD]] : i1
+    // CHECK-NEXT: sv.assign %2, %[[READ]] : i1
     // CHECK-NEXT: hw.output %0 : !hw.array<5xi1>
   }
 
@@ -1238,9 +1269,9 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
   }
 
   // CHECK-LABEL: hw.module private @ForceNameSubmodule
-  firrtl.hierpath private @nla_1 [@ForceNameTop::@sym_foo, @ForceNameSubmodule]
-  firrtl.hierpath private @nla_2 [@ForceNameTop::@sym_bar, @ForceNameSubmodule]
-  firrtl.hierpath private @nla_3 [@ForceNameTop::@sym_baz, @ForceNameSubextmodule]
+  hw.hierpath private @nla_1 [@ForceNameTop::@sym_foo, @ForceNameSubmodule]
+  hw.hierpath private @nla_2 [@ForceNameTop::@sym_bar, @ForceNameSubmodule]
+  hw.hierpath private @nla_3 [@ForceNameTop::@sym_baz, @ForceNameSubextmodule]
   firrtl.module private @ForceNameSubmodule() attributes {annotations = [
     {circt.nonlocal = @nla_2,
      class = "chisel3.util.experimental.ForceNameAnnotation", name = "Bar"},
@@ -1284,11 +1315,8 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
     // CHECK-NEXT: %1 = hw.array_get %0[%c0_i2]
     // CHECK-NEXT: %2 = hw.array_create %1 : i1
     // CHECK-NEXT: %3 = hw.array_concat %2, %0
-    // CHECK-NEXT: %4 = hw.array_get %3[%index] {sv.attributes = #sv.attributes<[#sv.attribute<"cadence map_to_mux">], emitAsComments>}
-    // CHECK-NEXT: %5 = sv.wire : !hw.inout<i1>
-    // CHECK-NEXT: sv.assign %5, %4 {sv.attributes = #sv.attributes<[#sv.attribute<"synopsys infer_mux_override">], emitAsComments>}
-    // CHECK-NEXT: %6 = sv.read_inout %5 : !hw.inout<i1>
-    // CHECK-NEXT: hw.output %6 : i1
+    // CHECK-NEXT: %4 = hw.array_get %3[%index]
+    // CHECK-NEXT: hw.output %4 : i1
   }
 
   firrtl.module private @inferUnmaskedMemory(in %clock: !firrtl.clock, in %rAddr: !firrtl.uint<4>, in %rEn: !firrtl.uint<1>, out %rData: !firrtl.uint<8>, in %wMask: !firrtl.uint<1>, in %wData: !firrtl.uint<8>) {
@@ -1766,4 +1794,68 @@ firrtl.circuit "Simple"   attributes {annotations = [{class =
     // CHECK:      %0 = hw.aggregate_constant [0 : i8, 1 : i8] : !hw.array<2xi8>
     // CHECK-NEXT: hw.output %0 : !hw.array<2xi8>
   }
+
+  // CHECK-LABEL: hw.module @intrinsic
+  firrtl.module @intrinsic(in %clk: !firrtl.clock, out %io1: !firrtl.uint<1>, out %io2: !firrtl.uint<1>, out %io3: !firrtl.uint<1>, out %io4 : !firrtl.uint<5>) {
+    %1 = firrtl.int.isX %clk : !firrtl.clock
+    firrtl.strictconnect %io1, %1 : !firrtl.uint<1>
+    // CHECK: %[[x:.*]] = sv.constantX
+    // CHECK: comb.icmp bin ceq %clk, %[[x]]
+
+    %2 = firrtl.int.plusargs.test "foo"
+    firrtl.strictconnect %io2, %2 : !firrtl.uint<1>
+    // CHECK: %[[foo:.*]] = sv.constantStr "foo"
+    // CHECK: sv.system "test$plusargs"(%[[foo]])
+
+    %3, %4 = firrtl.int.plusargs.value "foo" : !firrtl.uint<5>
+    firrtl.strictconnect %io3, %3 : !firrtl.uint<1>
+    firrtl.strictconnect %io4, %4 : !firrtl.uint<5>
+    // CHECK: %[[foo:.*]] = sv.constantStr "foo"
+    // CHECK: %[[tmp:.*]] = sv.wire : !hw.inout<i5>
+    // CHECK: sv.system "value$plusargs"(%[[foo]], %[[tmp]])
+    
+  }
+
+  // An internal-only analog connection between two instances should be implemented with a wire
+  firrtl.extmodule @AnalogInModA(in a: !firrtl.analog<8>)
+  firrtl.extmodule @AnalogInModB(in a: !firrtl.analog<8>)
+  firrtl.extmodule @AnalogOutModA(out a: !firrtl.analog<8>)
+  firrtl.module @AnalogMergeTwo() {
+    %result_iIn = firrtl.instance iIn @AnalogInModA(in a: !firrtl.analog<8>)
+    %result_iOut = firrtl.instance iOut @AnalogOutModA(out a: !firrtl.analog<8>)
+    firrtl.attach %result_iIn, %result_iOut : !firrtl.analog<8>, !firrtl.analog<8>
+  }
+  // CHECK-LABEL: hw.module @AnalogMergeTwo() {
+  // CHECK:         %.a.wire = sv.wire : !hw.inout<i8>
+  // CHECK:         hw.instance "iIn" @AnalogInModA(a: %.a.wire: !hw.inout<i8>) -> ()
+  // CHECK:         hw.instance "iOut" @AnalogOutModA(a: %.a.wire: !hw.inout<i8>) -> ()
+  // CHECK-NEXT:    hw.output
+  // CHECK-NEXT:  }
+
+  // An internal-only analog connection between three instances should be implemented with a wire
+  firrtl.module @AnalogMergeThree() {
+    %result_iInA = firrtl.instance iInA @AnalogInModA(in a: !firrtl.analog<8>)
+    %result_iInB = firrtl.instance iInB @AnalogInModB(in a: !firrtl.analog<8>)
+    %result_iOut = firrtl.instance iOut @AnalogOutModA(out a: !firrtl.analog<8>)
+    firrtl.attach %result_iInA, %result_iInB, %result_iOut : !firrtl.analog<8>, !firrtl.analog<8>, !firrtl.analog<8>
+  }
+  // CHECK-LABEL: hw.module @AnalogMergeThree() {
+  // CHECK:         %.a.wire = sv.wire : !hw.inout<i8>
+  // CHECK:         hw.instance "iInA" @AnalogInModA(a: %.a.wire: !hw.inout<i8>) -> ()
+  // CHECK:         hw.instance "iInB" @AnalogInModB(a: %.a.wire: !hw.inout<i8>) -> ()
+  // CHECK:         hw.instance "iOut" @AnalogOutModA(a: %.a.wire: !hw.inout<i8>) -> ()
+  // CHECK-NEXT:    hw.output
+  // CHECK-NEXT:  }
+
+  // An analog connection between two instances and a module port should be implemented with a wire
+  firrtl.module @AnalogMergeTwoWithPort(out %a: !firrtl.analog<8>) {
+    %result_iIn = firrtl.instance iIn @AnalogInModA(in a: !firrtl.analog<8>)
+    %result_iOut = firrtl.instance iOut @AnalogOutModA(out a: !firrtl.analog<8>)
+    firrtl.attach %a, %result_iIn, %result_iOut : !firrtl.analog<8>, !firrtl.analog<8>, !firrtl.analog<8>
+  }
+  // CHECK-LABEL: hw.module @AnalogMergeTwoWithPort(%a: !hw.inout<i8>) {
+  // CHECK-NEXT:    hw.instance "iIn" @AnalogInModA(a: %a: !hw.inout<i8>) -> ()
+  // CHECK-NEXT:    hw.instance "iOut" @AnalogOutModA(a: %a: !hw.inout<i8>) -> ()
+  // CHECK-NEXT:    hw.output
+  // CHECK-NEXT:  }
 }

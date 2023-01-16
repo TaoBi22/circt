@@ -1113,7 +1113,7 @@ firrtl.module private @is1436_FOO() {
   }
 
   // CHECK-LABEL: firrtl.module @MergeBundle
-  firrtl.module @MergeBundle(out %o: !firrtl.bundle<valid: uint<1>, ready: uint<1>>, in %i: !firrtl.uint<1>) 
+  firrtl.module @MergeBundle(out %o: !firrtl.bundle<valid: uint<1>, ready: uint<1>>, in %i: !firrtl.uint<1>)
   {
     %a = firrtl.wire   : !firrtl.bundle<valid: uint<1>, ready: uint<1>>
     firrtl.strictconnect %o, %a : !firrtl.bundle<valid: uint<1>, ready: uint<1>>
@@ -1126,7 +1126,7 @@ firrtl.module private @is1436_FOO() {
     // CHECK:  firrtl.strictconnect %a_valid, %i : !firrtl.uint<1>
     // CHECK:  firrtl.strictconnect %a_ready, %i : !firrtl.uint<1>
   }
- 
+
   // CHECK-LABEL: firrtl.module @MergeVector
   firrtl.module @MergeVector(out %o: !firrtl.vector<uint<1>, 3>, in %i: !firrtl.uint<1>) {
     %a = firrtl.wire   : !firrtl.vector<uint<1>, 3>
@@ -1142,6 +1142,22 @@ firrtl.module private @is1436_FOO() {
     // CHECK:  firrtl.strictconnect %a_0, %i : !firrtl.uint<1>
     // CHECK:  firrtl.strictconnect %a_1, %i : !firrtl.uint<1>
     // CHECK:  firrtl.strictconnect %a_2, %i : !firrtl.uint<1>
+  }
+
+  // Check that an instance with attributes known and unknown to FIRRTL Dialect
+  // are copied to the lowered instance.
+  firrtl.module @SubmoduleWithAggregate(out %a: !firrtl.vector<uint<1>, 1>) {}
+  // CHECK-LABEL: firrtl.module @ModuleWithInstanceAttributes
+  firrtl.module @ModuleWithInstanceAttributes() {
+    // CHECK-NEXT: firrtl.instance
+    // CHECK-SAME:   hello = "world"
+    // CHECK-SAME:   lowerToBind
+    // CHECK-SAME:   output_file = #hw.output_file<"Foo.sv">
+    %sub_a = firrtl.instance sub {
+      hello = "world",
+      lowerToBind,
+      output_file = #hw.output_file<"Foo.sv">
+    } @SubmoduleWithAggregate(out a: !firrtl.vector<uint<1>, 1>)
   }
 
 } // CIRCUIT
@@ -1161,7 +1177,7 @@ firrtl.circuit "DontTouch" {
 
 // Check that we don't create symbols for non-local annotations.
 firrtl.circuit "Foo"  {
-  firrtl.hierpath private @nla [@Foo::@bar, @Bar]
+  hw.hierpath private @nla [@Foo::@bar, @Bar]
   // CHECK:       firrtl.module private @Bar(in %a_b:
   // CHECK-SAME:    !firrtl.uint<1> [{circt.nonlocal = @nla, class = "circt.test"}])
   firrtl.module private @Bar(in %a: !firrtl.bundle<b: uint<1>>

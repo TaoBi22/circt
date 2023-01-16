@@ -2,11 +2,11 @@
 
 from pycde import generator, types, dim
 from pycde.common import Clock, Input, Output
-from pycde.constructs import NamedWire, Reg, Wire, SystolicArray
+from pycde.constructs import ControlReg, NamedWire, Reg, Wire, SystolicArray
 from pycde.dialects import comb
 from pycde.testing import unittestmodule
 
-# CHECK-LABEL: msft.module @WireAndRegTest {} (%In: i8, %clk: i1) -> (Out: i8, OutReg: i8)
+# CHECK-LABEL: msft.module @WireAndRegTest {} (%In: i8, %InCE: i1, %clk: i1, %rst: i1) -> (Out: i8, OutReg: i8, OutRegRst: i8, OutRegCE: i8)
 # CHECK:         [[r0:%.+]] = comb.extract %In from 0 {sv.namehint = "In_0upto7"} : (i8) -> i7
 # CHECK:         [[r1:%.+]] = comb.extract %In from 7 {sv.namehint = "In_7upto8"} : (i8) -> i1
 # CHECK:         [[r2:%.+]] = comb.concat [[r1]], [[r0]] {sv.namehint = "w1"} : i1, i7
@@ -14,15 +14,22 @@ from pycde.testing import unittestmodule
 # CHECK:         {{%.+}} = sv.read_inout %in {sv.namehint = "in"} : !hw.inout<i8>
 # CHECK:         sv.assign %in, %In : i8
 # CHECK:         [[r1:%.+]] = seq.compreg %In, %clk : i8
-# CHECK:         msft.output [[r2]], [[r1]] : i8, i8
+# CHECK:         %c0_i8{{.*}} = hw.constant 0 : i8
+# CHECK:         [[r5:%.+]] = seq.compreg %In, %clk, %rst, %c0_i8{{.*}}  : i8
+# CHECK:         [[r6:%.+]] = seq.compreg.ce %In, %clk, %InCE : i8
+# CHECK:         msft.output [[r2]], [[r1]], [[r5]], [[r6]] : i8, i8, i8, i8
 
 
 @unittestmodule()
 class WireAndRegTest:
   In = Input(types.i8)
+  InCE = Input(types.i1)
   clk = Clock()
+  rst = Input(types.i1)
   Out = Output(types.i8)
   OutReg = Output(types.i8)
+  OutRegRst = Output(types.i8)
+  OutRegCE = Output(types.i8)
 
   @generator
   def create(ports):
@@ -36,6 +43,14 @@ class WireAndRegTest:
     r1 = Reg(types.i8)
     ports.OutReg = r1
     r1.assign(ports.In)
+
+    r_rst = Reg(types.i8, rst=ports.rst, rst_value=0)
+    ports.OutRegRst = r_rst
+    r_rst.assign(ports.In)
+
+    r_ce = Reg(types.i8, ce=ports.InCE)
+    ports.OutRegCE = r_ce
+    r_ce.assign(ports.In)
 
 
 # CHECK-LABEL: %{{.+}} = msft.systolic.array [%{{.+}} : 3 x i8] [%{{.+}} : 2 x i8] pe (%arg0, %arg1) -> (i8) {
@@ -69,3 +84,29 @@ class SystolicArrayTest:
     pe_outputs = SystolicArray(ports.row_data, ports.col_data, pe)
 
     ports.out = pe_outputs
+
+
+# CHECK-LABEL:  msft.module @ControlReg_num_asserts2_num_resets1
+# CHECK:          [[r0:%.+]] = hw.array_get %asserts[%false]
+# CHECK:          [[r1:%.+]] = hw.array_get %asserts[%true]
+# CHECK:          [[r2:%.+]] = comb.or bin [[r0]], [[r1]]
+# CHECK:          [[r3:%.+]] = hw.array_get %resets[%c0_i0]
+# CHECK:          [[r4:%.+]] = comb.or bin [[r3]]
+# CHECK:          %state = seq.compreg [[r6]], %clk, %rst, %false{{.*}}
+# CHECK:          [[r5:%.+]] = comb.mux bin [[r4]], %false{{.*}}, %state
+# CHECK:          [[r6:%.+]] = comb.mux bin [[r2]], %true{{.*}}, [[r5]]
+# CHECK:          msft.output %state
+@unittestmodule()
+class ControlRegTest:
+  clk = Clock()
+  rst = Input(types.i1)
+  a1 = Input(types.i1)
+  a2 = Input(types.i1)
+  r1 = Input(types.i1)
+
+  @generator
+  def build(ports):
+    ControlReg(ports.clk,
+               ports.rst,
+               asserts=[ports.a1, ports.a2],
+               resets=[ports.r1])

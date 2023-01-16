@@ -228,31 +228,31 @@ StringAttr getResAttrsName(MLIRContext *context) {
 
 /// Return the symbol (if any, else null) on the corresponding input port
 /// argument.
-StringAttr hw::getArgSym(Operation *op, unsigned i) {
+InnerSymAttr hw::getArgSym(Operation *op, unsigned i) {
   assert(isAnyModuleOrInstance(op) &&
          "Can only get module ports from an instance or module");
-  StringAttr sym = {};
+  InnerSymAttr sym = {};
   auto argAttrs =
       op->getAttrOfType<ArrayAttr>(getArgAttrsName(op->getContext()));
   if (argAttrs && (i < argAttrs.size()))
     if (auto s = argAttrs[i].cast<DictionaryAttr>())
       if (auto symRef = s.get("hw.exportPort"))
-        sym = symRef.cast<FlatSymbolRefAttr>().getAttr();
+        sym = symRef.cast<InnerSymAttr>();
   return sym;
 }
 
 /// Return the symbol (if any, else null) on the corresponding output port
 /// argument.
-StringAttr hw::getResultSym(Operation *op, unsigned i) {
+InnerSymAttr hw::getResultSym(Operation *op, unsigned i) {
   assert(isAnyModuleOrInstance(op) &&
          "Can only get module ports from an instance or module");
-  StringAttr sym = {};
+  InnerSymAttr sym = {};
   auto resAttrs =
       op->getAttrOfType<ArrayAttr>(getResAttrsName(op->getContext()));
   if (resAttrs && (i < resAttrs.size()))
     if (auto s = resAttrs[i].cast<DictionaryAttr>())
       if (auto symRef = s.get("hw.exportPort"))
-        sym = symRef.cast<FlatSymbolRefAttr>().getAttr();
+        sym = symRef.cast<InnerSymAttr>();
   return sym;
 }
 
@@ -561,9 +561,8 @@ buildModule(OpBuilder &builder, OperationState &result, StringAttr name,
     argTypes.push_back(elt.type);
     argNames.push_back(elt.name);
     Attribute attr;
-    if (elt.sym && !elt.sym.getValue().empty())
-      attr = builder.getDictionaryAttr(
-          {{exportPortIdent, FlatSymbolRefAttr::get(elt.sym)}});
+    if (elt.sym && !elt.sym.empty())
+      attr = builder.getDictionaryAttr({{exportPortIdent, elt.sym}});
     else
       attr = builder.getDictionaryAttr({});
     argAttrs.push_back(attr);
@@ -573,9 +572,8 @@ buildModule(OpBuilder &builder, OperationState &result, StringAttr name,
     resultTypes.push_back(elt.type);
     resultNames.push_back(elt.name);
     Attribute attr;
-    if (elt.sym && !elt.sym.getValue().empty())
-      attr = builder.getDictionaryAttr(
-          {{exportPortIdent, FlatSymbolRefAttr::get(elt.sym)}});
+    if (elt.sym && !elt.sym.empty())
+      attr = builder.getDictionaryAttr({{exportPortIdent, elt.sym}});
     else
       attr = builder.getDictionaryAttr({});
     resultAttrs.push_back(attr);
@@ -643,10 +641,8 @@ static void modifyModuleArgs(
       if (port.direction == PortDirection::INOUT && !port.type.isa<InOutType>())
         port.type = InOutType::get(port.type);
       Attribute attr =
-          (port.sym && !port.sym.getValue().empty())
-              ? DictionaryAttr::get(
-                    context,
-                    {{exportPortAttrName, FlatSymbolRefAttr::get(port.sym)}})
+          (port.sym && !port.sym.empty())
+              ? DictionaryAttr::get(context, {{exportPortAttrName, port.sym}})
               : emptyDictAttr;
       newArgNames.push_back(port.name);
       newArgTypes.push_back(port.type);
@@ -1541,8 +1537,8 @@ GlobalRefOp::verifySymbolUses(mlir::SymbolTableCollection &symTables) {
                 cast<mlir::FunctionOpInterface>(mod).getArgAttrsAttr())
           for (auto attr :
                argAttrs.cast<ArrayAttr>().getAsRange<DictionaryAttr>())
-            if (auto symRef = attr.get("hw.exportPort"))
-              if (symRef.cast<FlatSymbolRefAttr>().getValue() == innerSym)
+            if (auto symRef = attr.getAs<hw::InnerSymAttr>("hw.exportPort"))
+              if (symRef.getSymName() == innerSym)
                 if (hasGlobalRef(attr.get(GlobalRefAttr::DialectAttrName)))
                   return success();
 
@@ -1550,8 +1546,8 @@ GlobalRefOp::verifySymbolUses(mlir::SymbolTableCollection &symTables) {
                 cast<mlir::FunctionOpInterface>(mod).getResAttrsAttr())
           for (auto attr :
                resAttrs.cast<ArrayAttr>().getAsRange<DictionaryAttr>())
-            if (auto symRef = attr.get("hw.exportPort"))
-              if (symRef.cast<FlatSymbolRefAttr>().getValue() == innerSym)
+            if (auto symRef = attr.getAs<hw::InnerSymAttr>("hw.exportPort"))
+              if (symRef.getSymName() == innerSym)
                 if (hasGlobalRef(attr.get(GlobalRefAttr::DialectAttrName)))
                   return success();
       }
@@ -1735,7 +1731,7 @@ Value ArrayCreateOp::getUniformElement() {
   return {};
 }
 
-static Optional<uint64_t> getUIntFromValue(Value value) {
+static std::optional<uint64_t> getUIntFromValue(Value value) {
   auto idxOp = dyn_cast_or_null<ConstantOp>(value.getDefiningOp());
   if (!idxOp)
     return std::nullopt;
@@ -1766,7 +1762,8 @@ LogicalResult ArraySliceOp::canonicalize(ArraySliceOp op,
   auto sliceTy = hw::type_cast<ArrayType>(op.getType());
   auto elemTy = sliceTy.getElementType();
   uint64_t sliceSize = sliceTy.getSize();
-  assert(sliceSize != 0 && "empty slice");
+  if (sliceSize == 0)
+    return failure();
 
   if (sliceSize == 1) {
     // slice(a, n) -> create(a[n])
@@ -1953,7 +1950,7 @@ static bool mergeConcatSlices(ArrayConcatOp op, PatternRewriter &rewriter) {
   };
 
   SmallVector<Value> items;
-  Optional<Slice> last;
+  std::optional<Slice> last;
   bool changed = false;
 
   auto concatenate = [&] {
@@ -2622,6 +2619,342 @@ LogicalResult BitcastOp::canonicalize(BitcastOp op, PatternRewriter &rewriter) {
 LogicalResult BitcastOp::verify() {
   if (getBitWidth(getInput().getType()) != getBitWidth(getResult().getType()))
     return this->emitOpError("Bitwidth of input must match result");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// HierPathOp helpers.
+//===----------------------------------------------------------------------===//
+
+bool HierPathOp::dropModule(StringAttr moduleToDrop) {
+  SmallVector<Attribute, 4> newPath;
+  bool updateMade = false;
+  for (auto nameRef : getNamepath()) {
+    // nameRef is either an InnerRefAttr or a FlatSymbolRefAttr.
+    if (auto ref = nameRef.dyn_cast<hw::InnerRefAttr>()) {
+      if (ref.getModule() == moduleToDrop)
+        updateMade = true;
+      else
+        newPath.push_back(ref);
+    } else {
+      if (nameRef.cast<FlatSymbolRefAttr>().getAttr() == moduleToDrop)
+        updateMade = true;
+      else
+        newPath.push_back(nameRef);
+    }
+  }
+  if (updateMade)
+    setNamepathAttr(ArrayAttr::get(getContext(), newPath));
+  return updateMade;
+}
+
+bool HierPathOp::inlineModule(StringAttr moduleToDrop) {
+  SmallVector<Attribute, 4> newPath;
+  bool updateMade = false;
+  StringRef inlinedInstanceName = "";
+  for (auto nameRef : getNamepath()) {
+    // nameRef is either an InnerRefAttr or a FlatSymbolRefAttr.
+    if (auto ref = nameRef.dyn_cast<hw::InnerRefAttr>()) {
+      if (ref.getModule() == moduleToDrop) {
+        inlinedInstanceName = ref.getName().getValue();
+        updateMade = true;
+      } else if (!inlinedInstanceName.empty()) {
+        newPath.push_back(hw::InnerRefAttr::get(
+            ref.getModule(),
+            StringAttr::get(getContext(), inlinedInstanceName + "_" +
+                                              ref.getName().getValue())));
+        inlinedInstanceName = "";
+      } else
+        newPath.push_back(ref);
+    } else {
+      if (nameRef.cast<FlatSymbolRefAttr>().getAttr() == moduleToDrop)
+        updateMade = true;
+      else
+        newPath.push_back(nameRef);
+    }
+  }
+  if (updateMade)
+    setNamepathAttr(ArrayAttr::get(getContext(), newPath));
+  return updateMade;
+}
+
+bool HierPathOp::updateModule(StringAttr oldMod, StringAttr newMod) {
+  SmallVector<Attribute, 4> newPath;
+  bool updateMade = false;
+  for (auto nameRef : getNamepath()) {
+    // nameRef is either an InnerRefAttr or a FlatSymbolRefAttr.
+    if (auto ref = nameRef.dyn_cast<hw::InnerRefAttr>()) {
+      if (ref.getModule() == oldMod) {
+        newPath.push_back(hw::InnerRefAttr::get(newMod, ref.getName()));
+        updateMade = true;
+      } else
+        newPath.push_back(ref);
+    } else {
+      if (nameRef.cast<FlatSymbolRefAttr>().getAttr() == oldMod) {
+        newPath.push_back(FlatSymbolRefAttr::get(newMod));
+        updateMade = true;
+      } else
+        newPath.push_back(nameRef);
+    }
+  }
+  if (updateMade)
+    setNamepathAttr(ArrayAttr::get(getContext(), newPath));
+  return updateMade;
+}
+
+bool HierPathOp::updateModuleAndInnerRef(
+    StringAttr oldMod, StringAttr newMod,
+    const llvm::DenseMap<StringAttr, StringAttr> &innerSymRenameMap) {
+  auto fromRef = FlatSymbolRefAttr::get(oldMod);
+  if (oldMod == newMod)
+    return false;
+
+  auto namepathNew = getNamepath().getValue().vec();
+  bool updateMade = false;
+  // Break from the loop if the module is found, since it can occur only once.
+  for (auto &element : namepathNew) {
+    if (auto innerRef = element.dyn_cast<hw::InnerRefAttr>()) {
+      if (innerRef.getModule() != oldMod)
+        continue;
+      auto symName = innerRef.getName();
+      // Since the module got updated, the old innerRef symbol inside oldMod
+      // should also be updated to the new symbol inside the newMod.
+      auto to = innerSymRenameMap.find(symName);
+      if (to != innerSymRenameMap.end())
+        symName = to->second;
+      updateMade = true;
+      element = hw::InnerRefAttr::get(newMod, symName);
+      break;
+    }
+    if (element != fromRef)
+      continue;
+
+    updateMade = true;
+    element = FlatSymbolRefAttr::get(newMod);
+    break;
+  }
+  if (updateMade)
+    setNamepathAttr(ArrayAttr::get(getContext(), namepathNew));
+  return updateMade;
+}
+
+bool HierPathOp::truncateAtModule(StringAttr atMod, bool includeMod) {
+  SmallVector<Attribute, 4> newPath;
+  bool updateMade = false;
+  for (auto nameRef : getNamepath()) {
+    // nameRef is either an InnerRefAttr or a FlatSymbolRefAttr.
+    if (auto ref = nameRef.dyn_cast<hw::InnerRefAttr>()) {
+      if (ref.getModule() == atMod) {
+        updateMade = true;
+        if (includeMod)
+          newPath.push_back(ref);
+      } else
+        newPath.push_back(ref);
+    } else {
+      if (nameRef.cast<FlatSymbolRefAttr>().getAttr() == atMod && !includeMod)
+        updateMade = true;
+      else
+        newPath.push_back(nameRef);
+    }
+    if (updateMade)
+      break;
+  }
+  if (updateMade)
+    setNamepathAttr(ArrayAttr::get(getContext(), newPath));
+  return updateMade;
+}
+
+/// Return just the module part of the namepath at a specific index.
+StringAttr HierPathOp::modPart(unsigned i) {
+  return TypeSwitch<Attribute, StringAttr>(getNamepath()[i])
+      .Case<FlatSymbolRefAttr>([](auto a) { return a.getAttr(); })
+      .Case<hw::InnerRefAttr>([](auto a) { return a.getModule(); });
+}
+
+/// Return the root module.
+StringAttr HierPathOp::root() {
+  assert(!getNamepath().empty());
+  return modPart(0);
+}
+
+/// Return true if the NLA has the module in its path.
+bool HierPathOp::hasModule(StringAttr modName) {
+  for (auto nameRef : getNamepath()) {
+    // nameRef is either an InnerRefAttr or a FlatSymbolRefAttr.
+    if (auto ref = nameRef.dyn_cast<hw::InnerRefAttr>()) {
+      if (ref.getModule() == modName)
+        return true;
+    } else {
+      if (nameRef.cast<FlatSymbolRefAttr>().getAttr() == modName)
+        return true;
+    }
+  }
+  return false;
+}
+
+/// Return true if the NLA has the InnerSym .
+bool HierPathOp::hasInnerSym(StringAttr modName, StringAttr symName) const {
+  for (auto nameRef : const_cast<HierPathOp *>(this)->getNamepath())
+    if (auto ref = nameRef.dyn_cast<hw::InnerRefAttr>())
+      if (ref.getName() == symName && ref.getModule() == modName)
+        return true;
+
+  return false;
+}
+
+/// Return just the reference part of the namepath at a specific index.  This
+/// will return an empty attribute if this is the leaf and the leaf is a module.
+StringAttr HierPathOp::refPart(unsigned i) {
+  return TypeSwitch<Attribute, StringAttr>(getNamepath()[i])
+      .Case<FlatSymbolRefAttr>([](auto a) { return StringAttr({}); })
+      .Case<hw::InnerRefAttr>([](auto a) { return a.getName(); });
+}
+
+/// Return the leaf reference.  This returns an empty attribute if the leaf
+/// reference is a module.
+StringAttr HierPathOp::ref() {
+  assert(!getNamepath().empty());
+  return refPart(getNamepath().size() - 1);
+}
+
+/// Return the leaf module.
+StringAttr HierPathOp::leafMod() {
+  assert(!getNamepath().empty());
+  return modPart(getNamepath().size() - 1);
+}
+
+/// Returns true if this NLA targets an instance of a module (as opposed to
+/// an instance's port or something inside an instance).
+bool HierPathOp::isModule() { return !ref(); }
+
+/// Returns true if this NLA targets something inside a module (as opposed
+/// to a module or an instance of a module);
+bool HierPathOp::isComponent() { return (bool)ref(); }
+
+// Verify the HierPathOp.
+// 1. Iterate over the namepath.
+// 2. The namepath should be a valid instance path, specified either on a
+// module or a declaration inside a module.
+// 3. Each element in the namepath is an InnerRefAttr except possibly the
+// last element.
+// 4. Make sure that the InnerRefAttr is legal, by verifying the module name
+// and the corresponding inner_sym on the instance.
+// 5. Make sure that the instance path is legal, by verifying the sequence of
+// instance and the expected module occurs as the next element in the path.
+// 6. The last element of the namepath, can be an InnerRefAttr on either a
+// module port or a declaration inside the module.
+// 7. The last element of the namepath can also be a module symbol.
+LogicalResult HierPathOp::verifyInnerRefs(hw::InnerRefNamespace &ns) {
+  if (getNamepath().size() <= 1)
+    return emitOpError()
+           << "the instance path cannot be empty/single element, it "
+              "must specify an instance path.";
+
+  StringAttr expectedModuleName = {};
+  for (unsigned i = 0, s = getNamepath().size() - 1; i < s; ++i) {
+    hw::InnerRefAttr innerRef = getNamepath()[i].dyn_cast<hw::InnerRefAttr>();
+    if (!innerRef)
+      return emitOpError()
+             << "the instance path can only contain inner sym reference"
+             << ", only the leaf can refer to a module symbol";
+
+    if (expectedModuleName && expectedModuleName != innerRef.getModule())
+      return emitOpError() << "instance path is incorrect. Expected module: "
+                           << expectedModuleName
+                           << " instead found: " << innerRef.getModule();
+    HWInstanceLike instOp = ns.lookupOp<HWInstanceLike>(innerRef);
+    if (!instOp)
+      return emitOpError() << " module: " << innerRef.getModule()
+                           << " does not contain any instance with symbol: "
+                           << innerRef.getName();
+    expectedModuleName = instOp.referencedModuleNameAttr();
+  }
+  // The instance path has been verified. Now verify the last element.
+  auto leafRef = getNamepath()[getNamepath().size() - 1];
+  if (auto innerRef = leafRef.dyn_cast<hw::InnerRefAttr>()) {
+    if (!ns.lookup(innerRef)) {
+      return emitOpError() << " operation with symbol: " << innerRef
+                           << " was not found ";
+    }
+    if (expectedModuleName && expectedModuleName != innerRef.getModule())
+      return emitOpError() << "instance path is incorrect. Expected module: "
+                           << expectedModuleName
+                           << " instead found: " << innerRef.getModule();
+  } else if (expectedModuleName !=
+             leafRef.cast<FlatSymbolRefAttr>().getAttr()) {
+    // This is the case when the nla is applied to a module.
+    return emitOpError() << "instance path is incorrect. Expected module: "
+                         << expectedModuleName << " instead found: "
+                         << leafRef.cast<FlatSymbolRefAttr>().getAttr();
+  }
+  return success();
+}
+
+void HierPathOp::print(OpAsmPrinter &p) {
+  p << " ";
+
+  // Print visibility if present.
+  StringRef visibilityAttrName = SymbolTable::getVisibilityAttrName();
+  if (auto visibility =
+          getOperation()->getAttrOfType<StringAttr>(visibilityAttrName))
+    p << visibility.getValue() << ' ';
+
+  p.printSymbolName(getSymName());
+  p << " [";
+  llvm::interleaveComma(getNamepath().getValue(), p, [&](Attribute attr) {
+    if (auto ref = attr.dyn_cast<hw::InnerRefAttr>()) {
+      p.printSymbolName(ref.getModule().getValue());
+      p << "::";
+      p.printSymbolName(ref.getName().getValue());
+    } else {
+      p.printSymbolName(attr.cast<FlatSymbolRefAttr>().getValue());
+    }
+  });
+  p << "]";
+  p.printOptionalAttrDict(
+      (*this)->getAttrs(),
+      {SymbolTable::getSymbolAttrName(), "namepath", visibilityAttrName});
+}
+
+ParseResult HierPathOp::parse(OpAsmParser &parser, OperationState &result) {
+  // Parse the visibility attribute.
+  (void)mlir::impl::parseOptionalVisibilityKeyword(parser, result.attributes);
+
+  // Parse the symbol name.
+  StringAttr symName;
+  if (parser.parseSymbolName(symName, SymbolTable::getSymbolAttrName(),
+                             result.attributes))
+    return failure();
+
+  // Parse the namepath.
+  SmallVector<Attribute> namepath;
+  if (parser.parseCommaSeparatedList(
+          OpAsmParser::Delimiter::Square, [&]() -> ParseResult {
+            auto loc = parser.getCurrentLocation();
+            SymbolRefAttr ref;
+            if (parser.parseAttribute(ref))
+              return failure();
+
+            // "A" is a Ref, "A::b" is a InnerRef, "A::B::c" is an error.
+            auto pathLength = ref.getNestedReferences().size();
+            if (pathLength == 0)
+              namepath.push_back(
+                  FlatSymbolRefAttr::get(ref.getRootReference()));
+            else if (pathLength == 1)
+              namepath.push_back(hw::InnerRefAttr::get(ref.getRootReference(),
+                                                       ref.getLeafReference()));
+            else
+              return parser.emitError(loc,
+                                      "only one nested reference is allowed");
+            return success();
+          }))
+    return failure();
+  result.addAttribute("namepath",
+                      ArrayAttr::get(parser.getContext(), namepath));
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
   return success();
 }
 

@@ -113,7 +113,7 @@ struct FIRParser {
   FIRLexer &getLexer() { return lexer; }
 
   /// Return the indentation level of the specified token.
-  Optional<unsigned> getIndentation() const {
+  std::optional<unsigned> getIndentation() const {
     return lexer.getIndentation(getToken());
   }
 
@@ -339,7 +339,7 @@ private:
   SMLoc firLoc;
 
   /// This is the location specified by the @ marker if present.
-  Optional<Location> infoLoc;
+  std::optional<Location> infoLoc;
 };
 
 /// Parse an @info marker if present.  If so, fill in the specified Location,
@@ -370,7 +370,7 @@ ParseResult FIRParser::parseOptionalInfoLocator(LocationAttr &result) {
     return success();
 
   // Otherwise, set the location attribute and return.
-  result = locationPair.second.value();
+  result = *locationPair.second;
   return success();
 }
 
@@ -709,7 +709,7 @@ ParseResult FIRParser::parseType(FIRRTLType &result, const Twine &message) {
           return success();
         }))
       return failure();
-    result = BundleType::get(elements, getContext());
+    result = BundleType::get(getContext(), elements);
     break;
   }
   }
@@ -1148,7 +1148,7 @@ private:
   ParseResult parsePrimExp(Value &result);
   ParseResult parseIntegerLiteralExp(Value &result);
 
-  Optional<ParseResult> parseExpWithLeadingKeyword(FIRToken keyword);
+  std::optional<ParseResult> parseExpWithLeadingKeyword(FIRToken keyword);
 
   // Stmt Parsing
   ParseResult parseAttach();
@@ -1610,9 +1610,6 @@ ParseResult FIRStmtParser::parsePrimExp(Value &result) {
   default:
     emitError(loc, "primitive not supported yet");
     return failure();
-  case FIRToken::lp_validif:
-    numOperandsExpected = 2;
-    break;
 #define TOK_LPKEYWORD_PRIM(SPELLING, CLASS, NUMOPERANDS)                       \
   case FIRToken::lp_##SPELLING:                                                \
     numOperandsExpected = NUMOPERANDS;                                         \
@@ -1672,31 +1669,6 @@ ParseResult FIRStmtParser::parsePrimExp(Value &result) {
     return success();                                                          \
   }
 #include "FIRTokenKinds.def"
-
-  // Expand `validif(a, b)` expressions to simply `b`.  A `validif` expression
-  // is converted to a direct connect by the Scala FIRRTL Compiler's
-  // `RemoveValidIfs` pass.  We circumvent that and just squash these during
-  // parsing.
-  case FIRToken::lp_validif: {
-    if (opTypes.size() != 2 || !integers.empty()) {
-      emitError(loc, "operation requires two operands and no constants");
-      return failure();
-    }
-    auto lhsUInt = opTypes[0].dyn_cast<UIntType>();
-    if (!lhsUInt) {
-      emitError(loc, "first operand should have UInt type");
-      return failure();
-    }
-    auto lhsWidth = lhsUInt.getWidthOrSentinel();
-    if (lhsWidth != -1 && lhsWidth != 1) {
-      emitError(loc, "first operand should have 'uint<1>' type");
-      return failure();
-    }
-
-    // Skip the `validif` and emit the second, non-condition operand.
-    result = operands[1];
-    return success();
-  }
   }
 
   llvm_unreachable("all cases should return");
@@ -1718,36 +1690,21 @@ ParseResult FIRStmtParser::parseIntegerLiteralExp(Value &result) {
       parseToken(FIRToken::r_paren, "expected ')' in integer expression"))
     return failure();
 
-  if (width == 0)
-    return emitError(loc, "zero bit constants are not allowed"), failure();
-
   // Construct an integer attribute of the right width.
   auto type = IntType::get(builder.getContext(), isSigned, width);
 
-  IntegerType::SignednessSemantics signedness;
-  if (isSigned) {
-    signedness = IntegerType::Signed;
-    if (width != -1) {
-      // Check for overlow if we are truncating bits.
-      if (unsigned(width) < value.getBitWidth() &&
-          value.getNumSignBits() <= value.getBitWidth() - width) {
-        return emitError(loc, "initializer too wide for declared width"),
-               failure();
-      }
-
-      value = value.sextOrTrunc(width);
-    }
-  } else {
-    signedness = IntegerType::Unsigned;
-    if (width != -1) {
-      // Check for overlow if we are truncating bits.
-      if (unsigned(width) < value.getBitWidth() &&
-          value.countLeadingZeros() < value.getBitWidth() - width) {
-        return emitError(loc, "initializer too wide for declared width"),
-               failure();
-      }
-      value = value.zextOrTrunc(width);
-    }
+  IntegerType::SignednessSemantics signedness =
+      isSigned ? IntegerType::Signed : IntegerType::Unsigned;
+  if (width == 0) {
+    if (!value.isZero())
+      return emitError(loc, "zero bit constant must be zero");
+    value = value.trunc(0);
+  } else if (width != -1) {
+    // Convert to the type's width, checking value fits in destination width.
+    bool valueFits = isSigned ? value.isSignedIntN(width) : value.isIntN(width);
+    if (!valueFits)
+      return emitError(loc, "initializer too wide for declared width");
+    value = isSigned ? value.sextOrTrunc(width) : value.zextOrTrunc(width);
   }
 
   Type attrType =
@@ -1802,7 +1759,7 @@ ParseResult FIRStmtParser::parseIntegerLiteralExp(Value &result) {
 /// expression.  If so, they parse the expression-based statement and return the
 /// parser result.  If not, they return None and the statement is parsed like
 /// normal.
-Optional<ParseResult>
+std::optional<ParseResult>
 FIRStmtParser::parseExpWithLeadingKeyword(FIRToken keyword) {
   switch (getToken().getKind()) {
   default:
@@ -3178,7 +3135,7 @@ ParseResult FIRCircuitParser::parseCircuit(
 
   if (!indent.has_value())
     return emitError("'circuit' must be first token on its line"), failure();
-  unsigned circuitIndent = indent.value();
+  unsigned circuitIndent = *indent;
 
   LocWithInfo info(getToken().getLoc(), this);
   StringAttr name;
@@ -3215,7 +3172,7 @@ ParseResult FIRCircuitParser::parseCircuit(
 
   // Deal with the annotation file if one was specified
   for (auto *annotationsBuf : annotationsBufs)
-    if (importAnnotationsRaw(inlineAnnotationsLoc, circuitTarget,
+    if (importAnnotationsRaw(info.getFIRLoc(), circuitTarget,
                              annotationsBuf->getBuffer(), annos))
       return failure();
 
@@ -3262,7 +3219,7 @@ ParseResult FIRCircuitParser::parseCircuit(
       auto indent = getIndentation();
       if (!indent.has_value())
         return emitError("'module' must be first token on its line"), failure();
-      unsigned moduleIndent = indent.value();
+      unsigned moduleIndent = *indent;
 
       if (moduleIndent <= circuitIndent)
         return emitError("module should be indented more"), failure();

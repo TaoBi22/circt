@@ -168,6 +168,7 @@ FIRLexer::FIRLexer(const llvm::SourceMgr &sourceMgr, MLIRContext *context)
 /// Encode the specified source location information into a Location object
 /// for attachment to the IR or error reporting.
 Location FIRLexer::translateLocation(llvm::SMLoc loc) {
+  assert(loc.isValid());
   unsigned mainFileID = sourceMgr.getMainFileID();
   auto lineAndColumn = sourceMgr.getLineAndColumn(loc, mainFileID);
   return FileLineColLoc::get(bufferNameIdentifier, lineAndColumn.first,
@@ -181,7 +182,7 @@ FIRToken FIRLexer::emitError(const char *loc, const Twine &message) {
 }
 
 /// Return the indentation level of the specified token.
-Optional<unsigned> FIRLexer::getIndentation(const FIRToken &tok) const {
+std::optional<unsigned> FIRLexer::getIndentation(const FIRToken &tok) const {
   // Count the number of horizontal whitespace characters before the token.
   auto *bufStart = curBuffer.begin();
 
