@@ -1,14 +1,16 @@
 # circt-lec builds if a logic backend is found
 if(CIRCT_LEC_ENABLED)
-  list(APPEND CIRCT_LEC_SOURCES
-    circt-lec.cpp
-  )
 
   list(APPEND CIRCT_LEC_LIBS
     CIRCTSMT
+    ${CIRCT_Z3_LIBS}
   )
 
-  add_llvm_tool(circt-lec ${CIRCT_LEC_SOURCES})
+  list(APPEND CIRCT_LEC_INCLUDES
+    ${CIRCT_Z3_INCLUDES}
+  )
+
+  add_llvm_tool(circt-lec circt-lec.cpp)
   target_link_libraries(circt-lec PRIVATE ${CIRCT_LEC_LIBS})
   target_include_directories(circt-lec PRIVATE ${CIRCT_LEC_INCLUDES})
 
