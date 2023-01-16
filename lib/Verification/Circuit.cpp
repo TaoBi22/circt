@@ -122,15 +122,15 @@ void Solver::Circuit::addInstance(llvm::StringRef instanceName,
     constrainResult(result, op);                                               \
   }
 
-performVariadicCombOp(Add, op1 + op2);
+performVariadicCombOp(Add, op1 + op2)
 
-performVariadicCombOp(And, z3::operator&(op1, op2));
+performVariadicCombOp(And, z3::operator&(op1, op2))
 
-performVariadicCombOp(Concat, z3::concat(op1, op2));
+performVariadicCombOp(Concat, z3::concat(op1, op2))
 
-performBinaryCombOp(DivS, operator/);
+performBinaryCombOp(DivS, operator/)
 
-performBinaryCombOp(DivU, udiv);
+performBinaryCombOp(DivU, udiv)
 
 void Solver::Circuit::performExtract(mlir::Value result, mlir::Value input,
                                      uint32_t lowBit) {
@@ -197,11 +197,11 @@ void Solver::Circuit::performICmp(mlir::Value result,
   constrainResult(result, icmp);
 }
 
-performBinaryCombOp(ModS, smod);
+performBinaryCombOp(ModS, smod)
 
-performBinaryCombOp(ModU, urem);
+performBinaryCombOp(ModU, urem)
 
-performVariadicCombOp(Mul, op1 *op2);
+performVariadicCombOp(Mul, op1 *op2)
 
 void Solver::Circuit::performMux(mlir::Value result, mlir::Value cond,
                                  mlir::Value trueValue,
@@ -219,7 +219,7 @@ void Solver::Circuit::performMux(mlir::Value result, mlir::Value cond,
   constrainResult(result, mux);
 }
 
-performVariadicCombOp(Or, op1 | op2);
+performVariadicCombOp(Or, op1 | op2)
 
 void Solver::Circuit::performParity(mlir::Value result, mlir::Value input) {
   LLVM_DEBUG(lec::dbgs << name << " performParity\n");
@@ -258,17 +258,17 @@ void Solver::Circuit::performReplicate(mlir::Value result, mlir::Value input) {
   constrainResult(result, replicate);
 }
 
-performBinaryCombOp(Shl, shl);
+performBinaryCombOp(Shl, shl)
 
 // Arithmetic shift right.
-performBinaryCombOp(ShrS, ashr);
+performBinaryCombOp(ShrS, ashr)
 
 // Logical shift right.
-performBinaryCombOp(ShrU, lshr);
+performBinaryCombOp(ShrU, lshr)
 
-performVariadicCombOp(Sub, op1 - op2);
+performVariadicCombOp(Sub, op1 - op2)
 
-performVariadicCombOp(Xor, op1 ^ op2);
+performVariadicCombOp(Xor, op1 ^ op2)
 
 /// Helper function for performing a variadic operation: it executes a lambda
 /// over a range of operands.
