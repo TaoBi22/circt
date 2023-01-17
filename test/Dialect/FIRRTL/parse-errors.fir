@@ -215,10 +215,24 @@ circuit Issue418:
 
 ;// -----
 
-circuit Issue426:
-  module Issue426:
-    ; expected-error @+1 {{zero bit constants are not allowed}}
-    node x = UInt<0>("h0")
+circuit Issue3799:
+  module Issue3799:
+    output a: UInt<0>
+    a <= UInt<0>(0) ; ok
+    a <= UInt<0>(-0) ; ok
+    ; expected-error @below {{zero bit constant must be zero}}
+    a <= UInt<0>(1)
+
+;// -----
+
+circuit Issue3799:
+  module Issue3799:
+    output a: SInt<0>
+    a <= SInt<0>(0) ; ok
+    a <= SInt<0>(-0) ; ok
+    ; expected-error @below {{zero bit constant must be zero}}
+    a <= SInt<0>(1)
+
 
 ;// -----
 
@@ -261,30 +275,6 @@ circuit circuit:
     input in: UInt<80>
     inst xyz of circuit
     node n = xyz.foo   ; expected-error {{use of invalid field name 'foo' on bundle value}}
-
-;// -----
-
-circuit Issue886:
-  module Issue886 :
-    input a: SInt<1>
-    input b: UInt<42>
-    node n = validif(a, b)  ; expected-error {{first operand should have UInt type}}
-
-;// -----
-
-circuit Issue886:
-  module Issue886 :
-    input a: UInt<2>
-    input b: UInt<42>
-    node n = validif(a, b)  ; expected-error {{first operand should have 'uint<1>' type}}
-
-;// -----
-
-circuit Issue886:
-  module Issue886 :
-    input a: UInt<1>
-    input b: UInt<42>
-    node n = validif(a, b, b)  ; expected-error {{operation requires two operands}}
 
 ;// -----
 

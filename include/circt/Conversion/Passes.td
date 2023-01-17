@@ -297,8 +297,8 @@ def LowerFIRRTLToHW : Pass<"lower-firrtl-to-hw", "mlir::ModuleOp"> {
     "Emit warnings on unprocessed annotations during lower-to-hw pass">,
     Option<"emitChiselAssertsAsSVA", "emit-chisel-asserts-as-sva",
            "bool", "false","Convert all Chisel asserts to SVA">,
-    Option<"stripMuxPragmas", "strip-mux-pragmas", "bool", "false",
-            "Do not annotate mux pragmas to multibit mux and subacess results">
+    Option<"addMuxPragmas", "add-mux-pragmas", "bool", "false",
+            "Annotate mux pragmas to multibit mux and subacess results">
   ];
 }
 
@@ -466,6 +466,18 @@ def InsertMergeBlocks : Pass<"insert-merge-blocks", "::mlir::ModuleOp"> {
   }];
   let constructor = "circt::createInsertMergeBlocksPass()";
   let dependentDialects = ["mlir::cf::ControlFlowDialect", "mlir::func::FuncDialect"];
+}
+
+def MaximizeSSA : Pass<"maximize-ssa", "::mlir::ModuleOp"> {
+  let summary = "Convert every function in the module into maximal SSA form";
+  let description = [{
+    Convert the region within every function into maximal SSA form. This
+    ensures that every value used within a block is also defined within the
+    block, making dataflow explicit and removing block dominance-based dataflow
+    semantics. The pass achieves this by adding block arguments wherever
+    necessary to forward values to the block(s) where they are used.
+  }];
+  let constructor = "circt::createMaximizeSSAPass()";
 }
 
 #endif // CIRCT_CONVERSION_PASSES_TD

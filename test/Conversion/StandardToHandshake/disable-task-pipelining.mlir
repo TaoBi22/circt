@@ -3,22 +3,23 @@
 
 // CHECK-LABEL:   handshake.func @simple_loop(
 // CHECK-SAME:                                %[[VAL_0:.*]]: none, ...) -> none
-// CHECK:           %[[VAL_1:.*]] = br %[[VAL_0]] : none
+// CHECK:           %[[VAL_0x:.*]] = merge %[[VAL_0]] : none
+// CHECK:           %[[VAL_1:.*]] = br %[[VAL_0x]] : none
 // CHECK:           %[[VAL_2:.*]], %[[VAL_3:.*]] = control_merge %[[VAL_1]] : none
 // CHECK:           %[[VAL_4:.*]] = constant %[[VAL_2]] {value = 1 : index} : index
 // CHECK:           %[[VAL_5:.*]] = constant %[[VAL_2]] {value = 42 : index} : index
 // CHECK:           %[[VAL_6:.*]] = br %[[VAL_2]] : none
 // CHECK:           %[[VAL_7:.*]] = br %[[VAL_4]] : index
 // CHECK:           %[[VAL_8:.*]] = br %[[VAL_5]] : index
-// CHECK:           %[[VAL_9:.*]] = mux %[[VAL_10:.*]] {{\[}}%[[VAL_11:.*]], %[[VAL_8]]] : index, index
+// CHECK:           %[[VAL_14:.*]] = mux %[[VAL_10:.*]] {{\[}}%[[VAL_15:.*]], %[[VAL_7]]] : index, index
+// CHECK:           %[[VAL_9:.*]] = mux %[[VAL_10]] {{\[}}%[[VAL_11:.*]], %[[VAL_8]]] : index, index
 // CHECK:           %[[VAL_12:.*]], %[[VAL_10]] = control_merge %[[VAL_13:.*]], %[[VAL_6]] : none
-// CHECK:           %[[VAL_14:.*]] = mux %[[VAL_10]] {{\[}}%[[VAL_15:.*]], %[[VAL_7]]] : index, index
 // CHECK:           %[[VAL_16:.*]] = arith.cmpi slt, %[[VAL_14]], %[[VAL_9]] : index
+// CHECK:           %[[VAL_21:.*]], %[[VAL_22:.*]] = cond_br %[[VAL_16]], %[[VAL_14]] : index
 // CHECK:           %[[VAL_17:.*]], %[[VAL_18:.*]] = cond_br %[[VAL_16]], %[[VAL_9]] : index
 // CHECK:           %[[VAL_19:.*]], %[[VAL_20:.*]] = cond_br %[[VAL_16]], %[[VAL_12]] : none
-// CHECK:           %[[VAL_21:.*]], %[[VAL_22:.*]] = cond_br %[[VAL_16]], %[[VAL_14]] : index
-// CHECK:           %[[VAL_23:.*]] = merge %[[VAL_21]] : index
 // CHECK:           %[[VAL_24:.*]] = merge %[[VAL_17]] : index
+// CHECK:           %[[VAL_23:.*]] = merge %[[VAL_21]] : index
 // CHECK:           %[[VAL_25:.*]], %[[VAL_26:.*]] = control_merge %[[VAL_19]] : none
 // CHECK:           %[[VAL_27:.*]] = constant %[[VAL_25]] {value = 1 : index} : index
 // CHECK:           %[[VAL_28:.*]] = arith.addi %[[VAL_23]], %[[VAL_27]] : index
@@ -54,18 +55,19 @@ func.func @simple_loop() {
 // CHECK-SAME:                                  %[[VAL_2:.*]]: none, ...) -> none
 // CHECK:           %[[VAL_3:.*]] = merge %[[VAL_0]] : i1
 // CHECK:           %[[VAL_4:.*]] = merge %[[VAL_1]] : i64
+// CHECK:           %[[VAL_2x:.*]] = merge %[[VAL_2]] : none
 // CHECK:           %[[VAL_5:.*]], %[[VAL_6:.*]] = cond_br %[[VAL_3]], %[[VAL_4]] : i64
-// CHECK:           %[[VAL_7:.*]], %[[VAL_8:.*]] = cond_br %[[VAL_3]], %[[VAL_2]] : none
-// CHECK:           %[[VAL_9:.*]], %[[VAL_10:.*]] = control_merge %[[VAL_7]] : none
+// CHECK:           %[[VAL_7:.*]], %[[VAL_8:.*]] = cond_br %[[VAL_3]], %[[VAL_2x]] : none
 // CHECK:           %[[VAL_11:.*]] = merge %[[VAL_5]] : i64
-// CHECK:           %[[VAL_12:.*]] = br %[[VAL_9]] : none
+// CHECK:           %[[VAL_9:.*]], %[[VAL_10:.*]] = control_merge %[[VAL_7]] : none
 // CHECK:           %[[VAL_13:.*]] = br %[[VAL_11]] : i64
-// CHECK:           %[[VAL_14:.*]], %[[VAL_15:.*]] = control_merge %[[VAL_8]] : none
+// CHECK:           %[[VAL_12:.*]] = br %[[VAL_9]] : none
 // CHECK:           %[[VAL_16:.*]] = merge %[[VAL_6]] : i64
-// CHECK:           %[[VAL_17:.*]] = br %[[VAL_14]] : none
+// CHECK:           %[[VAL_14:.*]], %[[VAL_15:.*]] = control_merge %[[VAL_8]] : none
 // CHECK:           %[[VAL_18:.*]] = br %[[VAL_16]] : i64
-// CHECK:           %[[VAL_19:.*]], %[[VAL_20:.*]] = control_merge %[[VAL_17]], %[[VAL_12]] : none
-// CHECK:           %[[VAL_21:.*]] = mux %[[VAL_20]] {{\[}}%[[VAL_18]], %[[VAL_13]]] : index, i64
+// CHECK:           %[[VAL_17:.*]] = br %[[VAL_14]] : none
+// CHECK:           %[[VAL_21:.*]] = mux %[[VAL_20:.*]] {{\[}}%[[VAL_18]], %[[VAL_13]]] : index, i64
+// CHECK:           %[[VAL_19:.*]], %[[VAL_20]] = control_merge %[[VAL_17]], %[[VAL_12]] : none
 // CHECK:           return %[[VAL_19]] : none
 // CHECK:         }
 func.func @simpleDiamond(%arg0: i1, %arg1: i64) {

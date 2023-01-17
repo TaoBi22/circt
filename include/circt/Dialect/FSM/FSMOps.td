@@ -83,6 +83,14 @@ def MachineOp : FSMOp<"machine", [
       auto machineType = getFunctionType();
       return machineType.getNumInputs() + machineType.getNumResults();
     }
+
+    circt::hw::InnerSymAttr $cppClass::getPortSymbolAttr(size_t portIndex) {
+      for (NamedAttribute argAttr :
+           mlir::function_interface_impl::getArgAttrs(*this, portIndex))
+        if (auto sym = argAttr.getValue().dyn_cast<circt::hw::InnerSymAttr>())
+          return sym;
+      return circt::hw::InnerSymAttr();
+    }
   }];
 
   let skipDefaultBuilders = 1;
@@ -231,7 +239,7 @@ def OutputOp : FSMOp<"output", [HasParent<"StateOp">, ReturnLike, Terminator]> {
 
   let arguments = (ins Variadic<AnyType>:$operands);
 
-  let builders = [ OpBuilder<(ins), "build($_builder, $_state, llvm::None);"> ];
+  let builders = [ OpBuilder<(ins), "build($_builder, $_state, std::nullopt);"> ];
 
   let assemblyFormat = [{ attr-dict ($operands^ `:` qualified(type($operands)))? }];
 

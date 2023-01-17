@@ -222,10 +222,11 @@ void HandshakeLowering::setBlockEntryControl(Block *block, Value v) {
 void handshake::removeBasicBlocks(Region &r) {
   auto &entryBlock = r.front().getOperations();
 
-  // Erase all TerminatorOp, and move ReturnOp to the end of entry block.
+  // Now that basic blocks are going to be removed, we can erase all cf-dialect
+  // branches, and move ReturnOp to the entry block's end
   for (auto &block : r) {
     Operation &termOp = block.back();
-    if (isa<handshake::TerminatorOp>(termOp))
+    if (isa<mlir::cf::CondBranchOp, mlir::cf::BranchOp>(termOp))
       termOp.erase();
     else if (isa<handshake::ReturnOp>(termOp))
       entryBlock.splice(entryBlock.end(), block.getOperations(), termOp);
@@ -252,129 +253,11 @@ void removeBasicBlocks(handshake::FuncOp funcOp) {
   removeBasicBlocks(funcOp.getBody());
 }
 
-static HandshakeLowering::BlockValues getBlockUses(Region &f) {
-  // Returns map of values used in block but defined outside of block
-  // For liveness analysis
-  HandshakeLowering::BlockValues uses;
-  for (Block &block : f) {
-    // Operands of operations in b which do not originate from operations or
-    // arguments of b
-    for (Operation &op : block) {
-      for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
-        Block *operandBlock;
-        if (op.getOperand(i).isa<BlockArgument>()) {
-          // Operand is block argument, get its owner block
-          operandBlock = op.getOperand(i).cast<BlockArgument>().getOwner();
-        } else {
-          // Operand comes from operation, get the block of its defining op
-          auto *operand = op.getOperand(i).getDefiningOp();
-          assert(operand != NULL);
-          operandBlock = operand->getBlock();
-        }
-        // If operand defined in some other block, add to uses
-        if (operandBlock != &block)
-          // Add only unique uses
-          if (std::find(uses[&block].begin(), uses[&block].end(),
-                        op.getOperand(i)) == uses[&block].end())
-            uses[&block].push_back(op.getOperand(i));
-      }
-    }
-  }
-  return uses;
-}
-
-static HandshakeLowering::BlockValues getBlockDefs(Region &f) {
-  // Returns map of values defined in each block
-  // For liveness analysis
-  HandshakeLowering::BlockValues defs;
-  for (Block &block : f) {
-    // Values produced by operations in b
-    for (Operation &op : block) {
-      if (op.getNumResults() > 0) {
-        for (auto result : op.getResults())
-          defs[&block].push_back(result);
-      }
-    }
-    // Argument values of b
-    for (auto &arg : block.getArguments())
-      defs[&block].push_back(arg);
-  }
-
-  return defs;
-}
-
-static std::vector<Value> vectorUnion(ArrayRef<Value> v1, ArrayRef<Value> v2) {
-  // Returns v1 U v2
-  // Assumes unique values in v1
-  std::vector<Value> v1c = v1;
-  for (int i = 0, e = v2.size(); i < e; ++i) {
-    Value val = v2[i];
-    if (std::find(v1.begin(), v1.end(), val) == v1.end())
-      v1c.push_back(val);
-  }
-  return v1c;
-}
-
-static std::vector<Value> vectorDiff(ArrayRef<Value> v1, ArrayRef<Value> v2) {
-  // Returns v1 - v2
-  std::vector<Value> d;
-  for (int i = 0, e = v1.size(); i < e; ++i) {
-    Value val = v1[i];
-    if (std::find(v2.begin(), v2.end(), val) == v2.end())
-      d.push_back(val);
-  }
-  return d;
-}
-
 static LogicalResult isValidMemrefType(Location loc, mlir::MemRefType type) {
   if (type.getNumDynamicDims() != 0 || type.getShape().size() != 1)
     return emitError(loc) << "memref's must be both statically sized and "
                              "unidimensional.";
   return success();
-}
-
-static HandshakeLowering::BlockValues livenessAnalysis(Region &f) {
-  // Liveness analysis algorithm adapted from:
-  // https://suif.stanford.edu/~courses/cs243/lectures/l2.pdf
-  // See slide 19 (Liveness: Iterative Algorithm)
-
-  // blockUses: values used in block but not defined in block
-  HandshakeLowering::BlockValues blockUses = getBlockUses(f);
-
-  // blockDefs: values defined in block
-  HandshakeLowering::BlockValues blockDefs = getBlockDefs(f);
-
-  HandshakeLowering::BlockValues blockLiveIns;
-
-  bool change = true;
-  // Iterate while there are any changes to any of the livein sets
-  while (change) {
-    change = false;
-
-    // liveOuts(b): all liveins of all successors of b
-    // liveOuts(b) = U (blockLiveIns(s)) forall successors s of b
-    for (Block &block : f) {
-      std::vector<Value> liveOuts;
-      for (int i = 0, e = block.getNumSuccessors(); i < e; ++i) {
-        Block *succ = block.getSuccessor(i);
-        liveOuts = vectorUnion(liveOuts, blockLiveIns[succ]);
-      }
-
-      // diff(b):  liveouts of b which are not defined in b
-      // diff(b) = liveOuts(b) - blockDefs(b)
-      auto diff = vectorDiff(liveOuts, blockDefs[&block]);
-
-      // liveIns(b) = blockUses(b) U diff(b)
-      auto tmpLiveIns = vectorUnion(blockUses[&block], diff);
-
-      // Update blockLiveIns if new liveins found
-      if (tmpLiveIns.size() > blockLiveIns[&block].size()) {
-        blockLiveIns[&block] = tmpLiveIns;
-        change = true;
-      }
-    }
-  }
-  return blockLiveIns;
 }
 
 static unsigned getBlockPredecessorCount(Block *block) {
@@ -394,25 +277,47 @@ HandshakeLowering::insertMerge(Block *block, Value val,
   SmallVector<Backedge> dataEdges;
   SmallVector<Value> operands;
 
-  // Control-only path originates from StartOp
-  if (!val.isa<BlockArgument>() && isa<StartOp>(val.getDefiningOp())) {
-    for (unsigned i = 0; i < numPredecessors; i++) {
-      auto edge = edgeBuilder.get(rewriter.getNoneType());
-      dataEdges.push_back(edge);
-      operands.push_back(Value(edge));
+  // Every block (except the entry block) needs to feed it's entry control into
+  // a control merge
+  if (val == getBlockEntryControl(block)) {
+
+    Operation *mergeOp;
+    if (block == &r.front()) {
+      // For consistency within the entry block, replace the latter's entry
+      // control with the output of a MergeOp that takes the control-only
+      // network's start point as input. This makes it so that only the
+      // MergeOp's output is used as a control within the entry block, instead
+      // of a combination of the MergeOp's output and the function/block control
+      // argument. Taking this step out should have no impact on functionality
+      // but would make the resulting IR less "regular"
+      operands.push_back(val);
+      mergeOp = rewriter.create<handshake::MergeOp>(insertLoc, operands);
+    } else {
+      for (unsigned i = 0; i < numPredecessors; i++) {
+        auto edge = edgeBuilder.get(rewriter.getNoneType());
+        dataEdges.push_back(edge);
+        operands.push_back(Value(edge));
+      }
+      mergeOp = rewriter.create<handshake::ControlMergeOp>(insertLoc, operands);
     }
-    auto cmerge =
-        rewriter.create<handshake::ControlMergeOp>(insertLoc, operands);
-    setBlockEntryControl(block, cmerge.getResult());
-    return MergeOpInfo{cmerge, val, dataEdges};
+    setBlockEntryControl(block, mergeOp->getResult(0));
+    return MergeOpInfo{mergeOp, val, dataEdges};
   }
 
-  // If there is at most one block predecessor
+  // Every live-in value to a block is passed through a merge-like operation,
+  // even when it's not required for circuit correctness (useless merge-like
+  // operations are removed down the line during handshake canonicalization)
+
+  // Insert "dummy" MergeOp's for blocks with less than two predecessors
   if (numPredecessors <= 1) {
-    // Dummy merge used here due to hard-coded logic of reconnectMergeOps
     if (numPredecessors == 0) {
+      // All of the entry block's block arguments get passed through a dummy
+      // MergeOp. There is no need for a backedge here as the unique operand can
+      // be resolved immediately
       operands.push_back(val);
     } else {
+      // The value incoming from the single block predecessor will be resolved
+      // later during merge reconnection
       auto edge = edgeBuilder.get(val.getType());
       dataEdges.push_back(edge);
       operands.push_back(Value(edge));
@@ -422,7 +327,9 @@ HandshakeLowering::insertMerge(Block *block, Value val,
   }
 
   // Create a backedge for the index operand, and another one for each data
-  // operand
+  // operand. The index operand will eventually resolve to the current block's
+  // control merge index output, while data operands will resolve to their
+  // respective values from each block predecessor
   Backedge indexEdge = edgeBuilder.get(rewriter.getIndexType());
   for (unsigned i = 0; i < numPredecessors; i++) {
     auto edge = edgeBuilder.get(val.getType());
@@ -435,84 +342,50 @@ HandshakeLowering::insertMerge(Block *block, Value val,
 }
 
 HandshakeLowering::BlockOps
-HandshakeLowering::insertMergeOps(HandshakeLowering::BlockValues blockLiveIns,
-                                  HandshakeLowering::blockArgPairs &mergePairs,
+HandshakeLowering::insertMergeOps(HandshakeLowering::ValueMap &mergePairs,
                                   BackedgeBuilder &edgeBuilder,
                                   ConversionPatternRewriter &rewriter) {
   HandshakeLowering::BlockOps blockMerges;
   for (Block &block : r) {
-    // Live-ins identified by liveness analysis
     rewriter.setInsertionPointToStart(&block);
-    for (auto &val : blockLiveIns[&block]) {
-      auto mergeInfo = insertMerge(&block, val, edgeBuilder, rewriter);
-      blockMerges[&block].push_back(mergeInfo);
-      mergePairs[val] = mergeInfo.op;
-    }
-    // Block arguments are not in livein list as they are defined inside the
-    // block
+
+    // All of the block's live-ins are passed explictly through block arguments
+    // thanks to prior SSA maximization
     for (auto &arg : block.getArguments()) {
-      // No merges on memref block arguments; these are handled separately.
+      // No merges on memref block arguments; these are handled separately
       if (arg.getType().isa<mlir::MemRefType>())
         continue;
 
       auto mergeInfo = insertMerge(&block, arg, edgeBuilder, rewriter);
       blockMerges[&block].push_back(mergeInfo);
-      mergePairs[arg] = mergeInfo.op;
+      mergePairs[arg] = mergeInfo.op->getResult(0);
     }
   }
   return blockMerges;
 }
 
-// Check if block contains operation which produces val
-static bool blockHasSrcOp(Value val, Block *block) {
-  // Arguments do not have an operation producer
-  if (val.isa<BlockArgument>())
-    return false;
-
-  // If the value isn't a block argument, it should be one of the results of
-  // another operation
-  auto *op = val.getDefiningOp();
-  assert(op != nullptr);
-  return (op->getBlock() == block);
-}
-
 // Get value from predBlock which will be set as operand of op (merge)
 static Value getMergeOperand(HandshakeLowering::MergeOpInfo mergeInfo,
-                             Block *predBlock,
-                             HandshakeLowering::BlockOps blockMerges) {
-  // Helper value (defining value of merge) to identify Merges which propagate
-  // the same defining value
+                             Block *predBlock) {
+  // The input value to the merge operations
   Value srcVal = mergeInfo.val;
+  // The block the merge operation belongs to
   Block *block = mergeInfo.op->getBlock();
 
-  // Value comes from predecessor block (i.e., not an argument of this block)
-  if (std::find(block->getArguments().begin(), block->getArguments().end(),
-                srcVal) == block->getArguments().end()) {
-    // Value is not defined by operation in predBlock
-    if (!blockHasSrcOp(srcVal, predBlock)) {
-      // Find the corresponding Merge
-      for (auto &predMergeInfo : blockMerges[predBlock])
-        if (predMergeInfo.val == srcVal)
-          return predMergeInfo.op->getResult(0);
-    } else
-      return srcVal;
+  // The block terminator is either a cf-level branch or cf-level conditional
+  // branch. In either case, identify the value passed to the block using its
+  // index in the list of block arguments
+  unsigned index = srcVal.cast<BlockArgument>().getArgNumber();
+  Operation *termOp = predBlock->getTerminator();
+  if (mlir::cf::CondBranchOp br = dyn_cast<mlir::cf::CondBranchOp>(termOp)) {
+    // Block should be one of the two destinations of the conditional branch
+    if (block == br.getTrueDest())
+      return br.getTrueOperand(index);
+    assert(block == br.getFalseDest());
+    return br.getFalseOperand(index);
   }
-
-  // Value is argument of this block
-  // Operand of terminator in predecessor block should be input to Merge
-  else {
-    unsigned index = srcVal.cast<BlockArgument>().getArgNumber();
-    Operation *termOp = predBlock->getTerminator();
-    if (mlir::cf::CondBranchOp br = dyn_cast<mlir::cf::CondBranchOp>(termOp)) {
-      // Block should be one of the two destinations of the conditional branch
-      if (block == br.getTrueDest())
-        return br.getTrueOperand(index);
-      assert(block == br.getFalseDest());
-      return br.getFalseOperand(index);
-    }
-    if (isa<mlir::cf::BranchOp>(termOp))
-      return termOp->getOperand(index);
-  }
+  if (isa<mlir::cf::BranchOp>(termOp))
+    return termOp->getOperand(index);
   return nullptr;
 }
 
@@ -552,7 +425,7 @@ static ConditionalBranchOp getControlCondBranch(Block *block) {
 
 static void reconnectMergeOps(Region &r,
                               HandshakeLowering::BlockOps blockMerges,
-                              HandshakeLowering::blockArgPairs &mergePairs) {
+                              HandshakeLowering::ValueMap &mergePairs) {
   // At this point all merge-like operations have backedges as operands.
   // We here replace all backedge values with appropriate value from
   // predecessor block. The predecessor can either be a merge, the original
@@ -563,11 +436,11 @@ static void reconnectMergeOps(Region &r,
       int operandIdx = 0;
       // Set appropriate operand from each predecessor block
       for (auto *predBlock : block.getPredecessors()) {
-        Value mgOperand = getMergeOperand(mergeInfo, predBlock, blockMerges);
+        Value mgOperand = getMergeOperand(mergeInfo, predBlock);
         assert(mgOperand != nullptr);
         if (!mgOperand.getDefiningOp()) {
           assert(mergePairs.count(mgOperand));
-          mgOperand = mergePairs[mgOperand]->getResult(0);
+          mgOperand = mergePairs[mgOperand];
         }
         mergeInfo.dataEdges[operandIdx].setValue(mgOperand);
         operandIdx++;
@@ -594,7 +467,7 @@ static void reconnectMergeOps(Region &r,
           // are not the block's control merge must have an index operand (at
           // this point, an index backedge)
           assert(mergeInfo.indexEdge.has_value());
-          mergeInfo.indexEdge.value().setValue(cntrlMg->getResult(1));
+          (*mergeInfo.indexEdge).setValue(cntrlMg->getResult(1));
         }
       }
     }
@@ -603,23 +476,26 @@ static void reconnectMergeOps(Region &r,
   removeBlockOperands(r);
 }
 
+static bool isAllocOp(Operation *op) {
+  return isa<memref::AllocOp, memref::AllocaOp>(op);
+}
+
 LogicalResult
 HandshakeLowering::addMergeOps(ConversionPatternRewriter &rewriter) {
 
-  blockArgPairs mergePairs;
-
-  // blockLiveIns: live in variables of block
-  BlockValues liveIns = livenessAnalysis(r);
+  // Stores mapping from each value that pass through a merge operation to the
+  // first result of that merge operation
+  ValueMap mergePairs;
 
   // Create backedge builder to manage operands of merge operations between
   // insertion and reconnection
   BackedgeBuilder edgeBuilder{rewriter, r.front().front().getLoc()};
 
-  // Insert merge operations
-  BlockOps mergeOps =
-      insertMergeOps(liveIns, mergePairs, edgeBuilder, rewriter);
+  // Insert merge operations (with backedges instead of actual operands)
+  BlockOps mergeOps = insertMergeOps(mergePairs, edgeBuilder, rewriter);
 
-  // Set merge operands and uses
+  // Reconnect merge operations with values incoming from predecessor blocks
+  // and resolve all backedges that were created during merge insertion
   reconnectMergeOps(r, mergeOps, mergePairs);
   return success();
 }
@@ -1272,26 +1148,6 @@ HandshakeLowering::addBranchOps(ConversionPatternRewriter &rewriter) {
     }
   }
 
-  // Remove StandardOp branch terminators and place new terminator
-  // Should be removed in some subsequent pass (we only need it to pass
-  // checks in Verifier.cpp)
-  for (Block &block : r) {
-    Operation *termOp = block.getTerminator();
-    if (!(isa<mlir::cf::CondBranchOp>(termOp) ||
-          isa<mlir::cf::BranchOp>(termOp)))
-      continue;
-
-    SmallVector<mlir::Block *, 8> results(block.getSuccessors());
-    rewriter.setInsertionPointToEnd(&block);
-    rewriter.create<handshake::TerminatorOp>(termOp->getLoc(),
-                                             ArrayRef<mlir::Block *>{results});
-
-    // Remove the Operands to keep the single-use rule.
-    for (int i = 0, e = termOp->getNumOperands(); i < e; ++i)
-      termOp->eraseOperand(0);
-    assert(termOp->getNumOperands() == 0);
-    rewriter.eraseOp(termOp);
-  }
   return success();
 }
 
@@ -1517,20 +1373,15 @@ static void addLazyForks(Region &f, ConversionPatternRewriter &rewriter) {
   }
 }
 
-static void removeUnusedAllocOps(Region &f,
+static void removeUnusedAllocOps(Region &r,
                                  ConversionPatternRewriter &rewriter) {
   std::vector<Operation *> opsToDelete;
 
-  /// TODO(mortbopet): use explicit template parameter when moving to C++20
-  auto remover = [&](auto allocType) {
-    for (auto allocOp : f.getOps<decltype(allocType)>())
-      // Remove alloc operations whose result has no use
-      if (allocOp.getResult().use_empty())
-        opsToDelete.push_back(allocOp);
-  };
+  // Remove alloc operations whose result have no use
+  for (auto &op : r.getOps())
+    if (isAllocOp(&op) && op.getResult(0).use_empty())
+      opsToDelete.push_back(&op);
 
-  remover(memref::AllocOp());
-  remover(memref::AllocaOp());
   llvm::for_each(opsToDelete, [&](auto allocOp) { rewriter.eraseOp(allocOp); });
 }
 
@@ -1590,8 +1441,8 @@ static LogicalResult setJoinControlInputs(ArrayRef<Operation *> memOps,
     auto *op = memOps[i];
     Value ctrl = getBlockControlTerminator(op->getBlock()).ctrlOperand;
     auto *srcOp = ctrl.getDefiningOp();
-    if (!isa<JoinOp, StartOp>(srcOp)) {
-      return srcOp->emitOpError("Op expected to be a JoinOp or StartOp");
+    if (!isa<JoinOp>(srcOp)) {
+      return srcOp->emitOpError("Op expected to be a JoinOp");
     }
     addValueToOperands(srcOp, memOp->getResult(offset + cntrlInd[i]));
   }
@@ -1750,16 +1601,6 @@ HandshakeLowering::connectToMemory(ConversionPatternRewriter &rewriter,
   return success();
 }
 
-// A handshake::StartOp should have been created in the first block of the
-// enclosing function region
-static Operation *findStartOp(Region &region) {
-  for (Operation &op : region.front())
-    if (isa<handshake::StartOp>(op))
-      return &op;
-
-  llvm::report_fatal_error("No handshake::StartOp in first block");
-}
-
 LogicalResult
 HandshakeLowering::replaceCallOps(ConversionPatternRewriter &rewriter) {
   for (Block &block : r) {
@@ -1785,15 +1626,28 @@ HandshakeLowering::replaceCallOps(ConversionPatternRewriter &rewriter) {
   return success();
 }
 
-LogicalResult HandshakeLowering::finalize(ConversionPatternRewriter &rewriter) {
-  auto ctrlArg =
-      r.front().addArgument(rewriter.getNoneType(), rewriter.getUnknownLoc());
+namespace {
+/// Strategy class for SSA maximization during std-to-handshake conversion.
+/// Block arguments of type MemRefType and allocation operations are not
+/// considered for SSA maximization.
+class HandshakeLoweringSSAStrategy : public SSAMaximizationStrategy {
+  /// Filters out block arguments of type MemRefType
+  bool maximizeArgument(BlockArgument arg) override {
+    return !arg.getType().isa<mlir::MemRefType>();
+  }
 
-  Operation *startOp = findStartOp(r);
-  startOp->getResult(0).replaceAllUsesWith(ctrlArg);
-  rewriter.eraseOp(startOp);
+  /// Filters out allocation operations
+  bool maximizeOp(Operation *op) override { return !isAllocOp(op); }
+};
+} // namespace
 
-  return success();
+/// Converts every value in the region into maximal SSA form, unless the value
+/// is a block argument of type MemRefType or the result of an allocation
+/// operation.
+static LogicalResult maximizeSSANoMem(Region &r,
+                                      ConversionPatternRewriter &rewriter) {
+  HandshakeLoweringSSAStrategy strategy;
+  return maximizeSSA(r, strategy, rewriter);
 }
 
 static LogicalResult lowerFuncOp(func::FuncOp funcOp, MLIRContext *ctx,
@@ -1838,6 +1692,10 @@ static LogicalResult lowerFuncOp(func::FuncOp funcOp, MLIRContext *ctx,
         return success();
       },
       ctx, funcOp));
+
+  // Apply SSA maximization
+  returnOnError(
+      partiallyLowerRegion(maximizeSSANoMem, ctx, newFuncOp.getBody()));
 
   if (!newFuncOp.isExternal()) {
     HandshakeLowering fol(newFuncOp.getBody());

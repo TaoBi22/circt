@@ -108,6 +108,14 @@ def SCModuleOp : SystemCOp<"module", [
     size_t $cppClass::getNumPorts() {
       return getPortNames().size();
     }
+
+    circt::hw::InnerSymAttr $cppClass::getPortSymbolAttr(size_t portIndex) {
+      for (NamedAttribute argAttr :
+           mlir::function_interface_impl::getArgAttrs(*this, portIndex))
+        if (auto sym = argAttr.getValue().dyn_cast<circt::hw::InnerSymAttr>())
+          return sym;
+      return circt::hw::InnerSymAttr();
+    }
   }];
 }
 
@@ -469,7 +477,7 @@ def ReturnOp : SystemCOp<"cpp.return", [
   let arguments = (ins Variadic<AnyType>:$returnValues);
 
   let builders = [OpBuilder<(ins), [{
-    build($_builder, $_state, llvm::None);
+    build($_builder, $_state, std::nullopt);
   }]>];
 
   let assemblyFormat = "attr-dict ($returnValues^ `:` type($returnValues))?";
