@@ -1,4 +1,11 @@
 if(CIRCT_LEC_ENABLED)
+
+  set(LLVM_OPTIONAL_SOURCES
+    Solver.cpp
+    Circuit.cpp
+    LogicExporter.cpp
+  )
+
   add_circt_library(CIRCTSMT
     Solver.cpp
     Circuit.cpp
