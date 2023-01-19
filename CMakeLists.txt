@@ -509,7 +509,8 @@ else()
       message(WARNING "Cannot build circt-lec with outdated Z3 version ${Z3_VERSION_STRING}, requires ${CIRCT_LEC_Z3_VER}.")
     else()
       message(STATUS "Z3 identified as a logical backend.")
-      # Signal to proceed building circt-lec.
+      # Signal to proceed building circt-lec. 
+      message(STATUS "Found Z3 Includes: ${CIRCT_Z3_INCLUDES}")
       set(CIRCT_LEC_ENABLED ON)
     endif()
   endif()
