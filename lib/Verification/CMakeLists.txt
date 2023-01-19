@@ -4,11 +4,11 @@ if(CIRCT_LEC_ENABLED)
     Circuit.cpp
     LogicExporter.cpp
 
-    ADDITIONAL_HEADER_DIRS
-    ${CIRCT_Z3_INCLUDE_DIR}
-
     LINK_COMPONENTS
     Core
+
+    LINK_LIBS
+    ${CIRCT_Z3_LIBS}
     
     LINK_LIBS PUBLIC
     CIRCTCalyx
