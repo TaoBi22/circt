@@ -56,8 +56,6 @@ mlir::LogicalResult Solver::solve() {
 
   // Print further relevant information as requested.
   LLVM_DEBUG(printAssertions());
-  if (statisticsOpt)
-    printStatistics();
 
   return outcome;
 }
