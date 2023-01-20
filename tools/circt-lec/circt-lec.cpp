@@ -53,13 +53,13 @@ static cl::opt<std::string> fileName2(cl::Positional, cl::desc("[input file]"),
 
 // The following options are stored externally for their value to be accessible
 // to other components of the tool; see `Utility.h` for more definitions.
-bool verboseOpt;
+extern bool verboseOpt;
 static cl::opt<bool, true>
     verbose("v", cl::location(verboseOpt), cl::init(false),
             cl::desc("Print extensive execution progress information"),
             cl::cat(mainCategory));
 
-bool statisticsOpt;
+extern bool statisticsOpt;
 static cl::opt<bool, true> statistics(
     "s", cl::location(statisticsOpt), cl::init(false),
     cl::desc("Print statistics about the logical engine's execution"),

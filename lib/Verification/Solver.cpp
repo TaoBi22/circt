@@ -20,6 +20,11 @@
 
 #define DEBUG_TYPE "solver"
 
+/// Variables to store whether verbose mode is enabled and whether statistics
+/// should be printed
+bool verboseOpt;
+bool statisticsOpt;
+
 Solver::Solver(mlir::MLIRContext *mlirCtx)
     : circuits{}, mlirCtx(mlirCtx), context(), solver(context) {}
 
