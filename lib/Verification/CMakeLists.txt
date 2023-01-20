@@ -4,9 +4,6 @@ if(CIRCT_LEC_ENABLED)
     Circuit.cpp
     LogicExporter.cpp
 
-    ADDITIONAL_HEADER_DIRS
-    ${CIRCT_MAIN_INCLUDE_DIR}/circt/Verification
-
     LINK_COMPONENTS
     Core
 
