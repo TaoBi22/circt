@@ -5,7 +5,7 @@ if(CIRCT_LEC_ENABLED)
     CIRCTSMT
   )
 
-  add_llvm_tool(circt-lec circt-lec.cpp)
+  add_llvm_tool(circt-lec circt-lec.cpp DEPENDS ${CIRCT_LEC_LIBS})
   target_link_libraries(circt-lec PRIVATE ${CIRCT_LEC_LIBS})
 
   # Correct the runpath when linking shared libraries.
