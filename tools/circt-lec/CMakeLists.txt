@@ -22,7 +22,21 @@ if(CIRCT_LEC_ENABLED)
     CIRCTSystemC
   )
 
-  add_llvm_tool(circt-lec ${CIRCT_LEC_SOURCES} DEPENDS ${CIRCT_LEC_LIBS})
+  add_llvm_tool(circt-lec ${CIRCT_LEC_SOURCES} DEPENDS
+    CIRCTCalyx
+    CIRCTESI
+    CIRCTFIRRTL
+    CIRCTFSM
+    CIRCTHandshake
+    CIRCTHWArith
+    CIRCTInteropDialect
+    CIRCTLLHD
+    CIRCTMoore
+    CIRCTPipelineOps
+    CIRCTSSP
+    CIRCTSystemC
+  )
+  
   target_link_libraries(circt-lec PRIVATE ${CIRCT_LEC_LIBS})
   target_include_directories(circt-lec PRIVATE ${CIRCT_LEC_INCLUDES})
 
