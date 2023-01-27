@@ -7,6 +7,7 @@ if(CIRCT_LEC_ENABLED)
 
   add_llvm_tool(circt-lec circt-lec.cpp)
   target_link_libraries(circt-lec PRIVATE ${CIRCT_LEC_LIBS})
+  target_include_directories(circt-lec PRIVATE ${CIRCT_Z3_INCLUDES})
 
   # Correct the runpath when linking shared libraries.
   if(BUILD_SHARED_LIBS)
