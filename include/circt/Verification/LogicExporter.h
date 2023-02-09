@@ -19,6 +19,7 @@
 #include "circt/Dialect/Comb/CombVisitors.h"
 #include "circt/Dialect/HW/HWOps.h"
 #include "circt/Dialect/HW/HWVisitors.h"
+#include "circt/Dialect/Seq/SeqOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
@@ -118,6 +119,13 @@ private:
                                          Solver::Circuit *circuit);
     static mlir::LogicalResult visitComb(circt::comb::XorOp &op,
                                          Solver::Circuit *circuit);
+
+    // Seq Visitor definitions
+    mlir::LogicalResult visitSeq(mlir::Operation *op, Solver::Circuit *circuit);
+    static mlir::LogicalResult visitSeqOp(circt::seq::CompRegOp &op,
+                                          Solver::Circuit *circuit);
+    static mlir::LogicalResult visitSeqOp(circt::seq::FirRegOp &op,
+                                          Solver::Circuit *circuit);
 
     // Additional definitions
     /// Handles `builtin.module` logic exporting.

@@ -183,9 +183,10 @@ mlir::LogicalResult
 LogicExporter::Visitor::visitInvalidTypeOp(mlir::Operation *op,
                                            Solver::Circuit *circuit) {
   // op is neither valid for StmtVisitor nor TypeOpVisitor.
-  // Attempt dispatching it to CombinationalVisitor next.
-  return dispatchCombinationalVisitor(op, circuit);
+  // Attempt dispatching it to SeqVisitor next.
+  return visitSeq(op, circuit);
 }
+
 
 //===----------------------------------------------------------------------===//
 // CombinationalVisitor implementation
@@ -312,6 +313,60 @@ visitBinaryCombOp(ShrU, comb.shru, circt::comb::ShrUOp &);
 visitVariadicCombOp(Sub, comb.sub, circt::comb::SubOp &);
 
 visitVariadicCombOp(Xor, comb.xor, circt::comb::XorOp &);
+
+//===----------------------------------------------------------------------===//
+// Sequential Visitor implementation
+//===----------------------------------------------------------------------===//
+
+/// Visits seq dialect operations
+mlir::LogicalResult LogicExporter::Visitor::visitSeq(mlir::Operation *op,
+                                                     Solver::Circuit *circuit) {
+  mlir::LogicalResult outcome =
+      llvm::TypeSwitch<mlir::Operation *, mlir::LogicalResult>(op)
+          .Case<circt::seq::CompRegOp>([&](circt::seq::CompRegOp &op) {
+            return LogicExporter::Visitor::visitSeqOp(op, circuit);
+          })
+          .Case<circt::seq::FirRegOp>([&](circt::seq::FirRegOp &op) {
+            return LogicExporter::Visitor::visitSeqOp(op, circuit);
+          })
+          .Default([&](mlir::Operation *op) {
+            return LogicExporter::Visitor::dispatchCombinationalVisitor(
+                op, circuit);
+          });
+  return outcome;
+}
+
+mlir::LogicalResult
+LogicExporter::Visitor::visitSeqOp(circt::seq::CompRegOp &op,
+                                   Solver::Circuit *circuit) {
+  LLVM_DEBUG(lec::dbgs << "Visiting CompReg\n");
+  INDENT();
+  LLVM_DEBUG(debugOperands(op));
+  mlir::Value input = op.getInput();
+  mlir::Value clk = op.getClk();
+  mlir::Value data = op.getData();
+  mlir::Value reset = op.getReset();
+  mlir::Value resetValue = op.getResetValue();
+  circuit->performCompReg(input, clk, data, reset, resetValue);
+  return mlir::success();
+}
+
+mlir::LogicalResult
+LogicExporter::Visitor::visitSeqOp(circt::seq::FirRegOp &op,
+                                   Solver::Circuit *circuit) {
+  LLVM_DEBUG(lec::dbgs << "Visiting FirReg\n");
+  INDENT();
+  LLVM_DEBUG(debugOperands(op));
+  assert(!op.getIsAsync() && "Async resets not supported.");
+  mlir::Value next = op.getNext();
+  mlir::Value clk = op.getClk();
+  mlir::Value data = op.getData();
+  mlir::Value reset = op.getReset();
+  mlir::Value resetValue = op.getResetValue();
+  circuit->performCompReg(next, clk, data, reset, resetValue);
+  return mlir::success();
+}
+
 
 //===----------------------------------------------------------------------===//
 // Additional Visitor implementations

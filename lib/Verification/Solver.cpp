@@ -29,8 +29,8 @@ Solver::Solver(mlir::MLIRContext *mlirCtx)
     : circuits{}, mlirCtx(mlirCtx), context(), solver(context) {}
 
 Solver::~Solver() {
-  delete circuits[0];
-  delete circuits[1];
+  for (auto *circuit : circuits)
+    delete circuit;
 }
 
 /// Solve the equivalence problem between the two circuits, then present the
