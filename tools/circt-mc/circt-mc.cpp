@@ -26,7 +26,7 @@ namespace cl = llvm::cl;
 // Command-line options declaration
 //===----------------------------------------------------------------------===//
 
-static cl::OptionCategory mainCategory("circt-lec Options");
+static cl::OptionCategory mainCategory("circt-mc Options");
 
 static cl::opt<std::string>
     moduleName1("c1",
@@ -79,11 +79,10 @@ int main(int argc, char **argv) {
   mlir::registerMLIRContextCLOptions();
 
   // Parse the command-line options provided by the user.
-  cl::ParseCommandLineOptions(
-      argc, argv,
-      "circt-lec - logical equivalence checker\n\n"
-      "\tThis tool compares two input circuit descriptions to determine whether"
-      " they are logically equivalent.\n");
+  cl::ParseCommandLineOptions(argc, argv,
+                              "circt-mc - bounded model checker\n\n"
+                              "\tThis tool checks that properties hold in a "
+                              "design over a symbolic bounded execution.\n");
 
   // Register all the CIRCT dialects and create a context to work with.
   mlir::DialectRegistry registry;
