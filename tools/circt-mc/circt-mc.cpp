@@ -10,11 +10,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "circt/InitAllDialects.h"
 #include "circt/Verification/Circuit.h"
 #include "circt/Verification/LogicExporter.h"
 #include "circt/Verification/Solver.h"
 #include "circt/Verification/Utility.h"
-#include "circt/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 #include "llvm/Support/CommandLine.h"
