@@ -11,8 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 // NOLINTNEXTLINE
-#ifndef TOOLS_CIRCT_LEC_SOLVER_H
-#define TOOLS_CIRCT_LEC_SOLVER_H
+#ifndef TOOLS_CIRCTLEC_SOLVER_H
+#define TOOLS_CIRCTLEC_SOLVER_H
 
 #include "circt/Support/LLVM.h"
 #include "mlir/IR/MLIRContext.h"
@@ -72,4 +72,4 @@ private:
   bool statisticsOpt;
 };
 
-#endif // TOOLS_CIRCT_LEC_SOLVER_H
+#endif // TOOLS_CIRCTLEC_SOLVER_H

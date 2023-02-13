@@ -11,8 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 // NOLINTNEXTLINE
-#ifndef TOOLS_CIRCT_LEC_LOGICEXPORTER_H
-#define TOOLS_CIRCT_LEC_LOGICEXPORTER_H
+#ifndef TOOLS_CIRCTLEC_LOGICEXPORTER_H
+#define TOOLS_CIRCTLEC_LOGICEXPORTER_H
 
 #include "Solver.h"
 #include "circt/Dialect/Comb/CombOps.h"
@@ -152,4 +152,4 @@ private:
   Solver::Circuit *circuit;
 };
 
-#endif // TOOLS_CIRCT_LEC_LOGICEXPORTER_H
+#endif // TOOLS_CIRCTLEC_LOGICEXPORTER_H
