@@ -1,5 +1,5 @@
 # circt-lec builds if a logic backend is found
-if(CIRCT_LEC_ENABLED)
+if(CIRCTSMT_ENABLED)
 
   list(APPEND CIRCT_MC_LIBS
     CIRCTSMT

@@ -1,4 +1,4 @@
-if(CIRCT_LEC_ENABLED)
+if(CIRCTSMT_ENABLED)
   add_circt_verification_library(CIRCTSMT
     Solver.cpp
     Circuit.cpp

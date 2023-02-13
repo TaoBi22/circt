@@ -12,8 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 // NOLINTNEXTLINE
-#ifndef TOOLS_CIRCT_LEC_UTILITY_H
-#define TOOLS_CIRCT_LEC_UTILITY_H
+#ifndef TOOLS_CIRCTSMT_UTILITY_H
+#define TOOLS_CIRCTSMT_UTILITY_H
 
 #include "mlir/IR/Value.h"
 #include "mlir/Support/IndentedOstream.h"
@@ -64,4 +64,4 @@ inline void printAPInt(const mlir::APInt &value) {
     }                                                                          \
   } while (false)
 
-#endif // TOOLS_CIRCT_LEC_UTILITY_H
+#endif // TOOLS_CIRCTSMT_UTILITY_H
