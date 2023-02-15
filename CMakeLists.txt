@@ -476,9 +476,9 @@ endif()
 llvm_canonicalize_cmake_booleans(CIRCT_LLHD_SIM_ENABLED)
 
 #-------------------------------------------------------------------------------
-# circt-lec Configuration
+# SMT Verification Configuration
 #-------------------------------------------------------------------------------
-# If circt-lec hasn't been explicitly disabled, find it.
+# If SMT verification tools haven't been explicitly disabled, find z3.
 option(CIRCTSMT_DISABLE "Disable SMT verification tools (circt-lec and circt-mc)" OFF)
 if(CIRCTSMT_DISABLE)
   message(STATUS "Disabling SMT verification tools")
