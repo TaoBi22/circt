@@ -24,6 +24,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/StringRef.h"
+#include "circt/Dialect/FSM/FSMOps.h"
 #include <string>
 
 /// A pass traversing MLIR IR to extrapolate the logic of a given circuit.
@@ -125,6 +126,11 @@ private:
     static mlir::LogicalResult visitSeqOp(circt::seq::CompRegOp &op,
                                           Solver::Circuit *circuit);
     static mlir::LogicalResult visitSeqOp(circt::seq::FirRegOp &op,
+                                          Solver::Circuit *circuit);
+
+    // Seq Visitor definitions
+    mlir::LogicalResult visitFSM(mlir::Operation *op, Solver::Circuit *circuit);
+    static mlir::LogicalResult visitFSMOp(circt::fsm::MachineOp &op,
                                           Solver::Circuit *circuit);
 
     // Additional definitions

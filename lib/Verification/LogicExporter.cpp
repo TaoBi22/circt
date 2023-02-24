@@ -329,7 +329,7 @@ mlir::LogicalResult LogicExporter::Visitor::visitSeq(mlir::Operation *op,
             return LogicExporter::Visitor::visitSeqOp(op, circuit);
           })
           .Default([&](mlir::Operation *op) {
-            return LogicExporter::Visitor::dispatchCombinationalVisitor(
+            return LogicExporter::Visitor::visitFSM(
                 op, circuit);
           });
   return outcome;
@@ -363,6 +363,49 @@ LogicExporter::Visitor::visitSeqOp(circt::seq::FirRegOp &op,
   mlir::Value reset = op.getReset();
   mlir::Value resetValue = op.getResetValue();
   circuit->performCompReg(next, clk, data, reset, resetValue);
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// FSM Visitor implementation
+//===----------------------------------------------------------------------===//
+
+/// Visits fsm dialect operations
+mlir::LogicalResult LogicExporter::Visitor::visitFSM(mlir::Operation *op,
+                                                     Solver::Circuit *circuit) {
+  mlir::LogicalResult outcome =
+      llvm::TypeSwitch<mlir::Operation *, mlir::LogicalResult>(op)
+          .Case<circt::fsm::MachineOp>([&](circt::fsm::MachineOp &op) {
+            return LogicExporter::Visitor::visitFSMOp(op, circuit);
+          })
+          .Default([&](mlir::Operation *op) {
+            return LogicExporter::Visitor::dispatchCombinationalVisitor(
+                op, circuit);
+          });
+  return outcome;
+}
+
+mlir::LogicalResult
+LogicExporter::Visitor::visitFSMOp(circt::fsm::MachineOp &op,
+                                   Solver::Circuit *circuit) {
+  LLVM_DEBUG(lec::dbgs << "Visiting Machine\n");
+  INDENT();
+  LLVM_DEBUG(debugOperands(op));
+
+  // Iterate through states and create state restriction clause
+  // Start with false so we can simply continue to find disjunction
+  // z3::expr validStateClause = false; 
+  // for (auto state : machine.getBody().getOps<StateOp>()) {
+  //   // TODO: create enum of valid states
+     
+  // }
+
+  // mlir::Value input = op.getInput();
+  // mlir::Value clk = op.getClk();
+  // mlir::Value data = op.getData();
+  // mlir::Value reset = op.getReset();
+  // mlir::Value resetValue = op.getResetValue();
+  // circuit->performCompReg(input, clk, data, reset, resetValue);
   return mlir::success();
 }
 
