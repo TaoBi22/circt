@@ -808,4 +808,9 @@ class FSMMachine {
     llvm::SmallVector<z3::expr> validStates;
 };
 
+class FSMInstance {
+  FSMMachine* machine;
+  z3::expr stateVariable;
+};
+
 #undef DEBUG_TYPE
