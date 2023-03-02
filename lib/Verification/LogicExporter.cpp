@@ -116,7 +116,7 @@ LogicExporter::Visitor::visitStmt(circt::hw::InstanceOp &op,
   LLVM_DEBUG(lec::dbgs << "Instance name: " << instanceName << "\n");
   llvm::StringRef targetModule = op.getModuleName();
   LLVM_DEBUG(lec::dbgs << "Target module name: " << targetModule << "\n");
-  std::optional<llvm::StringRef> innerSym = op.getInnerSym();
+  llvm::Optional<llvm::StringRef> innerSym = op.getInnerSym();
   LLVM_DEBUG(lec::dbgs << "Inner symbol: " << innerSym << "\n");
 
   mlir::ModuleOp builtinModule = op->getParentOfType<mlir::ModuleOp>();
