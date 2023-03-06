@@ -196,6 +196,32 @@ private:
 
   /// A map from IR values to their corresponding name.
   llvm::DenseMap<mlir::Value, std::string> nameTable;
+
+  class FSMMachine {
+    public:
+      int stateWidth;
+      z3::context* context;
+
+      FSMMachine(int width, z3::context* inContext) {
+        stateWidth = width;
+        context = inContext;
+      }
+
+      void addValidState(int value);
+
+      z3::expr generateValidStateConstraint(z3::expr stateVariable);
+
+    private:
+      llvm::SmallVector<z3::expr> validStates;
+  };
+
+  class FSMInstance {
+    FSMMachine* machine;
+    z3::expr stateVariable;
+  };
+
+  /// A map from FSM machine names to their corresponding FSMMachine instances
+  llvm::DenseMap<mlir::StringAttr, FSMMachine> fsmTable;
 };
 
 #endif // TOOLS_CIRCT_LEC_CIRCUIT_H

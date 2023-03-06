@@ -781,36 +781,16 @@ void Solver::Circuit::performFirReg(mlir::Value next, mlir::Value clk,
         bvToBool(clkExpr) && !bvToBool(rstPair->second), inExpr == outExpr));
 }
 
-// TODO: Move this to a separate file
-class FSMMachine {
-  public:
-    int stateWidth;
-    z3::context* context;
+void Solver::Circuit::FSMMachine::addValidState(int value) {
+  validStates.push_back(context->bv_val(value, stateWidth));
+}
 
-    FSMMachine(int width, z3::context* inContext) {
-      stateWidth = width;
-      context = inContext;
-    }
-
-    void addValidState(int value) {
-      validStates.push_back(context->bv_val(value, stateWidth));
-    }
-
-    z3::expr generateValidStateConstraint(z3::expr stateVariable){
-      z3::expr constraint = context->bool_val(false);
-      for (z3::expr state: validStates) {
-        constraint = constraint || (stateVariable == state);
-      }
-      return constraint;
-    }
-
-  private:
-    llvm::SmallVector<z3::expr> validStates;
-};
-
-class FSMInstance {
-  FSMMachine* machine;
-  z3::expr stateVariable;
-};
+z3::expr Solver::Circuit::FSMMachine::generateValidStateConstraint(z3::expr stateVariable){
+  z3::expr constraint = context->bool_val(false);
+  for (z3::expr state: validStates) {
+    constraint = constraint || (stateVariable == state);
+  }
+  return constraint;
+}
 
 #undef DEBUG_TYPE
