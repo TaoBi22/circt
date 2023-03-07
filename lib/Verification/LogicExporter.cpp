@@ -392,20 +392,12 @@ LogicExporter::Visitor::visitFSMOp(circt::fsm::MachineOp &op,
   INDENT();
   LLVM_DEBUG(debugOperands(op));
 
-  // Iterate through states and create state restriction clause
-  // Start with false so we can simply continue to find disjunction
-  // z3::expr validStateClause = false; 
-  // for (auto state : machine.getBody().getOps<StateOp>()) {
-  //   // TODO: create enum of valid states
-     
-  // }
+  // TODO: Make this find the state width
+  int stateWidth = 16;
+  circuit->performMachine(stateWidth, op.getSymNameAttr());
 
-  // mlir::Value input = op.getInput();
-  // mlir::Value clk = op.getClk();
-  // mlir::Value data = op.getData();
-  // mlir::Value reset = op.getReset();
-  // mlir::Value resetValue = op.getResetValue();
-  // circuit->performCompReg(input, clk, data, reset, resetValue);
+  Solver::Circuit::FSMMachine thisMachine = circuit->fsmTable.find(op.getSymNameAttr())->second;
+
   return mlir::success();
 }
 

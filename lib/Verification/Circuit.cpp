@@ -781,12 +781,17 @@ void Solver::Circuit::performFirReg(mlir::Value next, mlir::Value clk,
         bvToBool(clkExpr) && !bvToBool(rstPair->second), inExpr == outExpr));
 }
 
+void Solver::Circuit::performMachine(int stateWidth, mlir::StringAttr name) {
+  Solver::Circuit::FSMMachine machine(stateWidth, solver);
+  fsmTable.insert(std::pair(name, machine));
+}
+
 void Solver::Circuit::FSMMachine::addValidState(int value) {
-  validStates.push_back(context->bv_val(value, stateWidth));
+  validStates.push_back(solver->context.bv_val(value, stateWidth));
 }
 
 z3::expr Solver::Circuit::FSMMachine::generateValidStateConstraint(z3::expr stateVariable){
-  z3::expr constraint = context->bool_val(false);
+  z3::expr constraint = solver->context.bool_val(false);
   for (z3::expr state: validStates) {
     constraint = constraint || (stateVariable == state);
   }

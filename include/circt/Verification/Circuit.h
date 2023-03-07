@@ -35,6 +35,31 @@ public:
   Circuit(llvm::Twine name, Solver *solver) : name(name.str()), solver(solver) {
     assignments = 0;
   };
+
+  class FSMMachine {
+    public:
+      int stateWidth;
+      Solver* solver;
+
+      FSMMachine(int width, Solver* inSolver) {
+        stateWidth = width;
+        solver = inSolver;
+      }
+
+      void addValidState(int value);
+
+      z3::expr generateValidStateConstraint(z3::expr stateVariable);
+
+    private:
+      llvm::SmallVector<z3::expr> validStates;
+  };
+
+  class FSMInstance {
+    FSMMachine* machine;
+    z3::expr stateVariable;
+  };
+  
+
   /// Add an input to the circuit; internally a new value gets allocated.
   void addInput(mlir::Value);
   /// Add an output to the circuit.
@@ -82,6 +107,9 @@ public:
                       mlir::Value reset, mlir::Value resetValue);
   void performFirReg(mlir::Value next, mlir::Value clk, mlir::Value data,
                      mlir::Value reset, mlir::Value resetValue);
+
+  // `fsm` dialect operations.
+  void performMachine(int stateWidth, mlir::StringAttr name);
 
 private:
   /// Struct to represent computational registers
@@ -196,29 +224,6 @@ private:
 
   /// A map from IR values to their corresponding name.
   llvm::DenseMap<mlir::Value, std::string> nameTable;
-
-  class FSMMachine {
-    public:
-      int stateWidth;
-      z3::context* context;
-
-      FSMMachine(int width, z3::context* inContext) {
-        stateWidth = width;
-        context = inContext;
-      }
-
-      void addValidState(int value);
-
-      z3::expr generateValidStateConstraint(z3::expr stateVariable);
-
-    private:
-      llvm::SmallVector<z3::expr> validStates;
-  };
-
-  class FSMInstance {
-    FSMMachine* machine;
-    z3::expr stateVariable;
-  };
 
   /// A map from FSM machine names to their corresponding FSMMachine instances
   llvm::DenseMap<mlir::StringAttr, FSMMachine> fsmTable;
