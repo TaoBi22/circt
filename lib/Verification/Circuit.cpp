@@ -781,6 +781,11 @@ void Solver::Circuit::performFirReg(mlir::Value next, mlir::Value clk,
         bvToBool(clkExpr) && !bvToBool(rstPair->second), inExpr == outExpr));
 }
 
+Solver::Circuit::FSMMachine* Solver::Circuit::getFSMByName(mlir::StringAttr name){
+  auto thisMachine = fsmTable.find(name)->second;
+  return &thisMachine;
+}
+
 void Solver::Circuit::performMachine(int stateWidth, mlir::StringAttr name) {
   Solver::Circuit::FSMMachine machine(stateWidth, solver);
   fsmTable.insert(std::pair(name, machine));

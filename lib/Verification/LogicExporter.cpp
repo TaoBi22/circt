@@ -396,7 +396,8 @@ LogicExporter::Visitor::visitFSMOp(circt::fsm::MachineOp &op,
   int stateWidth = 16;
   circuit->performMachine(stateWidth, op.getSymNameAttr());
 
-  Solver::Circuit::FSMMachine thisMachine = circuit->fsmTable.find(op.getSymNameAttr())->second;
+  // TODO: would it be neater to do this with a return value?
+  Solver::Circuit::FSMMachine* thisMachine = circuit->getFSMByName(op.getSymNameAttr());
 
   return mlir::success();
 }

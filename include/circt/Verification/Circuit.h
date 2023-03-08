@@ -58,7 +58,6 @@ public:
     FSMMachine* machine;
     z3::expr stateVariable;
   };
-  
 
   /// Add an input to the circuit; internally a new value gets allocated.
   void addInput(mlir::Value);
@@ -70,6 +69,9 @@ public:
   llvm::ArrayRef<z3::expr> getInputs();
   /// Recover the outputs.
   llvm::ArrayRef<z3::expr> getOutputs();
+
+  /// Fetch an FSMMachine object by name
+  FSMMachine* getFSMByName(mlir::StringAttr name);
 
   /// Execute a clock cycle and check that the properties hold throughout
   bool checkCycle(int count);
