@@ -399,6 +399,13 @@ LogicExporter::Visitor::visitFSMOp(circt::fsm::MachineOp &op,
   // TODO: would it be neater to do this with a return value?
   Solver::Circuit::FSMMachine* thisMachine = circuit->getFSMByName(op.getSymNameAttr());
 
+  // Add states
+  auto stateOps = op.getBody().getOps<circt::fsm::StateOp>();
+  int i = 0;
+  for (auto state: stateOps) {
+    thisMachine->addValidState(i++);
+  }
+
   return mlir::success();
 }
 

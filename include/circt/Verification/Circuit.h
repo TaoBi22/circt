@@ -38,9 +38,6 @@ public:
 
   class FSMMachine {
     public:
-      int stateWidth;
-      Solver* solver;
-
       FSMMachine(int width, Solver* inSolver) {
         stateWidth = width;
         solver = inSolver;
@@ -52,6 +49,9 @@ public:
 
     private:
       llvm::SmallVector<z3::expr> validStates;
+      int stateWidth;
+      Solver* solver;
+      llvm::DenseMap<mlir::StringAttr, int> stateMap;
   };
 
   class FSMInstance {
