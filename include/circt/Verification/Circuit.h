@@ -38,25 +38,40 @@ public:
 
   class FSMMachine {
     public:
-      FSMMachine(int width, Solver* inSolver) {
+      FSMMachine(Solver* inSolver, int width, mlir::StringAttr initialState) {
         stateWidth = width;
         solver = inSolver;
+        this->initialState = initialState;
       }
 
-      void addValidState(int value);
+      Solver* solver;
+
+      mlir::StringAttr getInitialState();
+
+      int getValueOfState(mlir::StringAttr stateName);
+
+      void addValidState(mlir::StringAttr name, int value);
 
       z3::expr generateValidStateConstraint(z3::expr stateVariable);
 
-    private:
-      llvm::SmallVector<z3::expr> validStates;
-      int stateWidth;
-      Solver* solver;
-      llvm::DenseMap<mlir::StringAttr, int> stateMap;
-  };
+      class FSMInstance {
+        public:
+          FSMInstance(FSMMachine* machine): stateVariable(generateInitialStateValue(machine)) {
+            this->machine = machine;
+          }
 
-  class FSMInstance {
-    FSMMachine* machine;
-    z3::expr stateVariable;
+        private:
+          FSMMachine* machine;
+          z3::expr stateVariable;
+
+          z3::expr generateInitialStateValue(FSMMachine* machine);
+      };
+      
+    private:
+      int stateWidth;
+      mlir::StringAttr initialState;
+      llvm::SmallVector<z3::expr> validStates;
+      llvm::DenseMap<mlir::StringAttr, int> stateMap;
   };
 
   /// Add an input to the circuit; internally a new value gets allocated.
@@ -111,7 +126,7 @@ public:
                      mlir::Value reset, mlir::Value resetValue);
 
   // `fsm` dialect operations.
-  void performMachine(int stateWidth, mlir::StringAttr name);
+  void performMachine(mlir::StringAttr name, int stateWidth, mlir::StringAttr initialState);
 
 private:
   /// Struct to represent computational registers

@@ -394,7 +394,8 @@ LogicExporter::Visitor::visitFSMOp(circt::fsm::MachineOp &op,
 
   // TODO: Make this find the state width
   int stateWidth = 16;
-  circuit->performMachine(stateWidth, op.getSymNameAttr());
+  // TODO: get initial state name directly (getInitialState returns llvm::StringRef, not mlir::StringAttr)
+  circuit->performMachine(op.getSymNameAttr(), stateWidth, op.getInitialStateOp().getSymNameAttr());
 
   // TODO: would it be neater to do this with a return value?
   Solver::Circuit::FSMMachine* thisMachine = circuit->getFSMByName(op.getSymNameAttr());
@@ -403,7 +404,7 @@ LogicExporter::Visitor::visitFSMOp(circt::fsm::MachineOp &op,
   auto stateOps = op.getBody().getOps<circt::fsm::StateOp>();
   int i = 0;
   for (auto state: stateOps) {
-    thisMachine->addValidState(i++);
+    thisMachine->addValidState(state.getSymNameAttr(), i++);
   }
 
   return mlir::success();

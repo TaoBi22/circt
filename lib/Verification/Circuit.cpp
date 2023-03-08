@@ -786,13 +786,24 @@ Solver::Circuit::FSMMachine* Solver::Circuit::getFSMByName(mlir::StringAttr name
   return &thisMachine;
 }
 
-void Solver::Circuit::performMachine(int stateWidth, mlir::StringAttr name) {
-  Solver::Circuit::FSMMachine machine(stateWidth, solver);
+void Solver::Circuit::performMachine(mlir::StringAttr name, int stateWidth, mlir::StringAttr initialState) {
+  Solver::Circuit::FSMMachine machine(solver, stateWidth, initialState);
   fsmTable.insert(std::pair(name, machine));
 }
 
-void Solver::Circuit::FSMMachine::addValidState(int value) {
+mlir::StringAttr Solver::Circuit::FSMMachine::getInitialState() {
+  return initialState;
+}
+
+int Solver::Circuit::FSMMachine::getValueOfState(mlir::StringAttr stateName) {
+  auto stateValue = stateMap.find(stateName)->second;
+  return stateValue;
+};
+
+
+void Solver::Circuit::FSMMachine::addValidState(mlir::StringAttr name, int value) {
   validStates.push_back(solver->context.bv_val(value, stateWidth));
+  stateMap.insert(std::pair(name, value));
 }
 
 z3::expr Solver::Circuit::FSMMachine::generateValidStateConstraint(z3::expr stateVariable){
@@ -801,6 +812,13 @@ z3::expr Solver::Circuit::FSMMachine::generateValidStateConstraint(z3::expr stat
     constraint = constraint || (stateVariable == state);
   }
   return constraint;
+}
+
+z3::expr Solver::Circuit::FSMMachine::FSMInstance::generateInitialStateValue(FSMMachine* machine) {
+  mlir::StringAttr initialState = machine->getInitialState();
+  int initialStateValue = machine->getValueOfState(initialState);
+  stateVariable = machine->solver->context.bv_val(initialStateValue, machine->stateWidth);
+  return stateVariable;
 }
 
 #undef DEBUG_TYPE
