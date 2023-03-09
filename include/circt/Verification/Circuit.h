@@ -37,41 +37,44 @@ public:
   };
 
   class FSMMachine {
+  public:
+    FSMMachine(Solver *inSolver, int width, mlir::StringAttr initialState) {
+      stateWidth = width;
+      solver = inSolver;
+      this->initialState = initialState;
+    }
+
+    Solver *solver;
+
+    mlir::StringAttr getInitialState();
+
+    int getValueOfState(mlir::StringAttr stateName);
+
+    void addValidState(mlir::StringAttr name, int value);
+
+    z3::expr generateValidStateConstraint(z3::expr stateVariable);
+
+    class FSMInstance {
     public:
-      FSMMachine(Solver* inSolver, int width, mlir::StringAttr initialState) {
-        stateWidth = width;
-        solver = inSolver;
-        this->initialState = initialState;
+      FSMInstance(mlir::StringAttr name, FSMMachine *machine)
+          : stateVariable(generateInitialStateValue(machine)) {
+        this->machine = machine;
+        machine->instanceMap.insert(std::pair(name, *this));
       }
 
-      Solver* solver;
-
-      mlir::StringAttr getInitialState();
-
-      int getValueOfState(mlir::StringAttr stateName);
-
-      void addValidState(mlir::StringAttr name, int value);
-
-      z3::expr generateValidStateConstraint(z3::expr stateVariable);
-
-      class FSMInstance {
-        public:
-          FSMInstance(FSMMachine* machine): stateVariable(generateInitialStateValue(machine)) {
-            this->machine = machine;
-          }
-
-        private:
-          FSMMachine* machine;
-          z3::expr stateVariable;
-
-          z3::expr generateInitialStateValue(FSMMachine* machine);
-      };
-      
     private:
-      int stateWidth;
-      mlir::StringAttr initialState;
-      llvm::SmallVector<z3::expr> validStates;
-      llvm::DenseMap<mlir::StringAttr, int> stateMap;
+      FSMMachine *machine;
+      z3::expr stateVariable;
+
+      z3::expr generateInitialStateValue(FSMMachine *machine);
+    };
+
+  private:
+    int stateWidth;
+    mlir::StringAttr initialState;
+    llvm::SmallVector<z3::expr> validStates;
+    llvm::DenseMap<mlir::StringAttr, int> stateMap;
+    llvm::DenseMap<mlir::StringAttr, FSMInstance> instanceMap;
   };
 
   /// Add an input to the circuit; internally a new value gets allocated.
@@ -86,7 +89,7 @@ public:
   llvm::ArrayRef<z3::expr> getOutputs();
 
   /// Fetch an FSMMachine object by name
-  FSMMachine* getFSMByName(mlir::StringAttr name);
+  FSMMachine *getFSMByName(mlir::StringAttr name);
 
   /// Execute a clock cycle and check that the properties hold throughout
   bool checkCycle(int count);
@@ -126,7 +129,9 @@ public:
                      mlir::Value reset, mlir::Value resetValue);
 
   // `fsm` dialect operations.
-  void performMachine(mlir::StringAttr name, int stateWidth, mlir::StringAttr initialState);
+  void performMachine(mlir::StringAttr name, int stateWidth,
+                      mlir::StringAttr initialState);
+  void performHWInstance(mlir::StringAttr name, mlir::StringAttr machineName);
 
 private:
   /// Struct to represent computational registers

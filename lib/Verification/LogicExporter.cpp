@@ -329,8 +329,7 @@ mlir::LogicalResult LogicExporter::Visitor::visitSeq(mlir::Operation *op,
             return LogicExporter::Visitor::visitSeqOp(op, circuit);
           })
           .Default([&](mlir::Operation *op) {
-            return LogicExporter::Visitor::visitFSM(
-                op, circuit);
+            return LogicExporter::Visitor::visitFSM(op, circuit);
           });
   return outcome;
 }
@@ -378,6 +377,9 @@ mlir::LogicalResult LogicExporter::Visitor::visitFSM(mlir::Operation *op,
           .Case<circt::fsm::MachineOp>([&](circt::fsm::MachineOp &op) {
             return LogicExporter::Visitor::visitFSMOp(op, circuit);
           })
+          .Case<circt::fsm::HWInstanceOp>([&](circt::fsm::HWInstanceOp &op) {
+            return LogicExporter::Visitor::visitFSMOp(op, circuit);
+          })
           .Default([&](mlir::Operation *op) {
             return LogicExporter::Visitor::dispatchCombinationalVisitor(
                 op, circuit);
@@ -394,19 +396,33 @@ LogicExporter::Visitor::visitFSMOp(circt::fsm::MachineOp &op,
 
   // TODO: Make this find the state width
   int stateWidth = 16;
-  // TODO: get initial state name directly (getInitialState returns llvm::StringRef, not mlir::StringAttr)
-  circuit->performMachine(op.getSymNameAttr(), stateWidth, op.getInitialStateOp().getSymNameAttr());
+  // TODO: get initial state name directly (getInitialState returns
+  // llvm::StringRef, not mlir::StringAttr)
+  circuit->performMachine(op.getSymNameAttr(), stateWidth,
+                          op.getInitialStateOp().getSymNameAttr());
 
   // TODO: would it be neater to do this with a return value?
-  Solver::Circuit::FSMMachine* thisMachine = circuit->getFSMByName(op.getSymNameAttr());
+  Solver::Circuit::FSMMachine *thisMachine =
+      circuit->getFSMByName(op.getSymNameAttr());
 
   // Add states
   auto stateOps = op.getBody().getOps<circt::fsm::StateOp>();
   int i = 0;
-  for (auto state: stateOps) {
+  for (auto state : stateOps) {
     thisMachine->addValidState(state.getSymNameAttr(), i++);
   }
 
+  return mlir::success();
+}
+
+mlir::LogicalResult
+LogicExporter::Visitor::visitFSMOp(circt::fsm::HWInstanceOp &op,
+                                   Solver::Circuit *circuit) {
+  LLVM_DEBUG(lec::dbgs << "Visiting HW Instance\n");
+  INDENT();
+  LLVM_DEBUG(debugOperands(op));
+  circuit->performHWInstance(op.getSymNameAttr(),
+                             op.getMachineOp().getSymNameAttr());
   return mlir::success();
 }
 
