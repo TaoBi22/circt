@@ -412,6 +412,13 @@ LogicExporter::Visitor::visitFSMOp(circt::fsm::MachineOp &op,
     thisMachine->addValidState(state.getSymNameAttr(), i++);
   }
 
+  // Second pass over states to establish transitions (now that encoding is defined)
+  int i = 0;
+  bool firstState = true;
+  for (auto state: stateOps) {
+    // TODO: Construct clause, probably by calling a method with the possible transitions so that Circuit.cpp can infer the correct machine variables etc.
+  }
+
   return mlir::success();
 }
 

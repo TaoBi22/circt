@@ -57,7 +57,7 @@ public:
     class FSMInstance {
     public:
       FSMInstance(mlir::StringAttr name, FSMMachine *machine)
-          : stateVariable(generateInitialStateValue(machine)) {
+          : stateVariable(generateStateVariable(name, machine)), currentState(generateInitialStateValue(machine)) {
         this->machine = machine;
         machine->instanceMap.insert(std::pair(name, *this));
       }
@@ -65,7 +65,9 @@ public:
     private:
       FSMMachine *machine;
       z3::expr stateVariable;
+      z3::expr currentState;
       mlir::Value clk;
+      z3::expr generateStateVariable(mlir::StringAttr name, FSMMachine *machine);
       z3::expr generateInitialStateValue(FSMMachine *machine);
     };
 

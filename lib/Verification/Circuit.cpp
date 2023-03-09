@@ -824,13 +824,20 @@ z3::expr Solver::Circuit::FSMMachine::generateValidStateConstraint(
   return constraint;
 }
 
+z3::expr Solver::Circuit::FSMMachine::FSMInstance::generateStateVariable(mlir::StringAttr instanceName, FSMMachine *machine) {
+  //TODO: Include "_state" at end of variable name
+  z3::expr stateVariable =
+      machine->solver->context.bv_val(instanceName.getValue().data(), machine->stateWidth);
+  return stateVariable;
+}
+
 z3::expr Solver::Circuit::FSMMachine::FSMInstance::generateInitialStateValue(
     FSMMachine *machine) {
   mlir::StringAttr initialState = machine->getInitialState();
   int initialStateValue = machine->getValueOfState(initialState);
-  stateVariable =
+  z3::expr stateBitvec =
       machine->solver->context.bv_val(initialStateValue, machine->stateWidth);
-  return stateVariable;
+  return stateBitvec;
 }
 
 #undef DEBUG_TYPE
