@@ -795,8 +795,9 @@ void Solver::Circuit::performMachine(mlir::StringAttr name, int stateWidth,
 
 void Solver::Circuit::performHWInstance(mlir::StringAttr name,
                                         mlir::StringAttr machineName) {
-  Solver::Circuit::FSMMachine *machine = getFSMByName(machineName);
-  Solver::Circuit::FSMMachine::FSMInstance instance(name, machine);
+  Solver::Circuit::FSMMachine* machine = getFSMByName(machineName);
+  // Constructor automatically adds to machine's instanceMap
+  Solver::Circuit::FSMMachine::FSMInstance* instance = new Solver::Circuit::FSMMachine::FSMInstance(name, machine);
 }
 
 mlir::StringAttr Solver::Circuit::FSMMachine::getInitialState() {

@@ -65,7 +65,7 @@ public:
     private:
       FSMMachine *machine;
       z3::expr stateVariable;
-
+      mlir::Value clk;
       z3::expr generateInitialStateValue(FSMMachine *machine);
     };
 
