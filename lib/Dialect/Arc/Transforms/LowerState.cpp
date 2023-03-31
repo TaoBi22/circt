@@ -13,6 +13,7 @@
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/IR/OperationSupport.h"
 
 #define DEBUG_TYPE "arc-lower-state"
 
@@ -331,6 +332,33 @@ LogicalResult ModuleLowering::lowerStates() {
     if (failed(result))
       return failure();
   }
+
+
+  // Create a list of reset values and map from them to the states they reset
+  SmallVector<Value> resetValues;
+  llvm::MapVector<mlir::Value, SmallVector<scf::IfOp>> resetMap;
+
+  // // TODO make this an actual pass - group by reset
+  auto ifOps = moduleOp.getOps<scf::IfOp>();
+
+  for (auto ifOp: ifOps) {
+    mlir::Value cond = ifOp.getCondition();
+    if (resetMap[cond].empty()) {
+      resetValues.push_back(cond);
+      llvm::SmallVector<scf::IfOp> newVec;
+      newVec.push_back(ifOp);
+      resetMap.insert(std::pair(cond, newVec));
+    }
+    else
+      resetMap[cond].push_back(ifOp);
+  }
+
+  // Create new, aggregated IfOps
+  for (auto cond: resetValues) {
+    // scf::IfOp newIfOp = builder.create<scf::IfOp>();
+    SmallVector<scf::IfOp> oldOps = resetMap[cond];
+  }
+
   return success();
 }
 
@@ -381,6 +409,7 @@ LogicalResult ModuleLowering::lowerState(StateOp stateOp) {
 
   OpBuilder &nonResetBuilder = info.clock.builder;
   if (stateOp.getReset()) {
+
     auto materializedReset = info.clock.materializeValue(stateOp.getReset());
     auto ifOp = info.clock.builder.create<scf::IfOp>(stateOp.getLoc(),
                                                      materializedReset, true);
