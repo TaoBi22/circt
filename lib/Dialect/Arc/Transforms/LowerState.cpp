@@ -14,6 +14,8 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Pass/PassManager.h"
 
 #define DEBUG_TYPE "arc-lower-state"
 
@@ -323,6 +325,51 @@ LogicalResult ModuleLowering::lowerPrimaryOutputs() {
   return success();
 }
 
+class ResetGroupingConversionPattern
+    : public OpConversionPattern<scf::IfOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(scf::IfOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // // Create a list of reset values and map from them to the states they reset
+    SmallVector<Value> resetValues;
+    llvm::MapVector<mlir::Value, SmallVector<scf::IfOp>> resetMap;
+
+    // // TODO make this an actual pass - group by reset
+    auto ifOps = op.getBody()->getOps<scf::IfOp>();
+
+    for (auto ifOp: ifOps) {
+      mlir::Value cond = ifOp.getCondition();
+      if (resetMap[cond].empty()) {
+        resetValues.push_back(cond);
+        llvm::SmallVector<scf::IfOp> newVec;
+        newVec.push_back(ifOp);
+        resetMap.insert(std::pair(cond, newVec));
+      }
+      else
+        resetMap[cond].push_back(ifOp);
+    }
+
+    // Create new, aggregated IfOps
+    for (auto cond: resetValues) {
+      SmallVector<scf::IfOp> oldOps = resetMap[cond];
+      auto iteratorStart = oldOps.begin();
+      scf::IfOp firstOp = *(iteratorStart++);
+      for (auto thisOp = iteratorStart; thisOp != oldOps.end(); thisOp++) {
+        // Inline the before and after region inside the original If
+        rewriter.inlineRegionBefore(thisOp->getThenRegion(),
+                                   &firstOp.getThenRegion().back());
+        rewriter.inlineRegionBefore(thisOp->getElseRegion(),
+                                   &firstOp.getElseRegion().back());
+        //thisOp->dropAllReferences();
+        thisOp->erase();
+      }
+    }
+    return success();
+  }
+};
+
 LogicalResult ModuleLowering::lowerStates() {
   for (auto &op : llvm::make_early_inc_range(*moduleOp.getBodyBlock())) {
     auto result = TypeSwitch<Operation *, LogicalResult>(&op)
@@ -331,33 +378,44 @@ LogicalResult ModuleLowering::lowerStates() {
                       .Default(success());
     if (failed(result))
       return failure();
+
+    RewritePatternSet patterns(context);
+    patterns.insert<ResetGroupingConversionPattern>(
+        context);
+    ConversionTarget target(*context);
+    if (failed(applyPartialConversion(&op, target, std::move(patterns))))
+      return op.emitOpError() << "error during conversion";
+    return success();
   }
 
+  // // Create a list of reset values and map from them to the states they reset
+  // SmallVector<Value> resetValues;
+  // llvm::MapVector<mlir::Value, SmallVector<scf::IfOp>> resetMap;
 
-  // Create a list of reset values and map from them to the states they reset
-  SmallVector<Value> resetValues;
-  llvm::MapVector<mlir::Value, SmallVector<scf::IfOp>> resetMap;
+  // // // TODO make this an actual pass - group by reset
+  // auto ifOps = moduleOp.getOps<scf::IfOp>();
 
-  // // TODO make this an actual pass - group by reset
-  auto ifOps = moduleOp.getOps<scf::IfOp>();
+  // for (auto ifOp: ifOps) {
+  //   mlir::Value cond = ifOp.getCondition();
+  //   if (resetMap[cond].empty()) {
+  //     resetValues.push_back(cond);
+  //     llvm::SmallVector<scf::IfOp> newVec;
+  //     newVec.push_back(ifOp);
+  //     resetMap.insert(std::pair(cond, newVec));
+  //   }
+  //   else
+  //     resetMap[cond].push_back(ifOp);
+  // }
 
-  for (auto ifOp: ifOps) {
-    mlir::Value cond = ifOp.getCondition();
-    if (resetMap[cond].empty()) {
-      resetValues.push_back(cond);
-      llvm::SmallVector<scf::IfOp> newVec;
-      newVec.push_back(ifOp);
-      resetMap.insert(std::pair(cond, newVec));
-    }
-    else
-      resetMap[cond].push_back(ifOp);
-  }
+  // // Create new, aggregated IfOps
+  // for (auto cond: resetValues) {
+  //   SmallVector<scf::IfOp> oldOps = resetMap[cond];
+  //   scf::IfOp firstOp = oldOps[0];
+  //   // while (scf::IfOp thisOp = oldOps.pop_back()) {
+  //   //   //builder.inlineBlock()
+  //   // }
 
-  // Create new, aggregated IfOps
-  for (auto cond: resetValues) {
-    // scf::IfOp newIfOp = builder.create<scf::IfOp>();
-    SmallVector<scf::IfOp> oldOps = resetMap[cond];
-  }
+  // }
 
   return success();
 }
