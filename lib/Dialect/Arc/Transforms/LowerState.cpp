@@ -326,18 +326,19 @@ LogicalResult ModuleLowering::lowerPrimaryOutputs() {
 }
 
 class ResetGroupingConversionPattern
-    : public OpConversionPattern<scf::IfOp> {
+    : public RewritePattern {
 public:
-  using OpConversionPattern::OpConversionPattern;
+  using RewritePattern::RewritePattern;
+  ResetGroupingConversionPattern(PatternBenefit benefit, MLIRContext *context)
+      : RewritePattern(HWModuleOp::getOperationName(), benefit, context) {}
   LogicalResult
-  matchAndRewrite(scf::IfOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  matchAndRewrite(HWModuleOp op, PatternRewriter &rewriter) {
     // // Create a list of reset values and map from them to the states they reset
     SmallVector<Value> resetValues;
     llvm::MapVector<mlir::Value, SmallVector<scf::IfOp>> resetMap;
 
     // // TODO make this an actual pass - group by reset
-    auto ifOps = op.getBody()->getOps<scf::IfOp>();
+    auto ifOps = op.getBody().getOps<scf::IfOp>();
 
     for (auto ifOp: ifOps) {
       mlir::Value cond = ifOp.getCondition();
@@ -380,7 +381,7 @@ LogicalResult ModuleLowering::lowerStates() {
       return failure();
 
     RewritePatternSet patterns(context);
-    patterns.insert<ResetGroupingConversionPattern>(
+    patterns.insert<ResetGroupingConversionPattern>(1, 
         context);
     ConversionTarget target(*context);
     if (failed(applyPartialConversion(&op, target, std::move(patterns))))

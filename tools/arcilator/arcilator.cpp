@@ -187,7 +187,7 @@ static void populatePipeline(PassManager &pm) {
 
   // TODO: the following is commented out because the backend does not support
   // StateOp resets yet.
-  // pm.addPass(arc::createInferStatePropertiesPass());
+  pm.addPass(arc::createInferStatePropertiesPass());
   // InferStateProperties does not remove all ops it bypasses and inserts a lot
   // of constant ops that should be uniqued
   // pm.addPass(createSimpleCanonicalizerPass());
