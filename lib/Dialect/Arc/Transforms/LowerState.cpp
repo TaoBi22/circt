@@ -325,20 +325,20 @@ LogicalResult ModuleLowering::lowerPrimaryOutputs() {
   return success();
 }
 
-class ResetGroupingConversionPattern
+class ResetGroupingPattern
     : public RewritePattern {
 public:
   using RewritePattern::RewritePattern;
-  ResetGroupingConversionPattern(PatternBenefit benefit, MLIRContext *context)
+  ResetGroupingPattern(PatternBenefit benefit, MLIRContext *context)
       : RewritePattern(HWModuleOp::getOperationName(), benefit, context) {}
   LogicalResult
-  matchAndRewrite(HWModuleOp op, PatternRewriter &rewriter) {
-    // // Create a list of reset values and map from them to the states they reset
+  matchAndRewrite(Operation *op, PatternRewriter &rewriter) {
+    // Create a list of reset values and map from them to the states they reset
     SmallVector<Value> resetValues;
     llvm::MapVector<mlir::Value, SmallVector<scf::IfOp>> resetMap;
 
-    // // TODO make this an actual pass - group by reset
-    auto ifOps = op.getBody().getOps<scf::IfOp>();
+    HWModuleOp moduleOp = dyn_cast<HWModuleOp>(*op);
+    auto ifOps = moduleOp.getBody().getOps<scf::IfOp>();
 
     for (auto ifOp: ifOps) {
       mlir::Value cond = ifOp.getCondition();
@@ -352,18 +352,20 @@ public:
         resetMap[cond].push_back(ifOp);
     }
 
-    // Create new, aggregated IfOps
+    // Combine IfOps
     for (auto cond: resetValues) {
       SmallVector<scf::IfOp> oldOps = resetMap[cond];
       auto iteratorStart = oldOps.begin();
       scf::IfOp firstOp = *(iteratorStart++);
       for (auto thisOp = iteratorStart; thisOp != oldOps.end(); thisOp++) {
         // Inline the before and after region inside the original If
-        rewriter.inlineRegionBefore(thisOp->getThenRegion(),
-                                   &firstOp.getThenRegion().back());
-        rewriter.inlineRegionBefore(thisOp->getElseRegion(),
-                                   &firstOp.getElseRegion().back());
-        //thisOp->dropAllReferences();
+        rewriter.inlineBlockBefore(thisOp->thenBlock(),
+                                   firstOp.thenBlock()->getTerminator());
+        // Check we're not inlining an empty block
+        if (!thisOp->elseBlock()->empty()) {
+            rewriter.inlineBlockBefore(&(thisOp->getElseRegion().front()),
+                                       firstOp.elseBlock()->getTerminator());
+        }
         thisOp->erase();
       }
     }
@@ -707,7 +709,7 @@ LogicalResult LowerStatePass::runOnModule(HWModuleOp moduleOp) {
     return failure();
 
   RewritePatternSet patterns(lowering.context);
-  patterns.insert<ResetGroupingConversionPattern>(1,
+  patterns.insert<ResetGroupingPattern>(1,
       lowering.context);
   ConversionTarget target(*lowering.context);
   if (failed(applyPartialConversion(moduleOp, target, std::move(patterns))))
