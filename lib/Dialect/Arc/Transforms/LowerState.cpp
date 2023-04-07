@@ -380,12 +380,6 @@ LogicalResult ModuleLowering::lowerStates() {
     if (failed(result))
       return failure();
 
-    RewritePatternSet patterns(context);
-    patterns.insert<ResetGroupingConversionPattern>(1, 
-        context);
-    ConversionTarget target(*context);
-    if (failed(applyPartialConversion(&op, target, std::move(patterns))))
-      return op.emitOpError() << "error during conversion";
     return success();
   }
 
@@ -711,6 +705,13 @@ LogicalResult LowerStatePass::runOnModule(HWModuleOp moduleOp) {
   // reliably determine that the ops were no longer needed.
   if (failed(lowering.cleanup()))
     return failure();
+
+  RewritePatternSet patterns(lowering.context);
+  patterns.insert<ResetGroupingConversionPattern>(1,
+      lowering.context);
+  ConversionTarget target(*lowering.context);
+  if (failed(applyPartialConversion(moduleOp, target, std::move(patterns))))
+    return moduleOp.emitOpError() << "error during conversion";
 
   // Replace the `HWModuleOp` with a `ModelOp`.
   moduleOp.getBodyBlock()->eraseArguments(
