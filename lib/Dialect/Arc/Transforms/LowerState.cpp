@@ -16,6 +16,8 @@
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+
 
 #define DEBUG_TYPE "arc-lower-state"
 
@@ -332,7 +334,7 @@ public:
   ResetGroupingPattern(PatternBenefit benefit, MLIRContext *context)
       : RewritePattern(HWModuleOp::getOperationName(), benefit, context) {}
   LogicalResult
-  matchAndRewrite(Operation *op, PatternRewriter &rewriter) {
+  matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
     // Create a list of reset values and map from them to the states they reset
     SmallVector<Value> resetValues;
     llvm::MapVector<mlir::Value, SmallVector<scf::IfOp>> resetMap;
@@ -366,7 +368,7 @@ public:
             rewriter.inlineBlockBefore(&(thisOp->getElseRegion().front()),
                                        firstOp.elseBlock()->getTerminator());
         }
-        thisOp->erase();
+        rewriter.eraseOp(*thisOp);
       }
     }
     return success();
@@ -381,39 +383,7 @@ LogicalResult ModuleLowering::lowerStates() {
                       .Default(success());
     if (failed(result))
       return failure();
-
-    return success();
   }
-
-  // // Create a list of reset values and map from them to the states they reset
-  // SmallVector<Value> resetValues;
-  // llvm::MapVector<mlir::Value, SmallVector<scf::IfOp>> resetMap;
-
-  // // // TODO make this an actual pass - group by reset
-  // auto ifOps = moduleOp.getOps<scf::IfOp>();
-
-  // for (auto ifOp: ifOps) {
-  //   mlir::Value cond = ifOp.getCondition();
-  //   if (resetMap[cond].empty()) {
-  //     resetValues.push_back(cond);
-  //     llvm::SmallVector<scf::IfOp> newVec;
-  //     newVec.push_back(ifOp);
-  //     resetMap.insert(std::pair(cond, newVec));
-  //   }
-  //   else
-  //     resetMap[cond].push_back(ifOp);
-  // }
-
-  // // Create new, aggregated IfOps
-  // for (auto cond: resetValues) {
-  //   SmallVector<scf::IfOp> oldOps = resetMap[cond];
-  //   scf::IfOp firstOp = oldOps[0];
-  //   // while (scf::IfOp thisOp = oldOps.pop_back()) {
-  //   //   //builder.inlineBlock()
-  //   // }
-
-  // }
-
   return success();
 }
 
@@ -708,12 +678,17 @@ LogicalResult LowerStatePass::runOnModule(HWModuleOp moduleOp) {
   if (failed(lowering.cleanup()))
     return failure();
 
+  SmallVector<mlir::Operation*> ops;
+  ops.push_back(moduleOp);
+
   RewritePatternSet patterns(lowering.context);
   patterns.insert<ResetGroupingPattern>(1,
       lowering.context);
-  ConversionTarget target(*lowering.context);
-  if (failed(applyPartialConversion(moduleOp, target, std::move(patterns))))
-    return moduleOp.emitOpError() << "error during conversion";
+  GreedyRewriteConfig config;
+  config.strictMode = GreedyRewriteStrictness::ExistingOps;
+  bool erased;
+  (void)applyOpPatternsAndFold(ops, std::move(patterns),
+                               config, /*changed=*/nullptr, &erased);
 
   // Replace the `HWModuleOp` with a `ModelOp`.
   moduleOp.getBodyBlock()->eraseArguments(
