@@ -332,43 +332,75 @@ class ResetGroupingPattern
 public:
   using RewritePattern::RewritePattern;
   ResetGroupingPattern(PatternBenefit benefit, MLIRContext *context)
-      : RewritePattern(HWModuleOp::getOperationName(), benefit, context) {}
+      : RewritePattern(ClockTreeOp::getOperationName(), benefit, context) {}
   LogicalResult
   matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
-    // Create a list of reset values and map from them to the states they reset
-    SmallVector<Value> resetValues;
-    llvm::MapVector<mlir::Value, SmallVector<scf::IfOp>> resetMap;
+    ClockTreeOp moduleOp = dyn_cast<ClockTreeOp>(*op);
 
-    HWModuleOp moduleOp = dyn_cast<HWModuleOp>(*op);
+    // Group similar resets into single IfOps
+    // Create a list of reset values and map from them to the states they reset
+    llvm::MapVector<mlir::Value, SmallVector<scf::IfOp>> resetMap;
     auto ifOps = moduleOp.getBody().getOps<scf::IfOp>();
 
-    for (auto ifOp: ifOps) {
-      mlir::Value cond = ifOp.getCondition();
-      if (resetMap[cond].empty()) {
-        resetValues.push_back(cond);
-        llvm::SmallVector<scf::IfOp> newVec;
-        newVec.push_back(ifOp);
-        resetMap.insert(std::pair(cond, newVec));
-      }
-      else
-        resetMap[cond].push_back(ifOp);
-    }
+    for (auto ifOp: ifOps)
+      resetMap[ifOp.getCondition()].push_back(ifOp);
 
     // Combine IfOps
-    for (auto cond: resetValues) {
-      SmallVector<scf::IfOp> oldOps = resetMap[cond];
-      auto iteratorStart = oldOps.begin();
+    for (auto [cond, oldOps]: resetMap) {
+      auto iteratorStart = oldOps.rbegin();
       scf::IfOp firstOp = *(iteratorStart++);
-      for (auto thisOp = iteratorStart; thisOp != oldOps.end(); thisOp++) {
+      for (auto thisOp = iteratorStart; thisOp != oldOps.rend(); thisOp++) {
         // Inline the before and after region inside the original If
+        rewriter.eraseOp(thisOp->thenBlock()->getTerminator());
         rewriter.inlineBlockBefore(thisOp->thenBlock(),
                                    firstOp.thenBlock()->getTerminator());
         // Check we're not inlining an empty block
         if (!thisOp->elseBlock()->empty()) {
+            rewriter.eraseOp(thisOp->elseBlock()->getTerminator());
             rewriter.inlineBlockBefore(&(thisOp->getElseRegion().front()),
                                        firstOp.elseBlock()->getTerminator());
         }
         rewriter.eraseOp(*thisOp);
+      }
+    }
+    return success();
+  }
+};
+
+class EnableGroupingPattern
+    : public RewritePattern {
+public:
+  using RewritePattern::RewritePattern;
+  EnableGroupingPattern(PatternBenefit benefit, MLIRContext *context)
+      : RewritePattern(ClockTreeOp::getOperationName(), benefit, context) {}
+  LogicalResult
+  matchAndRewrite(Operation *op, PatternRewriter &rewriter) const override {
+    ClockTreeOp moduleOp = dyn_cast<ClockTreeOp>(*op);
+
+    // Generate vector of blocks to amass StateWrite enables in
+    SmallVector<Block*> groupingBlocks;
+    groupingBlocks.push_back(&moduleOp.getBodyBlock());
+    for (auto ifOp: moduleOp.getBody().getOps<scf::IfOp>()) {
+      groupingBlocks.push_back(ifOp.thenBlock());
+      groupingBlocks.push_back(ifOp.elseBlock());
+    }
+
+    for (auto *block: groupingBlocks) {
+      llvm::MapVector<mlir::Value, SmallVector<StateWriteOp>> enableMap;
+      auto writeOps = block->getOps<StateWriteOp>();
+      for (auto writeOp: writeOps) {
+        if (writeOp.getCondition())
+          enableMap[writeOp.getCondition()].push_back(writeOp);
+      }
+      for (auto [enable, writeOps]: enableMap) {
+        // Only group if multiple writes share a reset
+        if (writeOps.size() > 1) {
+          scf::IfOp ifOp = rewriter.create<scf::IfOp>(block->getTerminator()->getLoc(), enable, false);
+          for (auto writeOp: writeOps) {
+            writeOp->moveBefore(ifOp.thenBlock()->getTerminator());
+            writeOp.getConditionMutable().assign(Value{});
+          }
+        }
       }
     }
     return success();
@@ -432,7 +464,7 @@ LogicalResult ModuleLowering::lowerState(StateOp stateOp) {
   for (auto input : inputs)
     materializedOperands.push_back(info.clock.materializeValue(input));
 
-  OpBuilder &nonResetBuilder = info.clock.builder;
+  OpBuilder nonResetBuilder = info.clock.builder;
   if (stateOp.getReset()) {
 
     auto materializedReset = info.clock.materializeValue(stateOp.getReset());
@@ -678,18 +710,6 @@ LogicalResult LowerStatePass::runOnModule(HWModuleOp moduleOp) {
   if (failed(lowering.cleanup()))
     return failure();
 
-  SmallVector<mlir::Operation*> ops;
-  ops.push_back(moduleOp);
-
-  RewritePatternSet patterns(lowering.context);
-  patterns.insert<ResetGroupingPattern>(1,
-      lowering.context);
-  GreedyRewriteConfig config;
-  config.strictMode = GreedyRewriteStrictness::ExistingOps;
-  bool erased;
-  (void)applyOpPatternsAndFold(ops, std::move(patterns),
-                               config, /*changed=*/nullptr, &erased);
-
   // Replace the `HWModuleOp` with a `ModelOp`.
   moduleOp.getBodyBlock()->eraseArguments(
       [&](auto arg) { return arg != lowering.storageArg; });
@@ -699,6 +719,16 @@ LogicalResult LowerStatePass::runOnModule(HWModuleOp moduleOp) {
       builder.create<ModelOp>(moduleOp.getLoc(), moduleOp.moduleNameAttr());
   modelOp.getBody().takeBody(moduleOp.getBody());
   moduleOp->erase();
+
+  RewritePatternSet patterns(lowering.context);
+  patterns.insert<ResetGroupingPattern>(1,
+      lowering.context);
+  patterns.insert<EnableGroupingPattern>(1,
+      lowering.context);
+  GreedyRewriteConfig config;
+  config.strictMode = GreedyRewriteStrictness::ExistingOps;
+  (void)applyPatternsAndFoldGreedily(modelOp, std::move(patterns), config);
+
   return success();
 }
 
