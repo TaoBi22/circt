@@ -720,14 +720,14 @@ LogicalResult LowerStatePass::runOnModule(HWModuleOp moduleOp) {
   modelOp.getBody().takeBody(moduleOp.getBody());
   moduleOp->erase();
 
-  RewritePatternSet patterns(lowering.context);
-  patterns.insert<ResetGroupingPattern>(1,
-      lowering.context);
-  patterns.insert<EnableGroupingPattern>(1,
-      lowering.context);
-  GreedyRewriteConfig config;
-  config.strictMode = GreedyRewriteStrictness::ExistingOps;
-  (void)applyPatternsAndFoldGreedily(modelOp, std::move(patterns), config);
+  // RewritePatternSet patterns(lowering.context);
+  // // patterns.insert<ResetGroupingPattern>(1,
+  // //     lowering.context);
+  // patterns.insert<EnableGroupingPattern>(1,
+  //     lowering.context);
+  // GreedyRewriteConfig config;
+  // config.strictMode = GreedyRewriteStrictness::ExistingOps;
+  // (void)applyPatternsAndFoldGreedily(modelOp, std::move(patterns), config);
 
   return success();
 }
