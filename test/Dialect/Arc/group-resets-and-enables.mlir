@@ -171,10 +171,10 @@ arc.model "BasicEnableGrouping" {
     //   CHECK-NEXT: arc.state_write [[BAR_ALLOC:%.+]] = %c0_i4
     arc.state_write %1 = %c0_i4 : <i4>
     arc.state_write %2 = %c0_i4 : <i4>
-    // CHECK-NEXT:   [[IN_I0:%.+]] = arc.state_read %in_i0
-    // CHECK-NEXT:   [[IN_I1:%.+]] = arc.state_read %in_i1
     // CHECK-NEXT:   scf.if [[IN_EN0]] {
+    // CHECK-NEXT:    [[IN_I0:%.+]] = arc.state_read %in_i0
     // CHECK-NEXT:    arc.state_write [[FOO_ALLOC]] = [[IN_I0]]
+    // CHECK-NEXT:    [[IN_I1:%.+]] = arc.state_read %in_i1
     // CHECK-NEXT:    arc.state_write [[BAR_ALLOC]] = [[IN_I1]]
     %4 = arc.state_read %in_i0 : <i4>
     arc.state_write %1 = %4 if %3 : <i4>
@@ -222,9 +222,8 @@ arc.model "ResetAndEnableGrouping" {
   %0 = arc.state_read %in_clock : <i1>
   // Group enables inside resets:
   arc.clock_tree %0 {
-    //  CHECK: [[IN_EN:%.+]] = arc.state_read %in_en1
     %3 = arc.state_read %in_en1 : <i1>
-    //  CHECK-NEXT: [[IN_RESET:%.+]] = arc.state_read %in_reset
+    //  CHECK: [[IN_RESET:%.+]] = arc.state_read %in_reset
     %4 = arc.state_read %in_reset : <i1>
     //  CHECK-NEXT: scf.if [[IN_RESET]] {
     scf.if %4 {
@@ -234,10 +233,11 @@ arc.model "ResetAndEnableGrouping" {
       arc.state_write %2 = %c0_i4 : <i4>
       //   CHECK-NEXT: } else {
     } else {
-      // CHECK-NEXT:   [[IN_I0:%.+]] = arc.state_read %in_i0
-      // CHECK-NEXT:   [[IN_I1:%.+]] = arc.state_read %in_i1
+      // CHECK-NEXT:   [[IN_EN:%.+]] = arc.state_read %in_en1
       // CHECK-NEXT:   scf.if [[IN_EN]] {
+      // CHECK-NEXT:   [[IN_I0:%.+]] = arc.state_read %in_i0
       // CHECK-NEXT:    arc.state_write [[FOO_ALLOC]] = [[IN_I0]]
+      // CHECK-NEXT:   [[IN_I1:%.+]] = arc.state_read %in_i1
       // CHECK-NEXT:    arc.state_write [[BAR_ALLOC]] = [[IN_I1]]
       %5 = arc.state_read %in_i0 : <i4>
       arc.state_write %1 = %5 if %3 : <i4>
@@ -252,7 +252,6 @@ arc.model "ResetAndEnableGrouping" {
   arc.clock_tree %0 {
     //  CHECK: [[IN_RESET:%.+]] = arc.state_read %in_reset
     %7 = arc.state_read %in_reset : <i1>
-    //  CHECK: [[IN_EN0:%.+]] = arc.state_read %in_en0
     %8 = arc.state_read %in_en0 : <i1>
     //  CHECK-NEXT: scf.if [[IN_RESET]] {
     scf.if %7 {
@@ -261,10 +260,11 @@ arc.model "ResetAndEnableGrouping" {
       arc.state_write %1 = %c0_i4 : <i4>
       //   CHECK-NEXT: } else {
     } else {
-      // CHECK-NEXT:   [[IN_I0:%.+]] = arc.state_read %in_i0
-      // CHECK-NEXT:   [[IN_I1:%.+]] = arc.state_read %in_i1
+      // CHECK-NEXT:   [[IN_EN0:%.+]] = arc.state_read %in_en0
       // CHECK-NEXT:   scf.if [[IN_EN0]] {
+      // CHECK-NEXT:    [[IN_I0:%.+]] = arc.state_read %in_i0
       // CHECK-NEXT:    arc.state_write [[FOO_ALLOC]] = [[IN_I0]]
+      // CHECK-NEXT:    [[IN_I1:%.+]] = arc.state_read %in_i1
       // CHECK-NEXT:    arc.state_write [[BAR_ALLOC]] = [[IN_I1]]
       // CHECK-NEXT:   }
       %9 = arc.state_read %in_i0 : <i4>
@@ -283,9 +283,7 @@ arc.model "ResetAndEnableGrouping" {
   arc.clock_tree %0 {
     //  CHECK: [[IN_RESET:%.+]] = arc.state_read %in_reset
     %11 = arc.state_read %in_reset : <i1>
-    //  CHECK: [[IN_EN0:%.+]] = arc.state_read %in_en0
     %12 = arc.state_read %in_en0 : <i1>
-    //  CHECK: [[IN_EN1:%.+]] = arc.state_read %in_en1
     //  CHECK-NEXT: scf.if [[IN_RESET]] {
     scf.if %11 {
       //   CHECK-NEXT:  arc.state_write [[FOO_ALLOC]] = %c0_i4
@@ -294,8 +292,10 @@ arc.model "ResetAndEnableGrouping" {
       //   CHECK-NEXT: } else {
     } else {
       // CHECK-NEXT:  [[IN_I0:%.+]] = arc.state_read %in_i0
+      // CHECK-NEXT:  [[IN_EN0:%.+]] = arc.state_read %in_en0
       // CHECK-NEXT:  arc.state_write [[FOO_ALLOC]] = [[IN_I0]] if [[IN_EN0]]
       // CHECK-NEXT:  [[IN_I1:%.+]] = arc.state_read %in_i1
+      // CHECK-NEXT:  [[IN_EN1:%.+]] = arc.state_read %in_en1
       // CHECK-NEXT:  arc.state_write [[BAR_ALLOC]] = [[IN_I1]] if [[IN_EN1]]
       %13 = arc.state_read %in_i0 : <i4>
       arc.state_write %1 = %13 if %12 : <i4>
