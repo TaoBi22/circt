@@ -1726,6 +1726,16 @@ struct FIRRTLLowering : public FIRRTLVisitor<FIRRTLLowering, LogicalResult> {
   FailureOr<Value> lowerSubaccess(SubaccessOp op, Value input);
   FailureOr<Value> lowerSubfield(SubfieldOp op, Value input);
 
+  LogicalResult visitStmt(AssertIntrinsicOp op);
+  LogicalResult visitStmt(AssumeIntrinsicOp op);
+  LogicalResult visitStmt(CoverIntrinsicOp op);
+  LogicalResult visitExpr(SeqAndIntrinsicOp op);
+  LogicalResult visitExpr(SeqDelayUnaryIntrinsicOp op);
+  LogicalResult visitExpr(SeqDelayBinaryIntrinsicOp op);
+  LogicalResult visitExpr(PropAndIntrinsicOp op);
+  LogicalResult visitExpr(PropImplIntrinsicOp op);
+  LogicalResult visitExpr(PropEventuallyIntrinsicOp op);
+
 private:
   /// The module we're lowering into.
   hw::HWModuleOp theModule;
@@ -4395,6 +4405,65 @@ LogicalResult FIRRTLLowering::visitStmt(CoverOp op) {
       op, "cover__", op.getClock(), op.getPredicate(), op.getEnable(),
       op.getMessageAttr(), op.getSubstitutions(), op.getNameAttr(),
       op.getIsConcurrent(), op.getEventControl());
+}
+
+LogicalResult FIRRTLLowering::visitStmt(AssertIntrinsicOp op) {
+  auto property = getLoweredValue(op.getProperty());
+  auto clock = getLoweredValue(op.getClock());
+  auto disable_iff = getLoweredValue(op.getDisableIff());
+  builder.create<sv::AssertPropertyOp>(circt::sv::EventControl::AtPosEdge,
+                                       clock, property, disable_iff);
+  return success();
+}
+
+LogicalResult FIRRTLLowering::visitStmt(AssumeIntrinsicOp op) {
+  auto property = getLoweredValue(op.getProperty());
+  auto clock = getLoweredValue(op.getClock());
+  auto disable_iff = getLoweredValue(op.getDisableIff());
+  builder.create<sv::AssumePropertyOp>(circt::sv::EventControl::AtPosEdge,
+                                       clock, property, disable_iff);
+  return success();
+}
+
+LogicalResult FIRRTLLowering::visitStmt(CoverIntrinsicOp op) {
+  auto property = getLoweredValue(op.getProperty());
+  auto clock = getLoweredValue(op.getClock());
+  auto disable_iff = getLoweredValue(op.getDisableIff());
+  builder.create<sv::CoverPropertyOp>(circt::sv::EventControl::AtPosEdge, clock,
+                                      property, disable_iff);
+  return success();
+}
+
+LogicalResult FIRRTLLowering::visitExpr(SeqAndIntrinsicOp op) {
+  return setLoweringTo<sv::SeqAndOp>(op, getLoweredValue(op.getLhs()),
+                                     getLoweredValue(op.getRhs()));
+}
+
+LogicalResult FIRRTLLowering::visitExpr(SeqDelayUnaryIntrinsicOp op) {
+  return setLoweringTo<sv::SeqDelayUnaryOp>(op, getLoweredValue(op.getInput()),
+                                            op.getCycles());
+}
+
+LogicalResult FIRRTLLowering::visitExpr(SeqDelayBinaryIntrinsicOp op) {
+  return setLoweringTo<sv::SeqDelayBinaryOp>(op, getLoweredValue(op.getLhs()),
+                                             getLoweredValue(op.getRhs()),
+                                             op.getCycles());
+}
+
+LogicalResult FIRRTLLowering::visitExpr(PropAndIntrinsicOp op) {
+  return setLoweringTo<sv::PropAndOp>(op, getLoweredValue(op.getLhs()),
+                                      getLoweredValue(op.getRhs()));
+}
+
+LogicalResult FIRRTLLowering::visitExpr(PropImplIntrinsicOp op) {
+  return setLoweringTo<sv::PropImplOp>(op, getLoweredValue(op.getLhs()),
+                                       getLoweredValue(op.getRhs()),
+                                       op.getOverlap());
+}
+
+LogicalResult FIRRTLLowering::visitExpr(PropEventuallyIntrinsicOp op) {
+  return setLoweringTo<sv::PropEventuallyOp>(op, getLoweredValue(op.getInput()),
+                                             op.getStrong());
 }
 
 LogicalResult FIRRTLLowering::visitStmt(AttachOp op) {

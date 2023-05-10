@@ -55,7 +55,11 @@ public:
             RefResolveOp, RefSubOp,
             // Casts to deal with weird stuff
             UninferredResetCastOp, UninferredWidthCastOp, ConstCastOp,
-            mlir::UnrealizedConversionCastOp>([&](auto expr) -> ResultType {
+            mlir::UnrealizedConversionCastOp,
+            // Verification intrinsics
+            SeqAndIntrinsicOp, SeqDelayUnaryIntrinsicOp,
+            SeqDelayBinaryIntrinsicOp, PropAndIntrinsicOp, PropImplIntrinsicOp,
+            PropEventuallyIntrinsicOp>([&](auto expr) -> ResultType {
           return thisCast->visitExpr(expr, args...);
         })
         .Default([&](auto expr) -> ResultType {
@@ -177,6 +181,14 @@ public:
   HANDLE(ConstCastOp, Unhandled);
   HANDLE(mlir::UnrealizedConversionCastOp, Unhandled);
   HANDLE(BitCastOp, Unhandled);
+
+  // Verification stuff.
+  HANDLE(SeqAndIntrinsicOp, Unhandled);
+  HANDLE(SeqDelayUnaryIntrinsicOp, Unhandled);
+  HANDLE(SeqDelayBinaryIntrinsicOp, Unhandled);
+  HANDLE(PropAndIntrinsicOp, Unhandled);
+  HANDLE(PropImplIntrinsicOp, Unhandled);
+  HANDLE(PropEventuallyIntrinsicOp, Unhandled);
 #undef HANDLE
 };
 
@@ -191,7 +203,8 @@ public:
         .template Case<AttachOp, ConnectOp, StrictConnectOp, RefDefineOp,
                        ForceOp, PrintFOp, SkipOp, StopOp, WhenOp, AssertOp,
                        AssumeOp, CoverOp, ProbeOp, RefForceOp,
-                       RefForceInitialOp, RefReleaseOp, RefReleaseInitialOp>(
+                       RefForceInitialOp, RefReleaseOp, RefReleaseInitialOp,
+                       AssertIntrinsicOp, AssumeIntrinsicOp, CoverIntrinsicOp>(
             [&](auto opNode) -> ResultType {
               return thisCast->visitStmt(opNode, args...);
             })
@@ -234,6 +247,9 @@ public:
   HANDLE(RefForceInitialOp);
   HANDLE(RefReleaseOp);
   HANDLE(RefReleaseInitialOp);
+  HANDLE(AssertIntrinsicOp);
+  HANDLE(AssumeIntrinsicOp);
+  HANDLE(CoverIntrinsicOp);
 
 #undef HANDLE
 };

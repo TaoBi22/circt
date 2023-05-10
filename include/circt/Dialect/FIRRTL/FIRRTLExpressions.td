@@ -1063,4 +1063,56 @@ def RefSubOp : FIRRTLExprOp<"ref.sub"> {
      "$input `[` $index `]` attr-dict `:` qualified(type($input))";
 }
 
+//===----------------------------------------------------------------------===//
+// Sequence Expressions
+//===----------------------------------------------------------------------===//
+
+class SeqIntrinsicOp<string mnemonic, list<Trait> traits = []>
+  : FIRRTLOp<"int.seq." # mnemonic, traits> {
+  let assemblyFormat = [{
+    operands attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def SeqAndIntrinsicOp : SeqIntrinsicOp<"and", [Pure]> {
+  let arguments = (ins UInt1Type:$lhs, UInt1Type:$rhs);
+  let results = (outs UInt1Type:$result);
+}
+
+def SeqDelayUnaryIntrinsicOp : SeqIntrinsicOp<"delay.unary", [Pure]> {
+  let arguments = (ins UInt1Type:$input, I32Attr:$cycles);
+  let results = (outs UInt1Type:$result);
+}
+
+def SeqDelayBinaryIntrinsicOp : SeqIntrinsicOp<"delay.binary", [Pure]> {
+  let arguments = (ins UInt1Type:$lhs, UInt1Type:$rhs, I32Attr:$cycles);
+  let results = (outs UInt1Type:$result);
+}
+
+//===----------------------------------------------------------------------===//
+// Property Expressions
+//===----------------------------------------------------------------------===//
+
+class PropIntrinsicOp<string mnemonic, list<Trait> traits = []>
+  : FIRRTLOp<"int.prop." # mnemonic, traits> {
+  let assemblyFormat = [{
+    operands attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def PropAndIntrinsicOp : PropIntrinsicOp<"and", [Pure]> {
+  let arguments = (ins UInt1Type:$lhs, UInt1Type:$rhs);
+  let results = (outs UInt1Type:$result);
+}
+
+def PropImplIntrinsicOp : PropIntrinsicOp<"impl", [Pure]> {
+  let arguments = (ins UInt1Type:$lhs, UInt1Type:$rhs, BoolAttr:$overlap);
+  let results = (outs UInt1Type:$result);
+}
+
+def PropEventuallyIntrinsicOp : PropIntrinsicOp<"eventually", [Pure]> {
+  let arguments = (ins UInt1Type:$input, BoolAttr:$strong);
+  let results = (outs UInt1Type:$result);
+}
+
 #endif // CIRCT_DIALECT_FIRRTL_FIRRTLEXPRESSIONS_TD

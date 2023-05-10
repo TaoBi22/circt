@@ -155,3 +155,68 @@ def CoverConcurrentOp : ConcurrentVerifOp<"cover.concurrent",
     section 16.5 of the SystemVerilog 2017 specification.
   }];
 }
+
+//===----------------------------------------------------------------------===//
+// Property Assertions (Extract to Verif/CTL dialects)
+//===----------------------------------------------------------------------===//
+
+class PropertyVerifOp<string mnemonic, list<Trait> traits = []> :
+    SVOp<mnemonic, traits> {
+  let arguments = (ins
+    EventControlAttr:$event,
+    I1:$clock,
+    I1:$property,
+    I1:$disable_iff
+  );
+  let assemblyFormat = [{
+    $event $clock `,` $property `,` `disable_iff` $disable_iff attr-dict
+  }];
+}
+
+def AssertPropertyOp : PropertyVerifOp<"assert.prop">;
+def AssumePropertyOp : PropertyVerifOp<"assume.prop">;
+def CoverPropertyOp : PropertyVerifOp<"cover.prop">;
+
+class SeqOp<string mnemonic, list<Trait> traits = []>
+  : SVOp<"seq." # mnemonic, traits> {
+  let assemblyFormat = [{
+    operands attr-dict
+  }];
+}
+
+def SeqAndOp : SeqOp<"and", [Pure]> {
+  let arguments = (ins I1:$lhs, I1:$rhs);
+  let results = (outs I1:$result);
+}
+
+def SeqDelayUnaryOp : SeqOp<"delay.unary", [Pure]> {
+  let arguments = (ins I1:$input, I32Attr:$cycles);
+  let results = (outs I1:$result);
+}
+
+def SeqDelayBinaryOp : SeqOp<"delay.binary", [Pure]> {
+  let arguments = (ins I1:$lhs, I1:$rhs, I32Attr:$cycles);
+  let results = (outs I1:$result);
+}
+
+class PropOp<string mnemonic, list<Trait> traits = []>
+  : SVOp<"prop." # mnemonic, traits> {
+  let assemblyFormat = [{
+    operands attr-dict `:` functional-type(operands, results)
+  }];
+}
+
+def PropAndOp : PropOp<"and", [Pure]> {
+  let arguments = (ins I1:$lhs, I1:$rhs);
+  let results = (outs I1:$result);
+}
+
+def PropImplOp : PropOp<"impl", [Pure]> {
+  let arguments = (ins I1:$lhs, I1:$rhs, BoolAttr:$overlap);
+  let results = (outs I1:$result);
+}
+
+def PropEventuallyOp : PropOp<"eventually", [Pure]> {
+  let arguments = (ins I1:$input, BoolAttr:$strong);
+  let results = (outs I1:$result);
+}

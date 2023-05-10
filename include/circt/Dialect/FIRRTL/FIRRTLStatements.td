@@ -327,4 +327,32 @@ def RefReleaseInitialOp : FIRRTLOp<"ref.release_initial"> {
   let assemblyFormat = "$predicate `,` $dest attr-dict `:` type($predicate) `,` qualified(type($dest))";
 }
 
+//===----------------------------------------------------------------------===//
+// Assert/Assume/Cover Intrinsics
+//===----------------------------------------------------------------------===//
+
+class VerifIntrinsicOp<string mnemonic, list<Trait> traits = []> :
+    FIRRTLOp<"int.prop." # mnemonic, traits> {
+  let arguments = (ins
+    UInt1Type:$property,
+    ClockType:$clock,
+    UInt1Type:$disable_iff
+  );
+  let assemblyFormat = [{
+    operands attr-dict `:` type(operands)
+  }];
+}
+
+def AssertIntrinsicOp : VerifIntrinsicOp<"assert"> {
+  let summary = "Property Assert Statement";
+}
+
+def AssumeIntrinsicOp : VerifIntrinsicOp<"assume"> {
+  let summary = "Property Assume Statement";
+}
+
+def CoverIntrinsicOp : VerifIntrinsicOp<"cover"> {
+  let summary = "Property Cover Statement";
+}
+
 #endif // CIRCT_DIALECT_FIRRTL_FIRRTLSTATEMENTS_TD

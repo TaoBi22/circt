@@ -293,6 +293,10 @@ static inline bool isExpressionAlwaysInline(Operation *op) {
   if (isa<sv::SampledOp>(op))
     return true;
 
+  if (isa<sv::SeqAndOp, sv::SeqDelayUnaryOp, sv::SeqDelayBinaryOp,
+          sv::PropAndOp, sv::PropImplOp, sv::PropEventuallyOp>(op))
+    return true;
+
   return false;
 }
 

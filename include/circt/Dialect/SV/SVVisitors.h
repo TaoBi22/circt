@@ -46,7 +46,9 @@ public:
             ReadInterfaceSignalOp, MacroDeclOp, MacroDefOp,
             // Verification statements.
             AssertOp, AssumeOp, CoverOp, AssertConcurrentOp, AssumeConcurrentOp,
-            CoverConcurrentOp,
+            CoverConcurrentOp, AssertPropertyOp, AssumePropertyOp,
+            CoverPropertyOp, SeqAndOp, SeqDelayUnaryOp, SeqDelayBinaryOp,
+            PropAndOp, PropImplOp, PropEventuallyOp,
             // Bind Statements
             BindOp,
             // Simulator control tasks
@@ -147,6 +149,16 @@ public:
   HANDLE(AssertConcurrentOp, Unhandled);
   HANDLE(AssumeConcurrentOp, Unhandled);
   HANDLE(CoverConcurrentOp, Unhandled);
+
+  HANDLE(AssertPropertyOp, Unhandled);
+  HANDLE(AssumePropertyOp, Unhandled);
+  HANDLE(CoverPropertyOp, Unhandled);
+  HANDLE(SeqAndOp, Unhandled);
+  HANDLE(SeqDelayUnaryOp, Unhandled);
+  HANDLE(SeqDelayBinaryOp, Unhandled);
+  HANDLE(PropAndOp, Unhandled);
+  HANDLE(PropImplOp, Unhandled);
+  HANDLE(PropEventuallyOp, Unhandled);
 
   // Bind statements.
   HANDLE(BindOp, Unhandled);

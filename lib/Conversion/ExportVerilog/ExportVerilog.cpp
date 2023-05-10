@@ -260,7 +260,8 @@ bool ExportVerilog::isVerilogExpression(Operation *op) {
   if (isa<ReadInOutOp, AggregateConstantOp, ArrayIndexInOutOp,
           IndexedPartSelectInOutOp, StructFieldInOutOp, IndexedPartSelectOp,
           ParamValueOp, XMROp, XMRRefOp, SampledOp, EnumConstantOp,
-          SystemFunctionOp>(op))
+          SystemFunctionOp, SeqAndOp, SeqDelayUnaryOp, SeqDelayBinaryOp,
+          PropAndOp, PropImplOp, PropEventuallyOp>(op))
     return true;
 
   // All HW combinational logic ops and SV expression ops are Verilog
@@ -2063,6 +2064,12 @@ private:
   SubExprInfo visitComb(ExtractOp op);
   SubExprInfo visitComb(ICmpOp op);
 
+  SubExprInfo visitSV(SeqAndOp op);
+  SubExprInfo visitSV(SeqDelayBinaryOp op);
+  SubExprInfo visitSV(PropAndOp op);
+  SubExprInfo visitSV(PropImplOp op);
+  SubExprInfo visitSV(PropEventuallyOp op);
+
 public:
   ModuleEmitter &emitter;
 
@@ -2347,6 +2354,41 @@ SubExprInfo ExprEmitter::visitComb(ICmpOp op) {
   // regardless of the operands".
   result.signedness = IsUnsigned;
   return result;
+}
+
+SubExprInfo ExprEmitter::visitSV(SeqAndOp op) {
+  emitSubExpr(op->getOperand(0), Multiply, NoRequirement);
+  ps << PP::space << "and" << PP::nbsp;
+  emitSubExpr(op->getOperand(1), Multiply, NoRequirement);
+  return {Multiply, IsUnsigned};
+}
+
+SubExprInfo ExprEmitter::visitSV(SeqDelayBinaryOp op) {
+  emitSubExpr(op->getOperand(0), Equality, NoRequirement);
+  ps << PP::space << "##" << llvm::utostr(op.getCycles()) << PP::nbsp;
+  emitSubExpr(op->getOperand(1), Equality, NoRequirement);
+  return {Equality, IsUnsigned};
+}
+
+SubExprInfo ExprEmitter::visitSV(PropAndOp op) {
+  emitSubExpr(op->getOperand(0), Multiply, NoRequirement);
+  ps << PP::space << "and" << PP::nbsp;
+  emitSubExpr(op->getOperand(1), Multiply, NoRequirement);
+  return {Multiply, IsUnsigned};
+}
+
+SubExprInfo ExprEmitter::visitSV(PropImplOp op) {
+  emitSubExpr(op->getOperand(0), Equality, NoRequirement);
+  ps << PP::space << (op.getOverlap() ? "|->" : "|=>") << PP::nbsp;
+  emitSubExpr(op->getOperand(1), Equality, NoRequirement);
+  return {Equality, IsUnsigned};
+}
+
+SubExprInfo ExprEmitter::visitSV(PropEventuallyOp op) {
+  ps << (op.getStrong() ? "s_eventually" : "eventually") << "(";
+  emitSubExpr(op->getOperand(0), Equality, NoRequirement);
+  ps << ")";
+  return {Unary, IsUnsigned};
 }
 
 SubExprInfo ExprEmitter::visitComb(ExtractOp op) {
@@ -3453,6 +3495,11 @@ private:
   LogicalResult visitSV(AssertConcurrentOp op);
   LogicalResult visitSV(AssumeConcurrentOp op);
   LogicalResult visitSV(CoverConcurrentOp op);
+  template <typename Op>
+  LogicalResult emitPropertyAssertion(Op op, PPExtString opName);
+  LogicalResult visitSV(AssertPropertyOp op);
+  LogicalResult visitSV(AssumePropertyOp op);
+  LogicalResult visitSV(CoverPropertyOp op);
 
   LogicalResult visitSV(BindOp op);
   LogicalResult visitSV(InterfaceOp op);
@@ -4173,6 +4220,52 @@ LogicalResult StmtEmitter::visitSV(AssumeConcurrentOp op) {
 
 LogicalResult StmtEmitter::visitSV(CoverConcurrentOp op) {
   return emitConcurrentAssertion(op, PPExtString("cover"));
+}
+
+template <typename Op>
+LogicalResult StmtEmitter::emitPropertyAssertion(Op op, PPExtString opName) {
+  if (hasSVAttributes(op))
+    emitError(op, "SV attributes emission is unimplemented for the op");
+
+  startStatement();
+  SmallPtrSet<Operation *, 8> ops;
+  ops.insert(op);
+  ps.scopedBox(PP::ibox2, [&]() {
+    emitAssertionLabel(op, opName.str);
+    ps.scopedBox(PP::cbox0, [&]() {
+      ps << opName << PP::nbsp << "property (";
+      ps.scopedBox(PP::ibox0, [&]() {
+        ps << "@(" << PPExtString(stringifyEventControl(op.getEvent()))
+           << PP::nbsp;
+        emitExpression(op.getClock(), ops);
+        ps << ")" << PP::space;
+        auto constOp =
+            op.getDisableIff().template getDefiningOp<hw::ConstantOp>();
+        if (!constOp || !constOp.getValue().isZero()) {
+          ps << "disable" << PP::space << "iff" << PP::space << "(";
+          emitExpression(op.getDisableIff(), ops);
+          ps << ")" << PP::space;
+        }
+        emitExpression(op.getProperty(), ops);
+        ps << ")";
+      });
+      ps << ";";
+    });
+  });
+  emitLocationInfoAndNewLine(ops);
+  return success();
+}
+
+LogicalResult StmtEmitter::visitSV(AssertPropertyOp op) {
+  return emitPropertyAssertion(op, PPExtString("assert"));
+}
+
+LogicalResult StmtEmitter::visitSV(AssumePropertyOp op) {
+  return emitPropertyAssertion(op, PPExtString("assume"));
+}
+
+LogicalResult StmtEmitter::visitSV(CoverPropertyOp op) {
+  return emitPropertyAssertion(op, PPExtString("cover"));
 }
 
 /// Emit an assert-like operation from the `verif` dialect. This covers
