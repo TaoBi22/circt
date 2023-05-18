@@ -151,71 +151,42 @@ struct GroupAssignmentsInIfPattern : public OpRewritePattern<ClockTreeOp> {
 
       Block &block = region->front();
       SmallVector<Operation *> worklist;
-      SmallVector<Operation *> theseOperands;
       block.walk([&](mlir::Operation *op) {
         if (op->getNumOperands() != 0)
           worklist.push_back(op);
       });
-      // auto &blockOps = block.getOperations();
-      // worklist.insert(worklist.end(), blockOps.begin(), blockOps.end());
       while (!worklist.empty()) {
-        theseOperands.clear();
+        SmallVector<Operation *> theseOperands;
         Operation *op = worklist.back();
-        for (auto operand: op->getOperands()) {
+        for (auto operand : op->getOperands()) {
           if (Operation *definition = operand.getDefiningOp()) {
-          if (definition->getBlock() == op->getBlock() ||
-              !clockTreeOp->isAncestor(definition))
-            continue;
-          if (!operand.hasOneUse()) {
-            bool safeToMove = true;
-            for (auto *user : operand.getUsers()) {
-              if (!op->getParentRegion()->isAncestor(user->getParentRegion()) ||
-                  (user->getBlock() == op->getBlock() &&
-                   user->isBeforeInBlock(op))) {
-                safeToMove = false;
-                break;
+            if (definition->getBlock() == op->getBlock() ||
+                !clockTreeOp->isAncestor(definition))
+              continue;
+            if (!operand.hasOneUse()) {
+              bool safeToMove = true;
+              for (auto *user : operand.getUsers()) {
+                if (!op->getParentRegion()->isAncestor(
+                        user->getParentRegion()) ||
+                    (user->getBlock() == op->getBlock() &&
+                     user->isBeforeInBlock(op))) {
+                  safeToMove = false;
+                  break;
+                }
               }
+              if (!safeToMove)
+                break;
             }
-            if (!safeToMove)
-              break;
+            rewriter.updateRootInPlace(definition,
+                                       [&]() { definition->moveBefore(op); });
+            changed = true;
+            theseOperands.push_back(definition);
           }
-          rewriter.updateRootInPlace(definition,
-                                     [&]() { definition->moveBefore(op); });
-          theseOperands.push_back(definition);
-        }}
+        }
         worklist.pop_back();
-        worklist.insert(worklist.end(), theseOperands.begin(), theseOperands.end());
+        worklist.insert(worklist.end(), theseOperands.begin(),
+                        theseOperands.end());
       }
-
-      // for (auto &op : block) {
-
-      //   for (auto operand : op.getOperands()) {
-      //     // If the op is already in the region or the definition is outside the
-      //     // clock tree, skip
-      //     Operation *definition = operand.getDefiningOp();
-      //     if (definition->getParentRegion() == region ||
-      //         !clockTreeOp->isAncestor(definition))
-      //       continue;
-      //     // If the operand is used more than once, check moving the assignment
-      //     // wouldn't cause non-domination
-      //     if (!operand.hasOneUse()) {
-      //       bool safeToMove = true;
-      //       for (auto *user : operand.getUsers()) {
-      //         if (!region->isAncestor(user->getParentRegion()) ||
-      //             ((user->getBlock() == &block) &&
-      //              user->isBeforeInBlock(&op))) {
-      //           safeToMove = false;
-      //           break;
-      //         }
-      //       }
-      //       if (!safeToMove)
-      //         break;
-      //     }
-      //     rewriter.updateRootInPlace(definition,
-      //                                [&]() { definition->moveBefore(&op); });
-      //     changed = true;
-      //   }
-      // }
     }
     return success(changed);
   };
