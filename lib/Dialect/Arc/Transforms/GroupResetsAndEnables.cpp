@@ -181,10 +181,7 @@ struct GroupAssignmentsInIfPattern : public OpRewritePattern<ClockTreeOp> {
           }
           rewriter.updateRootInPlace(definition,
                                      [&]() { definition->moveBefore(op); });
-          for (auto furtherOperand: definition->getOperands())
-            if (Operation *def = furtherOperand.getDefiningOp())
-              if (def->getBlock() != &block)
-                theseOperands.push_back(def);
+          theseOperands.push_back(definition);
         }}
         worklist.pop_back();
         worklist.insert(worklist.end(), theseOperands.begin(), theseOperands.end());
