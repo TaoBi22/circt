@@ -20,10 +20,14 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
+#include <algorithm>
+#include <memory>
 
 namespace cl = llvm::cl;
 
@@ -57,6 +61,12 @@ static cl::opt<bool>
     verbose("v", cl::init(false),
             cl::desc("Print extensive execution progress information"),
             cl::cat(mainCategory));
+
+static cl::opt<bool>
+    verifyDiagnostics("verify-diagnostics",
+                      cl::desc("Check that emitted diagnostics match "
+                               "expected-* lines on the corresponding line"),
+                      cl::init(false), cl::Hidden, cl::cat(mainCategory));
 
 // The following options are stored externally for their value to be accessible
 // to other components of the tool.
@@ -151,15 +161,52 @@ int main(int argc, char **argv) {
   registry.insert<circt::comb::CombDialect, circt::hw::HWDialect>();
   MLIRContext context(registry);
 
-  // Setup of diagnostic handling.
+  // // Setup of diagnostic handling.
+  // llvm::SourceMgr sourceMgr;
+  // SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
+  // // Avoid printing a superfluous note on diagnostic emission.
+  // context.printOpOnDiagnostic(false);
+
+  // Set up the input file.
+  if (verbose)
+    lec::outs() << "Parsing input file\n";
+  std::string errorMessage;
+  auto input1 = openInputFile(fileName1, &errorMessage);
+  if (!input1) {
+    llvm::errs() << errorMessage << "\n";
+    return 1;
+  }
+  std::unique_ptr<llvm::MemoryBuffer> input2;
+  if (!fileName2.empty()) {
+    if (verbose)
+      lec::outs() << "Parsing second input file\n";
+    input2 = openInputFile(fileName2, &errorMessage);
+    if (!input2) {
+      llvm::errs() << errorMessage << "\n";
+      return 1;
+    }
+  } else if (verbose)
+    lec::outs() << "Second input file not specified\n";
+
   llvm::SourceMgr sourceMgr;
-  SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
-  // Avoid printing a superfluous note on diagnostic emission.
+  sourceMgr.AddNewSourceBuffer(std::move(input1), llvm::SMLoc());
+  sourceMgr.AddNewSourceBuffer(std::move(input2), llvm::SMLoc());
+  if (verbose)
+    lec::outs() << "Starting execution\n";
+
+  mlir::LogicalResult lecResult = failure();
+  if (!verifyDiagnostics) {
+    SourceMgrDiagnosticHandler sourceMgrHandler(sourceMgr, &context);
+    exit(failed(executeLEC(context)));
+  }
+
+  SourceMgrDiagnosticVerifierHandler sourceMgrHandler(sourceMgr, &context);
   context.printOpOnDiagnostic(false);
+  // (void)processBuffer(context, ts, sourceMgr, outputFile);
+  (void)executeLEC(context);
+  return failed(sourceMgrHandler.verify());
 
   // Perform the logical equivalence checking; using `exit` to avoid the slow
   // teardown of the MLIR context.
-  if (verbose)
-    lec::outs() << "Starting execution\n";
   exit(failed(executeLEC(context)));
 }
