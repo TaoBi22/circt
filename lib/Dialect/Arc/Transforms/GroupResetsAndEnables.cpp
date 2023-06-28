@@ -25,8 +25,8 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 // Rewrite Patterns
 //===----------------------------------------------------------------------===//
-
 namespace {
+int enableBound;
 
 struct ResetGroupingPattern : public OpRewritePattern<ClockTreeOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -96,7 +96,7 @@ struct EnableGroupingPattern : public OpRewritePattern<ClockTreeOp> {
       }
       for (auto &[enable, writeOps] : enableMap) {
         // Only group if multiple writes share an enable
-        if (writeOps.size() <= 1)
+        if (writeOps.size() <= enableBound)
           continue;
         if (region->getParentOp()->hasTrait<OpTrait::NoTerminator>())
           rewriter.setInsertionPointToEnd(&region->back());
@@ -211,5 +211,6 @@ LogicalResult GroupResetsAndEnablesPass::runOnModel(ModelOp modelOp) {
 }
 
 std::unique_ptr<Pass> arc::createGroupResetsAndEnablesPass(int enBound) {
+  enableBound = enBound;
   return std::make_unique<GroupResetsAndEnablesPass>();
 }
