@@ -210,6 +210,6 @@ LogicalResult GroupResetsAndEnablesPass::runOnModel(ModelOp modelOp) {
   return success();
 }
 
-std::unique_ptr<Pass> arc::createGroupResetsAndEnablesPass() {
+std::unique_ptr<Pass> arc::createGroupResetsAndEnablesPass(int enBound) {
   return std::make_unique<GroupResetsAndEnablesPass>();
 }

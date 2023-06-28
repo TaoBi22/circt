@@ -55,6 +55,10 @@ def GroupResetsAndEnables : Pass<"arc-group-resets-and-enables",
                                  "mlir::ModuleOp"> {
   let summary = "Group reset and enable conditions of lowered states";
   let constructor = "circt::arc::createGroupResetsAndEnablesPass()";
+  let options = [
+    Option<"enBound", "enBound", "int", "",
+      "Enable grouping bound">
+  ];
   let dependentDialects = ["arc::ArcDialect", "mlir::scf::SCFDialect"];
 }
 

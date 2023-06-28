@@ -64,6 +64,9 @@ using namespace circt;
 
 static cl::OptionCategory mainCategory("arcilator Options");
 
+static cl::opt<int> enBound("en-bound", cl::desc("Enable grouping bound"),
+                            cl::init(true), cl::cat(mainCategory));
+
 static cl::opt<std::string> inputFilename(cl::Positional,
                                           cl::desc("<input file>"),
                                           cl::init("-"), cl::cat(mainCategory));
@@ -238,7 +241,7 @@ static void populatePipeline(PassManager &pm) {
     pm.addPass(createCSEPass());
   }
 
-  pm.addPass(arc::createGroupResetsAndEnablesPass());
+  pm.addPass(arc::createGroupResetsAndEnablesPass(enBound));
   pm.addPass(createCSEPass());
   pm.addPass(arc::createArcCanonicalizerPass());
 
