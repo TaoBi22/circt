@@ -466,6 +466,7 @@ void Solver::Circuit::variadicOperation(
     ++it;
   }
   constrainResult(result, varOp);
+  combTransformTable.insert(std::pair(result, std::pair(operands, operation)));
 }
 
 /// Allocates an IR value in the logical backend and returns its representing
@@ -566,6 +567,7 @@ void Solver::Circuit::constrainResult(Value &result, z3::expr &expr) {
     LLVM_DEBUG(lec::dbgs() << constraint.to_string() << "\n");
   }
   solver.solver.add(constraint);
+  wires.push_back(result);
 }
 
 /// Convert from bitvector to bool sort.

@@ -27,3 +27,19 @@ hw.module @demorgan(%i0: i1, %i1: i1) {
   %cond = comb.icmp bin eq %or, %nand : i1
   verif.assert %cond : i1
 }
+
+//  RUN: circt-mc %s -b 10 --module OrderInvariance | FileCheck %s --check-prefix=ORDERINVARIANCE
+//  ORDERINVARIANCE: Success!
+
+hw.module @OrderInvariance(%i0: i1, %i1: i1, %i2: i1, %clk: i1) {
+  %or0 = comb.or bin %i0, %i1 : i1
+  %and0 = comb.and bin %or0, %i2 : i1
+  %res0 = seq.compreg %and0, %clk : i1
+  // Same but in reverse order
+  %res1 = seq.compreg %and1, %clk : i1
+  %and1 = comb.and bin %or1, %i2 : i1
+  %or1 = comb.or bin %i0, %i1 : i1
+  // Condition
+  %cond = comb.icmp bin eq %res0, %res1 : i1
+  verif.assert %cond : i1
+}
