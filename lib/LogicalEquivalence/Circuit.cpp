@@ -178,6 +178,12 @@ void Solver::Circuit::performExtract(Value result, Value input,
   constrainResult(result, extract);
 }
 
+
+// static z3::expr performEq(z3::expr &op1, z3::expr &op2){
+//   z3::context c;
+//   return c.bv_val(1, 1);
+// }
+
 LogicalResult Solver::Circuit::performICmp(Value result,
                                            circt::comb::ICmpPredicate predicate,
                                            Value lhs, Value rhs) {
@@ -188,14 +194,17 @@ LogicalResult Solver::Circuit::performICmp(Value result,
   LLVM_DEBUG(lec::dbgs() << "rhs:\n");
   z3::expr rhsExpr = fetchOrAllocateExpr(rhs);
   z3::expr icmp(solver.context);
-
+    auto f = [this](auto op1, auto op2) {
+          // return boolToBv(op1 == op2);
+          return solver.context.bv_val(1, 1);
+        };
   switch (predicate) {
   case circt::comb::ICmpPredicate::eq:
     icmp = boolToBv(lhsExpr == rhsExpr);
+
     combTransformTable.insert(std::pair(
-        result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2) {
-          return boolToBv(op1 == op2);
-        })));
+        result, std::pair(std::tuple(lhs, rhs),f)));
+    funcToTest = f;
     break;
   case circt::comb::ICmpPredicate::ne:
     icmp = boolToBv(lhsExpr != rhsExpr);
@@ -439,7 +448,7 @@ void Solver::Circuit::performXor(Value result, OperandRange operands) {
 /// over a range of operands.
 void Solver::Circuit::variadicOperation(
     Value result, OperandRange operands,
-    llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>
+    std::function<z3::expr(const z3::expr &, const z3::expr &)>
         operation) {
   // Allocate operands if unallocated
   LLVM_DEBUG(lec::dbgs() << "variadic operation\n");
@@ -734,40 +743,42 @@ void Solver::Circuit::applyCombUpdates() {
     auto wireTransform = wireTransformPair->second;
     if (auto *transform = std::get_if<std::pair<
             mlir::OperandRange,
-            llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>>>(
+            std::function<z3::expr(const z3::expr &, const z3::expr &)>>>(
             &wireTransform)) {
       applyCombVariadicOperation(wire, *transform);
     } else if (auto *transform = std::get_if<
                    std::pair<std::tuple<mlir::Value>,
-                             llvm::function_ref<z3::expr(const z3::expr &)>>>(
+                             std::function<z3::expr(const z3::expr &)>>>(
                    &wireTransform)) {
       mlir::Value operand = std::get<0>(transform->first);
-      llvm::function_ref<z3::expr(const z3::expr &)> transformFunc =
+      std::function<z3::expr(const z3::expr &)> transformFunc =
           transform->second;
       z3::expr operandExpr = stateTable.find(operand)->second;
       stateTable.find(wire)->second = transformFunc(operandExpr);
     } else if (auto *transform = std::get_if<
                    std::pair<std::tuple<mlir::Value, mlir::Value>,
-                             llvm::function_ref<z3::expr(const z3::expr &,
+                             std::function<z3::expr(const z3::expr &,
                                                          const z3::expr &)>>>(
                    &wireTransform)) {
+      funcToTest(solver.context.bv_val(1, 1), solver.context.bv_val(1, 1));
       mlir::Value firstOperand = std::get<0>(transform->first);
       mlir::Value secondOperand = std::get<1>(transform->first);
-      llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>
+      std::function<z3::expr(const z3::expr &, const z3::expr &)>
           transformFunc = transform->second;
       z3::expr firstOperandExpr = stateTable.find(firstOperand)->second;
       z3::expr secondOperandExpr = stateTable.find(secondOperand)->second;
-      stateTable.find(wire)->second =
-          transformFunc(firstOperandExpr, secondOperandExpr);
+      stateTable.find(wire)->second =solver.context.bv_val(1, 1);
+
+          transformFunc(solver.context.bv_val(1, 1), solver.context.bv_val(1, 1));
     } else if (auto *transform = std::get_if<std::pair<
                    std::tuple<mlir::Value, mlir::Value, mlir::Value>,
-                   llvm::function_ref<z3::expr(
+                   std::function<z3::expr(
                        const z3::expr &, const z3::expr &, const z3::expr &)>>>(
                    &wireTransform)) {
       mlir::Value firstOperand = std::get<0>(transform->first);
       mlir::Value secondOperand = std::get<1>(transform->first);
       mlir::Value thirdOperand = std::get<2>(transform->first);
-      llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &,
+      std::function<z3::expr(const z3::expr &, const z3::expr &,
                                   const z3::expr &)>
           transformFunc = transform->second;
       z3::expr firstOperandExpr = stateTable.find(firstOperand)->second;
@@ -784,12 +795,12 @@ void Solver::Circuit::applyCombUpdates() {
 void Solver::Circuit::applyCombVariadicOperation(
     mlir::Value result,
     std::pair<mlir::OperandRange,
-              llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>>
+              std::function<z3::expr(const z3::expr &, const z3::expr &)>>
         operationPair) {
   LLVM_DEBUG(lec::dbgs() << "comb variadic operation\n");
   lec::Scope indent;
   mlir::OperandRange operands = operationPair.first;
-  llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)> operation =
+  std::function<z3::expr(const z3::expr &, const z3::expr &)> operation =
       operationPair.second;
   // Vacuous base case.
   auto it = operands.begin();

@@ -24,7 +24,7 @@ hw.module @demorgan(%i0: i1, %i1: i1) {
   // Condition
   %and = comb.and bin %i0, %i1 : i1
   %nand = comb.xor bin %and, %c1 : i1
-  %cond = comb.icmp bin eq %or, %nand : i1
+  %cond = comb.icmp bin neq %or, %nand : i1
   verif.assert %cond : i1
 }
 

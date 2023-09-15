@@ -113,7 +113,7 @@ private:
   /// over a range of operands.
   void variadicOperation(
       mlir::Value result, mlir::OperandRange operands,
-      llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>
+      std::function<z3::expr(const z3::expr &, const z3::expr &)>
           operation);
   /// Returns the expression allocated for the input value in the logical
   /// backend if one has been allocated - otherwise allocates and returns a new
@@ -135,7 +135,7 @@ private:
   /// transform
   void applyCombVariadicOperation(
       mlir::Value,
-      std::pair<mlir::OperandRange, llvm::function_ref<z3::expr(
+      std::pair<mlir::OperandRange, std::function<z3::expr(
                                         const z3::expr &, const z3::expr &)>>);
 
   /// Push solver constraints assigning registers and inputs to their current
@@ -187,22 +187,24 @@ private:
   llvm::DenseMap<mlir::Value, z3::expr> stateTable;
   /// A type to represent the different representations of combinational
   /// transforms
+  std::function<z3::expr(const z3::expr &, const z3::expr &)> funcToTest;
   using TransformVariant = std::variant<
-      std::pair<mlir::OperandRange, llvm::function_ref<z3::expr(
+      std::pair<mlir::OperandRange, std::function<z3::expr(
                                         const z3::expr &, const z3::expr &)>>,
       std::pair<std::tuple<mlir::Value>,
-                llvm::function_ref<z3::expr(const z3::expr &)>>,
+                std::function<z3::expr(const z3::expr &)>>,
       std::pair<
           std::tuple<mlir::Value, mlir::Value>,
-          llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &)>>,
+          std::function<z3::expr(const z3::expr &, const z3::expr &)>>,
       std::pair<std::tuple<mlir::Value, mlir::Value, mlir::Value>,
-                llvm::function_ref<z3::expr(const z3::expr &, const z3::expr &,
+                std::function<z3::expr(const z3::expr &, const z3::expr &,
                                             const z3::expr &)>>>;
   /// A map from wire values to their corresponding transformations.
   llvm::DenseMap<mlir::Value, TransformVariant> combTransformTable;
 
   /// A map from IR values to their corresponding name.
   llvm::DenseMap<mlir::Value, std::string> nameTable;
+  // static z3::expr Solver::Circuit::performEq(z3::expr &op1, z3::expr &op2);
 };
 
 } // namespace circt
