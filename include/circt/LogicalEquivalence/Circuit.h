@@ -17,6 +17,7 @@
 
 #include "Solver.h"
 #include "circt/Dialect/Comb/CombDialect.h"
+#include "circt/Dialect/Comb/CombOps.h"
 #include "circt/Dialect/HW/HWOps.h"
 #include "circt/Support/LLVM.h"
 #include "mlir/IR/Value.h"
@@ -36,6 +37,9 @@ class Solver::Circuit {
 public:
   Circuit(llvm::Twine name, Solver &solver) : name(name.str()), solver(solver) {
     assignments = 0;
+    combTransformTable.insert(
+        std::pair(comb::AddOp::getOperationName(),
+                  [](auto op1, auto op2) { return op1 + op2; }));
   };
   /// Add an input to the circuit; internally a new value gets allocated.
   void addInput(mlir::Value);
@@ -187,19 +191,23 @@ private:
   llvm::DenseMap<mlir::Value, z3::expr> stateTable;
   /// A type to represent the different representations of combinational
   /// transforms
+  // LUISA'S BIG IDEA:::::::::::!!!!!!
+  // JUST HAVE A BIG FUNCTION SIGNATURE THAT COVERS EVERYTHING YOU MIGHT NEED :)
   using TransformVariant = std::variant<
-      std::pair<mlir::OperandRange,
-                std::function<z3::expr(const z3::expr &, const z3::expr &)>>,
-      std::pair<std::tuple<mlir::Value>,
-                std::function<z3::expr(const z3::expr &)>>,
-      std::pair<std::tuple<mlir::Value, mlir::Value>,
-                std::function<z3::expr(const z3::expr &, const z3::expr &)>>,
-      std::pair<std::tuple<mlir::Value, mlir::Value, mlir::Value>,
-                std::function<z3::expr(const z3::expr &, const z3::expr &,
-                                       const z3::expr &)>>>;
+      std::function<z3::expr(const z3::expr &)>,
+      std::function<z3::expr(const z3::expr &, const z3::expr &)>,
+      std::function<z3::expr(const z3::expr &, const z3::expr &,
+                             const z3::expr &)>,
+      /*ExtractOp:*/
+      std::function<z3::expr(const z3::expr &, const uint32_t, const int)>>;
   /// A map from wire values to their corresponding transformations.
-  llvm::DenseMap<mlir::Value, TransformVariant> combTransformTable;
-
+  llvm::DenseMap<llvm::StringRef, TransformVariant> combTransformTable = {
+      {comb::AddOp::getOperationName(),
+       [](auto op1, auto op2) { return op1 + op2; }},
+      {comb::ExtractOp::getOperationName(),
+       [](auto op1, uint32_t lowBit, int width) {
+         return op1.extract(lowBit + width - 1, lowBit);
+       }}};
   /// A map from IR values to their corresponding name.
   llvm::DenseMap<mlir::Value, std::string> nameTable;
 };
