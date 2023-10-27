@@ -191,26 +191,136 @@ private:
   llvm::DenseMap<mlir::Value, z3::expr> stateTable;
   /// A type to represent the different representations of combinational
   /// transforms
-  // LUISA'S BIG IDEA:::::::::::!!!!!!
-  // JUST HAVE A BIG FUNCTION SIGNATURE THAT COVERS EVERYTHING YOU MIGHT NEED :)
-  using TransformVariant = std::variant<
-      std::function<z3::expr(const z3::expr &)>,
-      std::function<z3::expr(const z3::expr &, const z3::expr &)>,
-      std::function<z3::expr(const z3::expr &, const z3::expr &,
-                             const z3::expr &)>,
-      /*ExtractOp:*/
-      std::function<z3::expr(const z3::expr &, const uint32_t, const int)>>;
+  using TransformVariant =
+      std::variant<std::function<z3::expr(const z3::expr &)>,
+                   std::function<z3::expr(const z3::expr &, const z3::expr &)>,
+                   std::function<z3::expr(const z3::expr &, const z3::expr &,
+                                          const z3::expr &)>,
+                   /*ICmpOp:*/
+                   std::function<z3::expr(circt::comb::ICmpPredicate,
+                                          const z3::expr &, const z3::expr &)>,
+                   /*ExtractOp:*/
+                   std::function<z3::expr(const z3::expr &, uint32_t, int)>>;
   /// A map from wire values to their corresponding transformations.
   llvm::DenseMap<llvm::StringRef, TransformVariant> combTransformTable = {
       {comb::AddOp::getOperationName(),
        [](auto op1, auto op2) { return op1 + op2; }},
+      {comb::AndOp::getOperationName(),
+       [](auto op1, auto op2) { return z3::operator&(op1, op2); }},
+      {comb::ConcatOp::getOperationName(),
+       [](auto op1, auto op2) { return z3::concat(op1, op2); }},
+      {comb::DivSOp::getOperationName(),
+       [](auto op1, auto op2) { return z3::operator/(op1, op2); }},
+      {comb::DivUOp::getOperationName(),
+       [](auto op1, auto op2) { return z3::udiv(op1, op2); }},
       {comb::ExtractOp::getOperationName(),
-       [](auto op1, uint32_t lowBit, int width) {
-         return op1.extract(lowBit + width - 1, lowBit);
-       }}};
-  /// A map from IR values to their corresponding name.
-  llvm::DenseMap<mlir::Value, std::string> nameTable;
-};
+       (std::function<z3::expr(const z3::expr &, uint32_t, int)>)[](
+           auto &op1, auto lowBit,
+           auto width){return op1.extract(lowBit + width - 1, lowBit);
+}
+} // namespace circt
+, {comb::ICmpOp::getOperationName(),
+   (std::function<z3::expr(circt::comb::ICmpPredicate, const z3::expr &,
+                           const z3::expr &)>)[](
+       circt::comb::ICmpPredicate predicate, auto lhsExpr, auto rhsExpr){
+       // TODO: clean up and cut down on return points, re-add bvtobool as well
+       switch (predicate){case circt::comb::ICmpPredicate::
+                          eq : return lhsExpr == rhsExpr;
+break;
+case circt::comb::ICmpPredicate::ne:
+return lhsExpr != rhsExpr;
+break;
+case circt::comb::ICmpPredicate::slt:
+return (z3::slt(lhsExpr, rhsExpr));
+break;
+case circt::comb::ICmpPredicate::sle:
+return (z3::sle(lhsExpr, rhsExpr));
+break;
+case circt::comb::ICmpPredicate::sgt:
+return (z3::sgt(lhsExpr, rhsExpr));
+break;
+case circt::comb::ICmpPredicate::sge:
+return (z3::sge(lhsExpr, rhsExpr));
+break;
+case circt::comb::ICmpPredicate::ult:
+return (z3::ult(lhsExpr, rhsExpr));
+break;
+case circt::comb::ICmpPredicate::ule:
+return (z3::ule(lhsExpr, rhsExpr));
+break;
+case circt::comb::ICmpPredicate::ugt:
+return (z3::ugt(lhsExpr, rhsExpr));
+break;
+case circt::comb::ICmpPredicate::uge:
+return (z3::uge(lhsExpr, rhsExpr));
+break;
+// Multi-valued logic comparisons are not supported.
+case circt::comb::ICmpPredicate::ceq:
+case circt::comb::ICmpPredicate::weq:
+case circt::comb::ICmpPredicate::cne:
+case circt::comb::ICmpPredicate::wne:
+assert(false);
+}
+;
+}
+}
+,
+    {comb::ModSOp::getOperationName(),
+     [](auto op1, auto op2) { return z3::smod(op1, op2); }},
+    {comb::ModUOp::getOperationName(),
+     [](auto op1, auto op2) { return z3::urem(op1, op2); }},
+    {comb::MulOp::getOperationName(),
+     [](auto op1, auto op2) { return op1 * op2; }},
+    {comb::MuxOp::getOperationName(),
+     (std::function<z3::expr(const z3::expr &, const z3::expr &,
+                             const z3::expr &)>)[this](
+         auto condExpr, auto tvalue,
+         auto fvalue){return z3::ite(bvToBool(condExpr), tvalue, fvalue);
+}
+}
+,
+    {comb::OrOp::getOperationName(),
+     [](auto op1, auto op2) {
+       return [](auto op1, auto op2) { return op1 | op2; };
+     }},
+    {comb::ParityOp::getOperationName(),
+     [](auto op1) {
+       unsigned width = inputExpr.get_sort().bv_size();
+
+       // input has 1 or more bits
+       z3::expr parity = op1.extract(0, 0);
+       // calculate parity with every other bit
+       for (unsigned int i = 1; i < width; i++) {
+         parity = parity ^ op1.extract(i, i);
+       }
+       return parity;
+     }},
+    // TODO: UNSURE HOW TO DO REPLICATE?? NEED INFO ON RETURN TYPE
+    {comb::ShlOp::getOperationName(),
+     [](auto op1, auto op2) {
+       return [](auto op1, auto op2) { return z3::shl(op1, op2); };
+     }},
+    {comb::ShrSOp::getOperationName(),
+     [](auto op1, auto op2) {
+       return [](auto op1, auto op2) { return z3::ashr(op1, op2); };
+     }},
+    {comb::ShrUOp::getOperationName(),
+     [](auto op1, auto op2) {
+       return [](auto op1, auto op2) { return z3::lshr(op1, op2); };
+     }},
+    {comb::SubOp::getOperationName(),
+     [](auto op1, auto op2) {
+       return [](auto op1, auto op2) { return op1 - op2; };
+     }},
+    {comb::XorOp::getOperationName(), [](auto op1, auto op2) {
+       return [](auto op1, auto op2) { return op1 ^ op2; };
+     }},
+}
+;
+/// A map from IR values to their corresponding name.
+llvm::DenseMap<mlir::Value, std::string> nameTable;
+}
+;
 
 } // namespace circt
 
