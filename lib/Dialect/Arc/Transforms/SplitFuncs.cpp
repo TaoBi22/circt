@@ -12,10 +12,14 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SparseBitVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include <string>
 
 #define DEBUG_TYPE "arc-split-funcs"
 
@@ -85,9 +89,11 @@ LogicalResult SplitFuncsPass::lowerFunc(FuncOp funcOp) {
     auto *block = opBuilder.createBlock(&funcOp->getRegion(0));
     blocks.push_back(block);
   }
+  auto returnBlock = opBuilder.createBlock(&funcOp->getRegion(0));
+
   int numOpsInBlock = 0;
   std::vector<Block *>::iterator blockIter = blocks.begin();
-  for (auto &op : llvm::make_early_inc_range(funcOp.getOps())) {
+  for (auto &op : llvm::make_early_inc_range(funcOp.getBody().front())) {
     if (numOpsInBlock >= funcSizeThreshold) {
       blockIter++;
       numOpsInBlock = 0;
@@ -95,54 +101,148 @@ LogicalResult SplitFuncsPass::lowerFunc(FuncOp funcOp) {
     }
     numOpsInBlock++;
     // Don't bother moving ops to the original block
-    if (*blockIter == &(funcOp->getRegion(0).front())) {
+    if (*blockIter == &(funcOp->getRegion(0).front()))
       continue;
-    }
     // Remove op from original block and insert in new block
     op.remove();
-    // opBuilder.insert(&op);
-    (*blockIter)->push_back(&op);
+    // ReturnOps go to their own block for liveness analysis
+    if (isa<ReturnOp>(op)) {
+      returnBlock->push_back(&op);
+    } else {
+      (*blockIter)->push_back(&op);
+    }
   }
 
-  // Create funcs to contain blocks
   Liveness liveness(funcOp);
+  // Create funcs to contain blocks
   Block *currentBlock = blocks[0];
   Block *previousBlock;
   auto liveOut = liveness.getLiveOut(currentBlock);
-  auto liveIn = liveOut;
+  Liveness::ValueSetT liveIn;
   for (int i = 1; i < blocks.size(); i++) {
     previousBlock = currentBlock;
     liveIn = liveOut;
     currentBlock = blocks[i];
     liveOut = liveness.getLiveOut(currentBlock);
     std::vector<Type> inTypes;
-    llvm::for_each(liveIn,
-                   [&inTypes](auto el) { inTypes.push_back(el.getType()); });
+    std::vector<Value> inValues;
+    llvm::for_each(liveIn, [&inTypes, &inValues](auto el) {
+      inTypes.push_back(el.getType());
+      inValues.push_back(el);
+    });
     std::vector<Type> outTypes;
-    llvm::for_each(liveOut,
-                   [&outTypes](auto el) { outTypes.push_back(el.getType()); });
+    std::vector<Value> outValues;
+    llvm::for_each(liveOut, [&outTypes, &outValues](auto el) {
+      outTypes.push_back(el.getType());
+      outValues.push_back(el);
+    });
+    opBuilder.setInsertionPointAfter(funcOp);
+    auto funcName = funcOp.getName().str() + std::to_string(i);
     auto newFunc = opBuilder.create<FuncOp>(
-        funcOp->getLoc(), funcOp.getName(),
+        funcOp->getLoc(), funcName,
         opBuilder.getFunctionType({inTypes}, {outTypes}));
-    // TODO: can do without temp?
-    auto *tempBlock = opBuilder.createBlock(&funcOp.getRegion());
-    currentBlock->moveBefore(tempBlock);
-    tempBlock->erase();
-    std::vector<Value> valVec;
+    auto funcBlock = newFunc.addEntryBlock();
+    for (auto &op : make_early_inc_range(currentBlock->getOperations())) {
+      op.remove();
+      funcBlock->push_back(&op);
+    }
+    currentBlock->erase();
+    currentBlock = funcBlock;
     int j = 0;
-    for (auto el : liveOut) {
-      valVec.push_back(el);
-      replaceAllUsesInRegionWith(el, funcOp.getArgument(j++),
+    for (auto el : inValues) {
+      replaceAllUsesInRegionWith(el, newFunc.getArgument(j++),
                                  newFunc.getRegion());
     }
-    ValueRange vals(valVec);
     opBuilder.setInsertionPointToEnd(currentBlock);
-    Operation *returnOp = opBuilder.create<ReturnOp>(funcOp->getLoc(), vals);
-    opBuilder.setInsertionPointToStart(currentBlock);
-    auto prevReturn = *previousBlock->getOps<ReturnOp>().begin();
+    Operation *returnOp =
+        opBuilder.create<ReturnOp>(funcOp->getLoc(), ValueRange(outValues));
+    // auto prevReturns = (*previousBlock).getOps<ReturnOp>();
+    // if (prevReturns.empty()) {
+    //   opBuilder.setInsertionPointToEnd(previousBlock);
+    // } else {
+    //   opBuilder.setInsertionPoint(*prevReturns.begin());
+    // }
+    opBuilder.setInsertionPoint(&previousBlock->back());
     Operation *callOp = opBuilder.create<func::CallOp>(
-        funcOp->getLoc(), inTypes, funcOp.getName(), vals);
+        funcOp->getLoc(), outTypes, funcName, ValueRange(inValues));
+    auto callResults = callOp->getResults();
+    for (int j = 0; j < outValues.size(); j++) {
+      // TODO: this will affect all as of yet unmoved blocks, which is bad
+      // (maybe)!
+      llvm::outs() << outValues.size();
+      llvm::outs() << callResults.size();
+      assert(callResults.size() == outValues.size());
+      // for (auto user : outValues[i].getUsers()) {
+      //   if (user->getBlock() == previousBlock) {
+      //   }
+      // }
+      assert(outValues[j] != callResults[j]);
+      funcOp.dump();
+      replaceAllUsesInRegionWith(outValues[j], callResults[j],
+                                 funcOp.getBody());
+      replaceAllUsesInRegionWith(outValues[j], callResults[j],
+                                 *previousBlock->getParent());
+      funcOp.dump();
+      // for (auto user : outValues[j].getUsers()) {
+      //   if (user->getBlock() != currentBlock) {
+      //     llvm::outs() << "Use remaining";
+      //     user->getBlock()->dump();
+      //   }
+      //   assert(user->getBlock() == currentBlock);
+      // }
+      // previousBlock->getParent()->getParentOp()->dump();
+    }
   }
+  /**/
+  // llvm::outs() << "cf\n";
+  // currentBlock = blocks[0];
+  // *previousBlock;
+  // liveOut = liveness.getLiveOut(currentBlock);
+  // liveIn = liveOut;
+  // for (int i = 1; i < blocks.size(); i++) {
+  //   llvm::outs() << "nextBlock\n";
+  //   previousBlock = currentBlock;
+  //   liveIn = liveOut;
+  //   currentBlock = blocks[i];
+  //   liveOut = liveness.getLiveOut(currentBlock);
+  //   // llvm::outs() << liveOut << "ok\n";
+  //   for (auto el : liveOut) {
+  //     el.dump();
+  //     llvm::outs() << "and done\n";
+  //   }
+  //   std::vector<Value> outValues;
+  //   llvm::for_each(liveOut, [&outValues](auto el) { outValues.push_back(el);
+  //   }); for (auto el : outValues) {
+  //     el.dump();
+  //     llvm::outs() << "and ho!\n";
+  //   }
+
+  //   auto callOp = previousBlock->getOps<func::CallOp>().begin();
+  //   auto results = (*callOp)->getResults();
+  //   for (int j = 0; j < outValues.size(); j++) {
+  //     llvm::outs() << "REMPLACE\n";
+  //     auto tOp = (func::FuncOp)previousBlock->getParentOp();
+  //     replaceAllUsesInRegionWith(outValues[i], results[i], tOp.getBody());
+  //   }
+  // }
+
+  // for (auto block : blocks)
+  //   block->getParentOp()->dump();
+  // llvm::outs() << "andfunc";
+  // funcOp->dump();
+  llvm::outs() << liveness.getLiveIn(returnBlock).size();
+  llvm::for_each(make_early_inc_range(returnBlock->getOperations()),
+                 [&blocks](Operation &op) {
+                   op.remove();
+                   blocks[0]->push_back(&op);
+                   for (auto def : op.getOperands()) {
+                     def.dump();
+                     def.getDefiningOp()->dump();
+                     def.getDefiningOp()->getParentOp()->dump();
+                   }
+                 });
+  returnBlock->erase();
+
   return success();
 }
 
