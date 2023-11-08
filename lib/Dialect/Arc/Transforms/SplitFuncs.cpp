@@ -75,19 +75,17 @@ void SplitFuncsPass::runOnOperation() {
   for (auto op : getOperation().getOps<ModelOp>()) {
     if (failed(lowerModel(op)))
       return signalPassFailure();
+    op->dump();
   }
 }
 
 LogicalResult SplitFuncsPass::lowerModel(ModelOp modelOp) {
-  SmallVector<FuncOp> funcOps(
-      modelOp.getOps<FuncOp>()); // = modelOp.getOps<FuncOp>();
-  // auto funcOps = make_early_inc_range(modelOp.getOps<FuncOp>());
+  SmallVector<FuncOp> funcOps(modelOp.getOps<FuncOp>());
   for (auto op : funcOps) {
-    //llvm::outs() << "STARTING\n";
     if (failed(lowerFunc(op)))
       return failure();
-    //llvm::outs() << "DONE\n";
   }
+  return success();
 }
 
 LogicalResult SplitFuncsPass::lowerFunc(FuncOp funcOp) {
@@ -160,10 +158,15 @@ LogicalResult SplitFuncsPass::lowerFunc(FuncOp funcOp) {
       }
     });
     opBuilder.setInsertionPoint(funcOp);
-    auto funcName = funcOp.getName().str() + std::to_string(i);
+    SmallString<32> funcName;
+    funcName.append(funcOp.getName());
+    funcName.append("_");
+    funcName.append(std::to_string(i));
+    // auto funcName = funcOp.getName().str() + std::to_string(i);
     auto newFunc =
         opBuilder.create<FuncOp>(funcOp->getLoc(), funcName,
                                  opBuilder.getFunctionType(argTypes, outTypes));
+    symbolTable->insert(newFunc);
     auto *funcBlock = newFunc.addEntryBlock();
     for (auto &op : make_early_inc_range(currentBlock->getOperations())) {
       op.remove();
