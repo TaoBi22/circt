@@ -48,51 +48,30 @@ struct SplitFuncsPass : public arc::impl::SplitFuncsBase<SplitFuncsPass> {
   SplitFuncsPass(const SplitFuncsPass &pass) : SplitFuncsPass() {}
 
   void runOnOperation() override;
-  LogicalResult lowerModel(ModelOp modelOp);
-  LogicalResult lowerFunc(FuncOp funcOp);
+  LogicalResult lowerFunc(FuncOp funcOp, OpBuilder funcBuilder);
 
   SymbolTable *symbolTable;
-  int splitBound;
 
   Statistic numFuncsCreated{this, "funcs-created",
                             "Number of new functions created"};
 
-  // using SplitFuncsBase::funcSizeThreshold;
+  using SplitFuncsBase::splitBound;
 };
 } // namespace
 
-// void SplitFuncsPass::runOnOperation() {
-//   // symbolTable = &getAnalysis<SymbolTable>();
-//   lowerFunc(getOperation());
-//   // for (auto op : getOperation().getOps<ModelOp>()) {
-//   //   if (failed(lowerModel(op)))
-//   //     return signalPassFailure();
-//   // }
-// }
-
 void SplitFuncsPass::runOnOperation() {
   symbolTable = &getAnalysis<SymbolTable>();
-  for (auto op : getOperation().getOps<ModelOp>()) {
-    if (failed(lowerModel(op)))
+  OpBuilder funcBuilder(getOperation().getBodyRegion());
+  for (auto op : getOperation().getOps<FuncOp>())
+    if (failed(lowerFunc(op, funcBuilder)))
       return signalPassFailure();
-    op->dump();
-  }
 }
 
-LogicalResult SplitFuncsPass::lowerModel(ModelOp modelOp) {
-  SmallVector<FuncOp> funcOps(modelOp.getOps<FuncOp>());
-  for (auto op : funcOps) {
-    if (failed(lowerFunc(op)))
-      return failure();
-  }
-  return success();
-}
-
-LogicalResult SplitFuncsPass::lowerFunc(FuncOp funcOp) {
-  int funcSizeThreshold = 2;
+LogicalResult SplitFuncsPass::lowerFunc(FuncOp funcOp, OpBuilder funcBuilder) {
+  assert(splitBound != 0 && "Cannot split functions into functions of size 0");
   int numOps =
       funcOp->getRegion(0).front().getOperations().size(); // TODO neaten this!
-  int numBlocks = ceil(numOps / funcSizeThreshold);
+  int numBlocks = ceil(numOps / splitBound);
   OpBuilder opBuilder(funcOp->getContext());
   std::vector<Block *> blocks;
   assert(funcOp->getNumRegions() == 1);
@@ -111,7 +90,7 @@ LogicalResult SplitFuncsPass::lowerFunc(FuncOp funcOp) {
   int numOpsInBlock = 0;
   std::vector<Block *>::iterator blockIter = blocks.begin();
   for (auto &op : llvm::make_early_inc_range(*frontBlock)) {
-    if (numOpsInBlock >= funcSizeThreshold) {
+    if (numOpsInBlock >= splitBound) {
       blockIter++;
       numOpsInBlock = 0;
       opBuilder.setInsertionPointToEnd(*blockIter);
@@ -134,8 +113,6 @@ LogicalResult SplitFuncsPass::lowerFunc(FuncOp funcOp) {
     argMap.insert(std::pair(oldArg, newArg));
   }
   Liveness liveness(funcOp);
-
-  funcOp.dump();
   std::vector<Operation *> funcs;
   auto liveOut = liveness.getLiveIn(blocks[0]);
   Liveness::ValueSetT liveIn;
@@ -158,14 +135,12 @@ LogicalResult SplitFuncsPass::lowerFunc(FuncOp funcOp) {
       }
     });
     opBuilder.setInsertionPoint(funcOp);
-    SmallString<32> funcName;
+    SmallString<64> funcName;
     funcName.append(funcOp.getName());
-    funcName.append("_");
     funcName.append(std::to_string(i));
-    // auto funcName = funcOp.getName().str() + std::to_string(i);
-    auto newFunc =
-        opBuilder.create<FuncOp>(funcOp->getLoc(), funcName,
-                                 opBuilder.getFunctionType(argTypes, outTypes));
+    auto newFunc = funcBuilder.create<FuncOp>(
+        funcOp->getLoc(), funcName,
+        opBuilder.getFunctionType(argTypes, outTypes));
     symbolTable->insert(newFunc);
     auto *funcBlock = newFunc.addEntryBlock();
     for (auto &op : make_early_inc_range(currentBlock->getOperations())) {
@@ -191,10 +166,9 @@ LogicalResult SplitFuncsPass::lowerFunc(FuncOp funcOp) {
                                  funcOp.getBody());
     }
   }
-  funcOp.dump();
   return success();
 }
 
-std::unique_ptr<Pass> arc::createSplitFuncsPass() {
+std::unique_ptr<Pass> arc::createSplitFuncsPass(unsigned splitBound) {
   return std::make_unique<SplitFuncsPass>();
 }

@@ -281,6 +281,10 @@ def SplitFuncs : Pass<"arc-split-funcs", "mlir::ModuleOp"> {
   let summary = "Split large funcs into multiple smaller funcs";
   let constructor = "circt::arc::createSplitFuncsPass()";
   let dependentDialects = ["mlir::func::FuncDialect"];
+  let options = [
+    Option<"splitBound", "split-bound", "unsigned", "20000",
+      "Size threshold (in ops) above which to split funcs">
+  ];
 }
 
 def SplitLoops : Pass<"arc-split-loops", "mlir::ModuleOp"> {
