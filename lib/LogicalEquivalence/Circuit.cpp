@@ -12,11 +12,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/LogicalEquivalence/Circuit.h"
+#include "circt/Dialect/Comb/CombOps.h"
+#include "circt/Dialect/Seq/SeqOps.h"
 #include "circt/LogicalEquivalence/LogicExporter.h"
 #include "circt/LogicalEquivalence/Solver.h"
 #include "circt/LogicalEquivalence/Utility.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
 
 #define DEBUG_TYPE "lec-circuit"
 
@@ -66,40 +69,41 @@ void Solver::Circuit::populateCombTransformTable() {
   this->combTransformTable.insert(std::pair(
       comb::ICmpOp::getOperationName(),
       (std::function<z3::expr(circt::comb::ICmpPredicate, const z3::expr &,
-                              const z3::expr &)>)[](
+                              const z3::expr &)>)[this](
           circt::comb::ICmpPredicate predicate, auto lhsExpr, auto rhsExpr) {
         // TODO: clean up and cut down on return points, re-add
         // bvtobool as well
+        z3::expr output(this->solver.context);
         switch (predicate) {
         case circt::comb::ICmpPredicate::eq:
-          return lhsExpr == rhsExpr;
+          output = lhsExpr == rhsExpr;
           break;
         case circt::comb::ICmpPredicate::ne:
-          return lhsExpr != rhsExpr;
+          output = lhsExpr != rhsExpr;
           break;
         case circt::comb::ICmpPredicate::slt:
-          return (z3::slt(lhsExpr, rhsExpr));
+          output = (z3::slt(lhsExpr, rhsExpr));
           break;
         case circt::comb::ICmpPredicate::sle:
-          return (z3::sle(lhsExpr, rhsExpr));
+          output = (z3::sle(lhsExpr, rhsExpr));
           break;
         case circt::comb::ICmpPredicate::sgt:
-          return (z3::sgt(lhsExpr, rhsExpr));
+          output = (z3::sgt(lhsExpr, rhsExpr));
           break;
         case circt::comb::ICmpPredicate::sge:
-          return (z3::sge(lhsExpr, rhsExpr));
+          output = (z3::sge(lhsExpr, rhsExpr));
           break;
         case circt::comb::ICmpPredicate::ult:
-          return (z3::ult(lhsExpr, rhsExpr));
+          output = (z3::ult(lhsExpr, rhsExpr));
           break;
         case circt::comb::ICmpPredicate::ule:
-          return (z3::ule(lhsExpr, rhsExpr));
+          output = (z3::ule(lhsExpr, rhsExpr));
           break;
         case circt::comb::ICmpPredicate::ugt:
           return (z3::ugt(lhsExpr, rhsExpr));
           break;
         case circt::comb::ICmpPredicate::uge:
-          return (z3::uge(lhsExpr, rhsExpr));
+          output = (z3::uge(lhsExpr, rhsExpr));
           break;
         // Multi-valued logic comparisons are not supported.
         case circt::comb::ICmpPredicate::ceq:
@@ -108,6 +112,7 @@ void Solver::Circuit::populateCombTransformTable() {
         case circt::comb::ICmpPredicate::wne:
           assert(false);
         };
+        return boolToBv(output);
       }));
   this->combTransformTable.insert(std::pair(
       comb::MuxOp::getOperationName(),
@@ -130,12 +135,14 @@ void Solver::Circuit::populateCombTransformTable() {
         }
         return parity;
       }));
-  // Don't allow ExtractOp
+  // Don't allow ExtractOp TODO: add lambda for this
   this->combTransformTable.insert(
       std::pair(comb::ExtractOp::getOperationName(), [](auto op1) {
         assert(false && "ExtractOp not supported");
         return op1;
       }));
+  this->combTransformTable.insert(std::pair(
+      seq::FromClockOp::getOperationName(), [](auto op1) { return op1; }));
 };
 
 /// Add an input to the circuit; internally a new value gets allocated.
@@ -237,22 +244,22 @@ void Solver::Circuit::addInstance(llvm::StringRef instanceName,
 void Solver::Circuit::performAdd(Value result, OperandRange operands) {
   LLVM_DEBUG(lec::dbgs() << name << " perform Add\n");
   lec::Scope indent;
-  variadicOperation(result, operands,
-                    [](auto op1, auto op2) { return op1 + op2; });
+  WireVariant opInfo = std::tuple(operands, comb::AddOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performAnd(Value result, OperandRange operands) {
   LLVM_DEBUG(lec::dbgs() << name << " perform And\n");
   lec::Scope indent;
-  variadicOperation(result, operands,
-                    [](auto op1, auto op2) { return z3::operator&(op1, op2); });
+  WireVariant opInfo = std::tuple(operands, comb::AndOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performConcat(Value result, OperandRange operands) {
   LLVM_DEBUG(lec::dbgs() << name << " perform Concat\n");
   lec::Scope indent;
-  variadicOperation(result, operands,
-                    [](auto op1, auto op2) { return z3::concat(op1, op2); });
+  WireVariant opInfo = std::tuple(operands, comb::ConcatOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performDivS(Value result, Value lhs, Value rhs) {
@@ -262,8 +269,8 @@ void Solver::Circuit::performDivS(Value result, Value lhs, Value rhs) {
   z3::expr lhsExpr = fetchOrAllocateExpr(lhs);
   LLVM_DEBUG(lec::dbgs() << "rhs:\n");
   z3::expr rhsExpr = fetchOrAllocateExpr(rhs);
-  z3::expr op = z3::operator/(lhsExpr, rhsExpr);
-  constrainResult(result, op);
+  WireVariant opInfo = std::tuple(lhs, rhs, comb::DivSOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performDivU(Value result, Value lhs, Value rhs) {
@@ -273,8 +280,8 @@ void Solver::Circuit::performDivU(Value result, Value lhs, Value rhs) {
   z3::expr lhsExpr = fetchOrAllocateExpr(lhs);
   LLVM_DEBUG(lec::dbgs() << "rhs:\n");
   z3::expr rhsExpr = fetchOrAllocateExpr(rhs);
-  z3::expr op = z3::udiv(lhsExpr, rhsExpr);
-  constrainResult(result, op);
+  WireVariant opInfo = std::tuple(lhs, rhs, comb::DivUOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performExtract(Value result, Value input,
@@ -285,14 +292,12 @@ void Solver::Circuit::performExtract(Value result, Value input,
   z3::expr inputExpr = fetchOrAllocateExpr(input);
   unsigned width = result.getType().getIntOrFloatBitWidth();
   LLVM_DEBUG(lec::dbgs() << "width: " << width << "\n");
-  z3::expr extract = inputExpr.extract(lowBit + width - 1, lowBit);
-  // combTransformTable.insert(std::pair(
-  //     result, std::pair(std::make_tuple(input), [lowBit, width](auto op1) {
-  //       return op1.extract(lowBit + width - 1, lowBit);
-  //     })));
-  constrainResult(result, extract);
+  WireVariant opInfo =
+      std::tuple(input, lowBit, width, comb::ExtractOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
+// TODO: make void, add predicate assertions
 LogicalResult Solver::Circuit::performICmp(Value result,
                                            circt::comb::ICmpPredicate predicate,
                                            Value lhs, Value rhs) {
@@ -302,100 +307,9 @@ LogicalResult Solver::Circuit::performICmp(Value result,
   z3::expr lhsExpr = fetchOrAllocateExpr(lhs);
   LLVM_DEBUG(lec::dbgs() << "rhs:\n");
   z3::expr rhsExpr = fetchOrAllocateExpr(rhs);
-  z3::expr icmp(solver.context);
-
-  switch (predicate) {
-  case circt::comb::ICmpPredicate::eq:
-    icmp = boolToBv(lhsExpr == rhsExpr);
-    // combTransformTable.insert(std::pair(
-    //     result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2)
-    //     {
-    //       return boolToBv(op1 == op2);
-    //     })));
-    break;
-  case circt::comb::ICmpPredicate::ne:
-    icmp = boolToBv(lhsExpr != rhsExpr);
-    // combTransformTable.insert(std::pair(
-    //     result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2)
-    //     {
-    //       return boolToBv(op1 != op2);
-    //     })));
-    break;
-  case circt::comb::ICmpPredicate::slt:
-    icmp = boolToBv(z3::slt(lhsExpr, rhsExpr));
-    // combTransformTable.insert(std::pair(
-    //     result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2)
-    //     {
-    //       return boolToBv(z3::slt(op1, op2));
-    //     })));
-    break;
-  case circt::comb::ICmpPredicate::sle:
-    icmp = boolToBv(z3::sle(lhsExpr, rhsExpr));
-    // combTransformTable.insert(std::pair(
-    //     result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2)
-    //     {
-    //       return boolToBv(z3::sle(op1, op2));
-    //     })));
-    break;
-  case circt::comb::ICmpPredicate::sgt:
-    icmp = boolToBv(z3::sgt(lhsExpr, rhsExpr));
-    // combTransformTable.insert(std::pair(
-    //     result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2)
-    //     {
-    //       return boolToBv(z3::sgt(op1, op2));
-    //     })));
-    break;
-  case circt::comb::ICmpPredicate::sge:
-    icmp = boolToBv(z3::sge(lhsExpr, rhsExpr));
-    // combTransformTable.insert(std::pair(
-    //     result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2)
-    //     {
-    //       return boolToBv(z3::sge(op1, op2));
-    //     })));
-    break;
-  case circt::comb::ICmpPredicate::ult:
-    icmp = boolToBv(z3::ult(lhsExpr, rhsExpr));
-    // combTransformTable.insert(std::pair(
-    //     result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2)
-    //     {
-    //       return boolToBv(z3::ult(op1, op2));
-    //     })));
-    break;
-  case circt::comb::ICmpPredicate::ule:
-    icmp = boolToBv(z3::ule(lhsExpr, rhsExpr));
-    // combTransformTable.insert(std::pair(
-    //     result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2)
-    //     {
-    //       return boolToBv(z3::ule(op1, op2));
-    //     })));
-    break;
-  case circt::comb::ICmpPredicate::ugt:
-    icmp = boolToBv(z3::ugt(lhsExpr, rhsExpr));
-    // combTransformTable.insert(std::pair(
-    //     result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2)
-    //     {
-    //       return boolToBv(z3::ugt(op1, op2));
-    //     })));
-    break;
-  case circt::comb::ICmpPredicate::uge:
-    icmp = boolToBv(z3::uge(lhsExpr, rhsExpr));
-    // combTransformTable.insert(std::pair(
-    //     result, std::pair(std::tuple(lhs, rhs), [this](auto op1, auto op2)
-    //     {
-    //       return boolToBv(z3::uge(op1, op2));
-    //     })));
-    break;
-  // Multi-valued logic comparisons are not supported.
-  case circt::comb::ICmpPredicate::ceq:
-  case circt::comb::ICmpPredicate::weq:
-  case circt::comb::ICmpPredicate::cne:
-  case circt::comb::ICmpPredicate::wne:
-    result.getDefiningOp()->emitError(
-        "n-state logic predicates are not supported");
-    return failure();
-  };
-
-  constrainResult(result, icmp);
+  WireVariant opInfo =
+      std::tuple(predicate, lhs, rhs, comb::ICmpOp::getOperationName());
+  constrainResult(result, opInfo);
   return success();
 }
 
@@ -406,8 +320,8 @@ void Solver::Circuit::performModS(Value result, Value lhs, Value rhs) {
   z3::expr lhsExpr = fetchOrAllocateExpr(lhs);
   LLVM_DEBUG(lec::dbgs() << "rhs:\n");
   z3::expr rhsExpr = fetchOrAllocateExpr(rhs);
-  z3::expr op = z3::smod(lhsExpr, rhsExpr);
-  constrainResult(result, op);
+  WireVariant opInfo = std::tuple(lhs, rhs, comb::ModSOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performModU(Value result, Value lhs, Value rhs) {
@@ -417,15 +331,15 @@ void Solver::Circuit::performModU(Value result, Value lhs, Value rhs) {
   z3::expr lhsExpr = fetchOrAllocateExpr(lhs);
   LLVM_DEBUG(lec::dbgs() << "rhs:\n");
   z3::expr rhsExpr = fetchOrAllocateExpr(rhs);
-  z3::expr op = z3::urem(lhsExpr, rhsExpr);
-  constrainResult(result, op);
+  WireVariant opInfo = std::tuple(lhs, rhs, comb::ModUOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performMul(Value result, OperandRange operands) {
   LLVM_DEBUG(lec::dbgs() << name << " perform Mul\n");
   lec::Scope indent;
-  variadicOperation(result, operands,
-                    [](auto op1, auto op2) { return op1 * op2; });
+  WireVariant opInfo = std::tuple(operands, comb::MulOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performMux(Value result, Value cond, Value trueValue,
@@ -439,22 +353,16 @@ void Solver::Circuit::performMux(Value result, Value cond, Value trueValue,
   LLVM_DEBUG(lec::dbgs() << "falseValue:\n");
   z3::expr fvalue = fetchOrAllocateExpr(falseValue);
   // Conversion due to z3::ite requiring a bool rather than a bitvector.
-  z3::expr mux = z3::ite(bvToBool(condExpr), tvalue, fvalue);
-  // combTransformTable.insert(
-  //     std::pair(result, std::pair(std::make_tuple(cond, trueValue,
-  //     falseValue),
-  //                                 [this](auto op1, auto op2, auto op3) {
-  //                                   return z3::ite(bvToBool(op1), op2,
-  //                                   op3);
-  //                                 })));
-  constrainResult(result, mux);
+  WireVariant opInfo =
+      std::tuple(cond, trueValue, falseValue, comb::MuxOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performOr(Value result, OperandRange operands) {
   LLVM_DEBUG(lec::dbgs() << name << " perform Or\n");
   lec::Scope indent;
-  variadicOperation(result, operands,
-                    [](auto op1, auto op2) { return op1 | op2; });
+  WireVariant opInfo = std::tuple(operands, comb::OrOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performParity(Value result, Value input) {
@@ -472,18 +380,22 @@ void Solver::Circuit::performParity(Value result, Value input) {
     parity = parity ^ inputExpr.extract(i, i);
   }
 
-  // combTransformTable.insert(
-  //     std::pair(result, std::pair(std::make_tuple(input), [width](auto op1)
-  //     {
-  //                 z3::expr parity = op1.extract(0, 0);
-  //                 // calculate parity with every other bit
-  //                 for (unsigned int i = 1; i < width; i++) {
-  //                   parity = parity ^ op1.extract(i, i);
-  //                 }
-  //                 return parity;
-  //               })));
+  // TODO TODO TODO
+  assert(false);
 
-  constrainResult(result, parity);
+  // // combTransformTable.insert(
+  // //     std::pair(result, std::pair(std::make_tuple(input), [width](auto
+  // op1)
+  // //     {
+  // //                 z3::expr parity = op1.extract(0, 0);
+  // //                 // calculate parity with every other bit
+  // //                 for (unsigned int i = 1; i < width; i++) {
+  // //                   parity = parity ^ op1.extract(i, i);
+  // //                 }
+  // //                 return parity;
+  // //               })));
+
+  // constrainResult(result, parity);
 }
 
 void Solver::Circuit::performReplicate(Value result, Value input) {
@@ -502,6 +414,9 @@ void Solver::Circuit::performReplicate(Value result, Value input) {
     replicate = z3::concat(replicate, inputExpr);
   }
 
+  // TODO TODO TODO
+  assert(false);
+
   // combTransformTable.insert(
   //     std::pair(result, std::pair(std::make_tuple(input), [times](auto op1)
   //     {
@@ -512,7 +427,7 @@ void Solver::Circuit::performReplicate(Value result, Value input) {
   //                 return replicate;
   //               })));
 
-  constrainResult(result, replicate);
+  // constrainResult(result, replicate);
 }
 
 void Solver::Circuit::performShl(Value result, Value lhs, Value rhs) {
@@ -523,7 +438,8 @@ void Solver::Circuit::performShl(Value result, Value lhs, Value rhs) {
   LLVM_DEBUG(lec::dbgs() << "rhs:\n");
   z3::expr rhsExpr = fetchOrAllocateExpr(rhs);
   z3::expr op = z3::shl(lhsExpr, rhsExpr);
-  constrainResult(result, op);
+  WireVariant opInfo = std::tuple(lhs, rhs, comb::ShlOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 // Arithmetic shift right.
@@ -534,8 +450,8 @@ void Solver::Circuit::performShrS(Value result, Value lhs, Value rhs) {
   z3::expr lhsExpr = fetchOrAllocateExpr(lhs);
   LLVM_DEBUG(lec::dbgs() << "rhs:\n");
   z3::expr rhsExpr = fetchOrAllocateExpr(rhs);
-  z3::expr op = z3::ashr(lhsExpr, rhsExpr);
-  constrainResult(result, op);
+  WireVariant opInfo = std::tuple(lhs, rhs, comb::ShrSOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 // Logical shift right.
@@ -546,32 +462,36 @@ void Solver::Circuit::performShrU(Value result, Value lhs, Value rhs) {
   z3::expr lhsExpr = fetchOrAllocateExpr(lhs);
   LLVM_DEBUG(lec::dbgs() << "rhs:\n");
   z3::expr rhsExpr = fetchOrAllocateExpr(rhs);
-  z3::expr op = z3::lshr(lhsExpr, rhsExpr);
-  constrainResult(result, op);
+  WireVariant opInfo = std::tuple(lhs, rhs, comb::ShrUOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performSub(Value result, OperandRange operands) {
   LLVM_DEBUG(lec::dbgs() << name << " perform Sub\n");
   lec::Scope indent;
-  variadicOperation(result, operands,
-                    [](auto op1, auto op2) { return op1 - op2; });
+  WireVariant opInfo = std::tuple(operands, comb::SubOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performXor(Value result, OperandRange operands) {
   LLVM_DEBUG(lec::dbgs() << name << " perform Xor\n");
   lec::Scope indent;
-  variadicOperation(result, operands,
-                    [](auto op1, auto op2) { return op1 ^ op2; });
+  WireVariant opInfo = std::tuple(operands, comb::XorOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 /// Helper function for performing a variadic operation: it executes a lambda
 /// over a range of operands.
-void Solver::Circuit::variadicOperation(Value result, OperandRange operands,
-                                        llvm::StringLiteral operationName) {
+z3::expr Solver::Circuit::variadicOperation(
+    std::tuple<mlir::OperandRange, llvm::StringLiteral> opInfo) {
+  mlir::OperandRange operands = std::get<0>(opInfo);
+  llvm::StringLiteral operationName = std::get<1>(opInfo);
   auto functionPair = combTransformTable.find(operationName);
   assert(functionPair != combTransformTable.end() &&
          "No function to represent given operation");
-  auto operation = functionPair->second();
+  auto operation =
+      std::get<std::function<z3::expr(const z3::expr &, const z3::expr &)>>(
+          functionPair->second);
   // Allocate operands if unallocated
   LLVM_DEBUG(lec::dbgs() << "variadic operation\n");
   lec::Scope indent;
@@ -596,9 +516,8 @@ void Solver::Circuit::variadicOperation(Value result, OperandRange operands,
     }
     ++it;
   }
-  constrainResult(result, varOp);
-  // combTransformTable.insert(std::pair(result, std::pair(operands,
-  // operation)));
+
+  return varOp;
 }
 
 /// Allocates an IR value in the logical backend and returns its representing
@@ -684,9 +603,10 @@ void Solver::Circuit::allocateConstant(Value result, const APInt &value) {
 
 /// Constrains the result of a MLIR operation to be equal a given logical
 /// express, simulating an assignment.
-void Solver::Circuit::constrainResult(Value &result, z3::expr &expr) {
+void Solver::Circuit::constrainResult(Value &result, WireVariant opInfo) {
   LLVM_DEBUG(lec::dbgs() << "constraining result:\n");
   lec::Scope indent;
+  z3::expr expr = applyTransform(opInfo);
   {
     LLVM_DEBUG(lec::dbgs() << "result expression:\n");
     lec::Scope indent;
@@ -700,7 +620,81 @@ void Solver::Circuit::constrainResult(Value &result, z3::expr &expr) {
     LLVM_DEBUG(lec::dbgs() << constraint.to_string() << "\n");
   }
   solver.solver.add(constraint);
-  wires.push_back(result);
+  wires.push_back(std::pair(result, opInfo));
+}
+
+// TODO: find a better name, move and fix return in if situation
+z3::expr Solver::Circuit::applyTransform(WireVariant opInfo) {
+  auto table = exprTable;
+  if (auto *info =
+          std::get_if<std::tuple<mlir::Value, llvm::StringLiteral>>(&opInfo)) {
+    mlir::Value input = std::get<0>(*info);
+    llvm::StringLiteral operationName = std::get<1>(*info);
+    auto updateFuncPair = combTransformTable.find(operationName);
+    assert(updateFuncPair != combTransformTable.end() &&
+           "Combinational value to update has no update function");
+    return std::get<std::function<z3::expr(const z3::expr &)>>(
+        updateFuncPair->second)(fetchOrAllocateExpr(input));
+  } else if (auto *info = std::get_if<
+                 std::tuple<mlir::Value, mlir::Value, llvm::StringLiteral>>(
+                 &opInfo)) {
+    mlir::Value input0 = std::get<0>(*info);
+    mlir::Value input1 = std::get<1>(*info);
+    llvm::StringLiteral operationName = std::get<2>(*info);
+    auto updateFuncPair = combTransformTable.find(operationName);
+    assert(updateFuncPair != combTransformTable.end() &&
+           "Combinational value to update has no update function");
+    return std::get<
+        std::function<z3::expr(const z3::expr &, const z3::expr &)>>(
+        updateFuncPair->second)(fetchOrAllocateExpr(input0),
+                                fetchOrAllocateExpr(input1));
+  } else if (auto *info =
+                 std::get_if<std::tuple<mlir::Value, mlir::Value, mlir::Value,
+                                        llvm::StringLiteral>>(&opInfo)) {
+    mlir::Value input0 = std::get<0>(*info);
+    mlir::Value input1 = std::get<1>(*info);
+    mlir::Value input2 = std::get<2>(*info);
+    llvm::StringLiteral operationName = std::get<3>(*info);
+    auto updateFuncPair = combTransformTable.find(operationName);
+    assert(updateFuncPair != combTransformTable.end() &&
+           "Combinational value to update has no update function");
+    return std::get<std::function<z3::expr(const z3::expr &, const z3::expr &,
+                                           const z3::expr &)>>(
+        updateFuncPair->second)(fetchOrAllocateExpr(input0),
+                                fetchOrAllocateExpr(input1),
+                                fetchOrAllocateExpr(input2));
+  } else if (auto *info = std::get_if<
+                 std::tuple<mlir::OperandRange, llvm::StringLiteral>>(
+                 &opInfo)) {
+    return variadicOperation(*info);
+  } else if (auto *info =
+                 std::get_if<std::tuple<circt::comb::ICmpPredicate, mlir::Value,
+                                        mlir::Value, llvm::StringLiteral>>(
+                     &opInfo)) {
+    circt::comb::ICmpPredicate predicate = std::get<0>(*info);
+    mlir::Value input0 = std::get<1>(*info);
+    mlir::Value input1 = std::get<2>(*info);
+    llvm::StringLiteral operationName = std::get<3>(*info);
+    auto updateFuncPair = combTransformTable.find(operationName);
+    assert(updateFuncPair != combTransformTable.end() &&
+           "Combinational value to update has no update function");
+    return std::get<std::function<z3::expr(
+        circt::comb::ICmpPredicate, const z3::expr &, const z3::expr &)>>(
+        updateFuncPair->second)(predicate, fetchOrAllocateExpr(input0),
+                                fetchOrAllocateExpr(input1));
+  } else if (auto *info = std::get_if<
+                 std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>(
+                 &opInfo)) {
+    mlir::Value input = std::get<0>(*info);
+    uint32_t lowBit = std::get<1>(*info);
+    int width = std::get<2>(*info);
+    llvm::StringLiteral operationName = std::get<3>(*info);
+    auto updateFuncPair = combTransformTable.find(operationName);
+    assert(updateFuncPair != combTransformTable.end() &&
+           "Combinational value to update has no update function");
+    return std::get<std::function<z3::expr(const z3::expr &, uint32_t, int)>>(
+        updateFuncPair->second)(fetchOrAllocateExpr(input), lowBit, width);
+  }
 }
 
 /// Convert from bitvector to bool sort.
@@ -986,7 +980,8 @@ void Solver::Circuit::performFromClock(mlir::Value result, mlir::Value input) {
   z3::expr resultState = fetchOrAllocateExpr(result);
   z3::expr inputState = fetchOrAllocateExpr(input);
   // Constrain the result directly to the input's value
-  constrainResult(result, inputState);
+  WireVariant opInfo = std::tuple(input, seq::FromClockOp::getOperationName());
+  constrainResult(result, opInfo);
   // combTransformTable.insert(std::pair(
   //     result, std::pair(std::make_tuple(input), [](auto op1) { return op1;
   //     })));

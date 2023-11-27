@@ -21,6 +21,7 @@
 #include "circt/Dialect/HW/HWOps.h"
 #include "circt/Support/LLVM.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include <string>
@@ -114,10 +115,23 @@ private:
     mlir::Value resetValue;
     bool isAsync;
   };
+  /// A type for the different operand sets a wire might need to store
+  using WireVariant = std::variant<
+      std::tuple<mlir::Value, llvm::StringLiteral>,
+      std::tuple<mlir::Value, mlir::Value, llvm::StringLiteral>,
+      std::tuple<mlir::Value, mlir::Value, mlir::Value, llvm::StringLiteral>,
+      /*Variadic Ops*/
+      std::tuple<mlir::OperandRange, llvm::StringLiteral>,
+      /*ICmpOp:*/
+      std::tuple<circt::comb::ICmpPredicate, mlir::Value, mlir::Value,
+                 llvm::StringLiteral>,
+      /*ExtractOp:*/
+      std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>;
+
   /// Helper function for performing a variadic operation: it executes a
   /// lambda over a range of operands.
-  void variadicOperation(mlir::Value result, mlir::OperandRange operands,
-                         llvm::StringLiteral operationName);
+  z3::expr
+  variadicOperation(std::tuple<mlir::OperandRange, llvm::StringLiteral> opInfo);
   /// Returns the expression allocated for the input value in the logical
   /// backend if one has been allocated - otherwise allocates and returns a
   /// new expression
@@ -127,7 +141,7 @@ private:
   void allocateConstant(mlir::Value opResult, const mlir::APInt &opValue);
   /// Constrains the result of a MLIR operation to be equal a given logical
   /// express, simulating an assignment.
-  void constrainResult(mlir::Value &result, z3::expr &expr);
+  void constrainResult(mlir::Value &result, WireVariant opInfo);
 
   /// Convert from bitvector to bool sort.
   z3::expr bvToBool(const z3::expr &condition);
@@ -155,6 +169,8 @@ private:
   /// Update combinatorial logic states (to propagate new inputs/reg outputs)
   void applyCombUpdates();
 
+  z3::expr applyTransform(WireVariant opInfo);
+
   /// The name of the circuit; it corresponds to its scope within the parsed
   /// IR.
   std::string name;
@@ -179,18 +195,8 @@ private:
 
   /// The list for the circuit's registers.
   llvm::SmallVector<std::variant<CompRegStruct, FirRegStruct>> regs;
-  /// A type for the different operand sets a wire might need to store
-  /// The list for the circuit's wires.
-  using WireVariant = std::variant<
-      std::tuple<mlir::Value, llvm::StringLiteral>,
-      std::tuple<mlir::Value, mlir::Value, llvm::StringLiteral>,
-      std::tuple<mlir::Value, mlir::Value, mlir::Value, llvm::StringLiteral>,
-      /*ICmpOp:*/
-      std::tuple<circt::comb::ICmpPredicate, mlir::Value, mlir::Value,
-                 llvm::StringLiteral>,
-      /*ExtractOp:*/
-      std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>;
 
+  /// The list for the circuit's wires.
   llvm::SmallVector<std::pair<mlir::Value, WireVariant>> wires;
   /// The list for the circuit's clocks.
   // Note: currently circt-mc supports only single clocks, but this is a
