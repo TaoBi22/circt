@@ -170,7 +170,7 @@ private:
   /// Update combinatorial logic states (to propagate new inputs/reg outputs)
   void applyCombUpdates();
 
-  z3::expr applyTransform(WireVariant opInfo);
+  z3::expr generateConstraint(WireVariant opInfo);
 
   /// The name of the circuit; it corresponds to its scope within the parsed
   /// IR.

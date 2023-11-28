@@ -92,7 +92,7 @@ void Solver::Circuit::populateCombTransformTable() {
       (std::function<z3::expr(circt::comb::ICmpPredicate, const z3::expr &,
                               const z3::expr &)>)[this](
           circt::comb::ICmpPredicate predicate, auto lhsExpr, auto rhsExpr) {
-        z3::expr result(this->solver.context);
+        z3::expr result(solver.context);
         switch (predicate) {
         case circt::comb::ICmpPredicate::eq:
           result = lhsExpr == rhsExpr;
@@ -316,7 +316,6 @@ void Solver::Circuit::performExtract(Value result, Value input,
   constrainResult(result, opInfo);
 }
 
-// TODO: make void, add predicate assertions
 void Solver::Circuit::performICmp(Value result,
                                   circt::comb::ICmpPredicate predicate,
                                   Value lhs, Value rhs) {
@@ -598,7 +597,7 @@ void Solver::Circuit::allocateConstant(Value result, const APInt &value) {
 void Solver::Circuit::constrainResult(Value &result, WireVariant opInfo) {
   LLVM_DEBUG(lec::dbgs() << "constraining result:\n");
   lec::Scope indent;
-  z3::expr expr = applyTransform(opInfo);
+  z3::expr expr = generateConstraint(opInfo);
   {
     LLVM_DEBUG(lec::dbgs() << "result expression:\n");
     lec::Scope indent;
@@ -615,9 +614,9 @@ void Solver::Circuit::constrainResult(Value &result, WireVariant opInfo) {
   wires.push_back(std::pair(result, opInfo));
 }
 
-// TODO: find a better name, move and fix return in if situation
-z3::expr Solver::Circuit::applyTransform(WireVariant opInfo) {
+z3::expr Solver::Circuit::generateConstraint(WireVariant opInfo) {
   auto table = exprTable;
+  z3::expr result(solver.context);
   if (auto *info =
           std::get_if<std::tuple<mlir::Value, llvm::StringLiteral>>(&opInfo)) {
     mlir::Value input = std::get<0>(*info);
@@ -625,7 +624,7 @@ z3::expr Solver::Circuit::applyTransform(WireVariant opInfo) {
     auto updateFuncPair = combTransformTable.find(operationName);
     assert(updateFuncPair != combTransformTable.end() &&
            "Combinational value to update has no update function");
-    return std::get<std::function<z3::expr(const z3::expr &)>>(
+    result = std::get<std::function<z3::expr(const z3::expr &)>>(
         updateFuncPair->second)(fetchOrAllocateExpr(input));
   } else if (auto *info = std::get_if<
                  std::tuple<mlir::Value, mlir::Value, llvm::StringLiteral>>(
@@ -636,10 +635,10 @@ z3::expr Solver::Circuit::applyTransform(WireVariant opInfo) {
     auto updateFuncPair = combTransformTable.find(operationName);
     assert(updateFuncPair != combTransformTable.end() &&
            "Combinational value to update has no update function");
-    return std::get<
-        std::function<z3::expr(const z3::expr &, const z3::expr &)>>(
-        updateFuncPair->second)(fetchOrAllocateExpr(input0),
-                                fetchOrAllocateExpr(input1));
+    result =
+        std::get<std::function<z3::expr(const z3::expr &, const z3::expr &)>>(
+            updateFuncPair->second)(fetchOrAllocateExpr(input0),
+                                    fetchOrAllocateExpr(input1));
   } else if (auto *info =
                  std::get_if<std::tuple<mlir::Value, mlir::Value, mlir::Value,
                                         llvm::StringLiteral>>(&opInfo)) {
@@ -650,15 +649,15 @@ z3::expr Solver::Circuit::applyTransform(WireVariant opInfo) {
     auto updateFuncPair = combTransformTable.find(operationName);
     assert(updateFuncPair != combTransformTable.end() &&
            "Combinational value to update has no update function");
-    return std::get<std::function<z3::expr(const z3::expr &, const z3::expr &,
-                                           const z3::expr &)>>(
+    result = std::get<std::function<z3::expr(const z3::expr &, const z3::expr &,
+                                             const z3::expr &)>>(
         updateFuncPair->second)(fetchOrAllocateExpr(input0),
                                 fetchOrAllocateExpr(input1),
                                 fetchOrAllocateExpr(input2));
   } else if (auto *info = std::get_if<
                  std::tuple<mlir::OperandRange, llvm::StringLiteral>>(
                  &opInfo)) {
-    return variadicOperation(*info);
+    result = variadicOperation(*info);
   } else if (auto *info =
                  std::get_if<std::tuple<circt::comb::ICmpPredicate, mlir::Value,
                                         mlir::Value, llvm::StringLiteral>>(
@@ -670,7 +669,7 @@ z3::expr Solver::Circuit::applyTransform(WireVariant opInfo) {
     auto updateFuncPair = combTransformTable.find(operationName);
     assert(updateFuncPair != combTransformTable.end() &&
            "Combinational value to update has no update function");
-    return std::get<std::function<z3::expr(
+    result = std::get<std::function<z3::expr(
         circt::comb::ICmpPredicate, const z3::expr &, const z3::expr &)>>(
         updateFuncPair->second)(predicate, fetchOrAllocateExpr(input0),
                                 fetchOrAllocateExpr(input1));
@@ -683,7 +682,7 @@ z3::expr Solver::Circuit::applyTransform(WireVariant opInfo) {
     auto updateFuncPair = combTransformTable.find(operationName);
     assert(updateFuncPair != combTransformTable.end() &&
            "Combinational value to update has no update function");
-    return std::get<std::function<z3::expr(const z3::expr &, int)>>(
+    result = std::get<std::function<z3::expr(const z3::expr &, int)>>(
         updateFuncPair->second)(fetchOrAllocateExpr(input), num);
   } else if (auto *info = std::get_if<
                  std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>(
@@ -695,9 +694,10 @@ z3::expr Solver::Circuit::applyTransform(WireVariant opInfo) {
     auto updateFuncPair = combTransformTable.find(operationName);
     assert(updateFuncPair != combTransformTable.end() &&
            "Combinational value to update has no update function");
-    return std::get<std::function<z3::expr(const z3::expr &, uint32_t, int)>>(
+    result = std::get<std::function<z3::expr(const z3::expr &, uint32_t, int)>>(
         updateFuncPair->second)(fetchOrAllocateExpr(input), lowBit, width);
   }
+  return result;
 }
 
 /// Convert from bitvector to bool sort.
