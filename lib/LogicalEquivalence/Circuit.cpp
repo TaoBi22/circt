@@ -31,119 +31,162 @@ void Solver::Circuit::populateCombTransformTable() {
   // Assign non-ambiguous pairs (that don't require type clarification)
   this->combTransformTable = {
       {comb::AddOp::getOperationName(),
-       [](auto op1, auto op2) { return op1 + op2; }},
-      {comb::AndOp::getOperationName(),
-       [](auto op1, auto op2) { return z3::operator&(op1, op2); }},
-      {comb::ConcatOp::getOperationName(),
-       [](auto op1, auto op2) { return z3::concat(op1, op2); }},
-      {comb::DivSOp::getOperationName(),
-       [](auto op1, auto op2) { return z3::operator/(op1, op2); }},
-      {comb::DivUOp::getOperationName(),
-       [](auto op1, auto op2) { return z3::udiv(op1, op2); }},
-      {comb::ModSOp::getOperationName(),
-       [](auto op1, auto op2) { return z3::smod(op1, op2); }},
-      {comb::ModUOp::getOperationName(),
-       [](auto op1, auto op2) { return z3::urem(op1, op2); }},
-      {comb::MulOp::getOperationName(),
-       [](auto op1, auto op2) { return op1 * op2; }},
-      {comb::OrOp::getOperationName(),
-       [](auto op1, auto op2) { return op1 | op2; }},
-      {comb::ShlOp::getOperationName(),
-       [](auto op1, auto op2) { return z3::shl(op1, op2); }},
-      {comb::ShrSOp::getOperationName(),
-       [](auto op1, auto op2) { return z3::ashr(op1, op2); }},
-      {comb::SubOp::getOperationName(),
-       [](auto op1, auto op2) { return op1 - op2; }},
-      {comb::XorOp::getOperationName(),
-       [](auto op1, auto op2) { return op1 ^ op2; }}};
+       (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+           auto op1, auto op2){return op1 + op2;
+}
+}
+, {comb::AndOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return z3::operator&(op1, op2);
+}
+}
+, {comb::ConcatOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return z3::concat(op1, op2);
+}
+}
+, {comb::DivSOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return z3::operator/(op1, op2);
+}
+}
+, {comb::DivUOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return z3::udiv(op1, op2);
+}
+}
+, {comb::ModSOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return z3::smod(op1, op2);
+}
+}
+, {comb::ModUOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return z3::urem(op1, op2);
+}
+}
+, {comb::MulOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return op1 * op2;
+}
+}
+, {comb::OrOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return op1 | op2;
+}
+}
+, {comb::ShlOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return z3::shl(op1, op2);
+}
+}
+, {comb::ShrSOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return z3::ashr(op1, op2);
+}
+}
+, {comb::SubOp::getOperationName(),
+   (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+       auto op1, auto op2){return op1 - op2;
+}
+}
+, {
+  comb::XorOp::getOperationName(),
+      (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
+          auto op1, auto op2) {
+    return op1 ^ op2;
+  }
+}
+}
+;
 
-  // Add ambiguous pairs - the type of these lambdas is ambiguous, so they
-  // require casting
-  this->combTransformTable.insert(std::pair(
-      comb::ExtractOp::getOperationName(),
-      (std::function<z3::expr(const z3::expr &, uint32_t, int)>)[](
-          const z3::expr &op1, uint32_t lowBit, int width) {
-        return op1.extract(lowBit + width - 1, lowBit);
-      }));
+// Add ambiguous pairs - the type of these lambdas is ambiguous, so they
+// require casting
+this->combTransformTable.insert(std::pair(
+    comb::ExtractOp::getOperationName(),
+    (std::function<z3::expr(const z3::expr &, uint32_t, int)>)[](
+        const z3::expr &op1, uint32_t lowBit, int width) {
+      return op1.extract(lowBit + width - 1, lowBit);
+    }));
 
-  this->combTransformTable.insert(std::pair(
-      comb::ICmpOp::getOperationName(),
-      (std::function<z3::expr(circt::comb::ICmpPredicate, const z3::expr &,
-                              const z3::expr &)>)[this](
-          circt::comb::ICmpPredicate predicate, auto lhsExpr, auto rhsExpr) {
-        // TODO: clean up and cut down on return points, re-add
-        // bvtobool as well
-        z3::expr output(this->solver.context);
-        switch (predicate) {
-        case circt::comb::ICmpPredicate::eq:
-          output = lhsExpr == rhsExpr;
-          break;
-        case circt::comb::ICmpPredicate::ne:
-          output = lhsExpr != rhsExpr;
-          break;
-        case circt::comb::ICmpPredicate::slt:
-          output = (z3::slt(lhsExpr, rhsExpr));
-          break;
-        case circt::comb::ICmpPredicate::sle:
-          output = (z3::sle(lhsExpr, rhsExpr));
-          break;
-        case circt::comb::ICmpPredicate::sgt:
-          output = (z3::sgt(lhsExpr, rhsExpr));
-          break;
-        case circt::comb::ICmpPredicate::sge:
-          output = (z3::sge(lhsExpr, rhsExpr));
-          break;
-        case circt::comb::ICmpPredicate::ult:
-          output = (z3::ult(lhsExpr, rhsExpr));
-          break;
-        case circt::comb::ICmpPredicate::ule:
-          output = (z3::ule(lhsExpr, rhsExpr));
-          break;
-        case circt::comb::ICmpPredicate::ugt:
-          return (z3::ugt(lhsExpr, rhsExpr));
-          break;
-        case circt::comb::ICmpPredicate::uge:
-          output = (z3::uge(lhsExpr, rhsExpr));
-          break;
-        // Multi-valued logic comparisons are not supported.
-        case circt::comb::ICmpPredicate::ceq:
-        case circt::comb::ICmpPredicate::weq:
-        case circt::comb::ICmpPredicate::cne:
-        case circt::comb::ICmpPredicate::wne:
-          assert(false);
-        };
-        return boolToBv(output);
-      }));
-  this->combTransformTable.insert(std::pair(
-      comb::MuxOp::getOperationName(),
-      (std::function<z3::expr(const z3::expr &, const z3::expr &,
-                              const z3::expr &)>)[this](
-          auto condExpr, auto tvalue, auto fvalue) {
-        return z3::ite(bvToBool(condExpr), tvalue, fvalue);
-      }));
-  this->combTransformTable.insert(
-      std::pair(comb::ParityOp::getOperationName(), [](auto op1) {
-        assert(false && "ParityOp not currently supported");
-        // TODO
-        // unsigned width = inputExpr.get_sort().bv_size();
-        unsigned width = 5;
-        // input has 1 or more bits
-        z3::expr parity = op1.extract(0, 0);
-        // calculate parity with every other bit
-        for (unsigned int i = 1; i < width; i++) {
-          parity = parity ^ op1.extract(i, i);
-        }
-        return parity;
-      }));
-  // Don't allow ExtractOp TODO: add lambda for this
-  this->combTransformTable.insert(
-      std::pair(comb::ExtractOp::getOperationName(), [](auto op1) {
-        assert(false && "ExtractOp not supported");
-        return op1;
-      }));
-  this->combTransformTable.insert(std::pair(
-      seq::FromClockOp::getOperationName(), [](auto op1) { return op1; }));
-};
+this->combTransformTable.insert(std::pair(
+    comb::ICmpOp::getOperationName(),
+    (std::function<z3::expr(circt::comb::ICmpPredicate, const z3::expr &,
+                            const z3::expr &)>)[this](
+        circt::comb::ICmpPredicate predicate, auto lhsExpr, auto rhsExpr) {
+      z3::expr result(this->solver.context);
+      switch (predicate) {
+      case circt::comb::ICmpPredicate::eq:
+        result = lhsExpr == rhsExpr;
+        break;
+      case circt::comb::ICmpPredicate::ne:
+        result = lhsExpr != rhsExpr;
+        break;
+      case circt::comb::ICmpPredicate::slt:
+        result = (z3::slt(lhsExpr, rhsExpr));
+        break;
+      case circt::comb::ICmpPredicate::sle:
+        result = (z3::sle(lhsExpr, rhsExpr));
+        break;
+      case circt::comb::ICmpPredicate::sgt:
+        result = (z3::sgt(lhsExpr, rhsExpr));
+        break;
+      case circt::comb::ICmpPredicate::sge:
+        result = (z3::sge(lhsExpr, rhsExpr));
+        break;
+      case circt::comb::ICmpPredicate::ult:
+        result = (z3::ult(lhsExpr, rhsExpr));
+        break;
+      case circt::comb::ICmpPredicate::ule:
+        result = (z3::ule(lhsExpr, rhsExpr));
+        break;
+      case circt::comb::ICmpPredicate::ugt:
+        result = (z3::ugt(lhsExpr, rhsExpr));
+        break;
+      case circt::comb::ICmpPredicate::uge:
+        result = (z3::uge(lhsExpr, rhsExpr));
+        break;
+      // Multi-valued logic comparisons are not supported.
+      case circt::comb::ICmpPredicate::ceq:
+      case circt::comb::ICmpPredicate::weq:
+      case circt::comb::ICmpPredicate::cne:
+      case circt::comb::ICmpPredicate::wne:
+        assert(false);
+      };
+      return boolToBv(result);
+    }));
+this->combTransformTable.insert(std::pair(
+    comb::MuxOp::getOperationName(),
+    (std::function<z3::expr(const z3::expr &, const z3::expr &,
+                            const z3::expr &)>)[this](auto condExpr,
+                                                      auto tvalue,
+                                                      auto fvalue) {
+      return z3::ite(bvToBool(condExpr), tvalue, fvalue);
+    }));
+this->combTransformTable.insert(std::pair(
+    comb::ParityOp::getOperationName(),
+    (std::function<z3::expr(const z3::expr &, int)>)[](auto op1, int width) {
+      // input has 1 or more bits
+      z3::expr parity = op1.extract(0, 0);
+      // calculate parity with every other bit
+      for (unsigned int i = 1; i < width; i++) {
+        parity = parity ^ op1.extract(i, i);
+      }
+      return parity;
+    }));
+this->combTransformTable.insert(std::pair(
+    comb::ReplicateOp::getOperationName(),
+    (std::function<z3::expr(const z3::expr &, int)>)[](auto op1, int times) {
+      z3::expr replicate = op1;
+      for (unsigned int i = 1; i < times; i++) {
+        replicate = z3::concat(replicate, op1);
+      }
+      return replicate;
+    }));
+this->combTransformTable.insert(std::pair(seq::FromClockOp::getOperationName(),
+                                          [](auto op1) { return op1; }));
+}
+;
 
 /// Add an input to the circuit; internally a new value gets allocated.
 void Solver::Circuit::addInput(Value value) {
@@ -373,29 +416,9 @@ void Solver::Circuit::performParity(Value result, Value input) {
 
   unsigned width = inputExpr.get_sort().bv_size();
 
-  // input has 1 or more bits
-  z3::expr parity = inputExpr.extract(0, 0);
-  // calculate parity with every other bit
-  for (unsigned int i = 1; i < width; i++) {
-    parity = parity ^ inputExpr.extract(i, i);
-  }
-
-  // TODO TODO TODO
-  assert(false);
-
-  // // combTransformTable.insert(
-  // //     std::pair(result, std::pair(std::make_tuple(input), [width](auto
-  // op1)
-  // //     {
-  // //                 z3::expr parity = op1.extract(0, 0);
-  // //                 // calculate parity with every other bit
-  // //                 for (unsigned int i = 1; i < width; i++) {
-  // //                   parity = parity ^ op1.extract(i, i);
-  // //                 }
-  // //                 return parity;
-  // //               })));
-
-  // constrainResult(result, parity);
+  WireVariant opInfo =
+      std::tuple(input, width, comb::ParityOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performReplicate(Value result, Value input) {
@@ -414,20 +437,9 @@ void Solver::Circuit::performReplicate(Value result, Value input) {
     replicate = z3::concat(replicate, inputExpr);
   }
 
-  // TODO TODO TODO
-  assert(false);
-
-  // combTransformTable.insert(
-  //     std::pair(result, std::pair(std::make_tuple(input), [times](auto op1)
-  //     {
-  //                 z3::expr replicate = op1;
-  //                 for (unsigned int i = 1; i < times; i++) {
-  //                   replicate = z3::concat(replicate, op1);
-  //                 }
-  //                 return replicate;
-  //               })));
-
-  // constrainResult(result, replicate);
+  WireVariant opInfo =
+      std::tuple(input, times, comb::ReplicateOp::getOperationName());
+  constrainResult(result, opInfo);
 }
 
 void Solver::Circuit::performShl(Value result, Value lhs, Value rhs) {
@@ -682,6 +694,17 @@ z3::expr Solver::Circuit::applyTransform(WireVariant opInfo) {
         circt::comb::ICmpPredicate, const z3::expr &, const z3::expr &)>>(
         updateFuncPair->second)(predicate, fetchOrAllocateExpr(input0),
                                 fetchOrAllocateExpr(input1));
+  } else if (auto *info =
+                 std::get_if<std::tuple<mlir::Value, int, llvm::StringLiteral>>(
+                     &opInfo)) {
+    mlir::Value input = std::get<0>(*info);
+    int num = std::get<1>(*info);
+    llvm::StringLiteral operationName = std::get<2>(*info);
+    auto updateFuncPair = combTransformTable.find(operationName);
+    assert(updateFuncPair != combTransformTable.end() &&
+           "Combinational value to update has no update function");
+    return std::get<std::function<z3::expr(const z3::expr &, int)>>(
+        updateFuncPair->second)(fetchOrAllocateExpr(input), num);
   } else if (auto *info = std::get_if<
                  std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>(
                  &opInfo)) {

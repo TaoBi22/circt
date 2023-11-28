@@ -125,6 +125,8 @@ private:
       /*ICmpOp:*/
       std::tuple<circt::comb::ICmpPredicate, mlir::Value, mlir::Value,
                  llvm::StringLiteral>,
+      /*ParityOp & ReplicateOp:*/
+      std::tuple<mlir::Value, int, llvm::StringLiteral>,
       /*ExtractOp:*/
       std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>;
 
@@ -217,6 +219,8 @@ private:
                    /*ICmpOp:*/
                    std::function<z3::expr(circt::comb::ICmpPredicate,
                                           const z3::expr &, const z3::expr &)>,
+                   /*ParityOp & ReplicateOp:*/
+                   std::function<z3::expr(const z3::expr &, int)>,
                    /*ExtractOp:*/
                    std::function<z3::expr(const z3::expr &, uint32_t, int)>>;
   /// A map from wire values to their corresponding transformations.
