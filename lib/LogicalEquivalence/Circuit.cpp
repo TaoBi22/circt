@@ -853,59 +853,93 @@ bool Solver::Circuit::checkCycle(int count) {
 
 /// Update combinatorial logic states (to propagate new inputs/reg outputs)
 void Solver::Circuit::applyCombUpdates() {
-  return;
-  // for (auto wire : wires) {
-  //   auto wireTransformPair = combTransformTable.find(wire);
-  //   assert(wireTransformPair != combTransformTable.end() &&
-  //          "Combinational value to update has no update function");
-  //   auto wireTransform = wireTransformPair->second;
-  //   if (auto *transform = std::get_if<std::pair<
-  //           mlir::OperandRange,
-  //           std::function<z3::expr(const z3::expr &, const z3::expr &)>>>(
-  //           &wireTransform)) {
-  //     applyCombVariadicOperation(wire, *transform);
-  //   } else if (auto *transform = std::get_if<
-  //                  std::pair<std::tuple<mlir::Value>,
-  //                            std::function<z3::expr(const z3::expr &)>>>(
-  //                  &wireTransform)) {
-  //     mlir::Value operand = std::get<0>(transform->first);
-  //     std::function<z3::expr(const z3::expr &)> transformFunc =
-  //         transform->second;
-  //     z3::expr operandExpr = stateTable.find(operand)->second;
-  //     stateTable.find(wire)->second = transformFunc(operandExpr);
-  //   } else if (auto *transform = std::get_if<
-  //                  std::pair<std::tuple<mlir::Value, mlir::Value>,
-  //                            std::function<z3::expr(const z3::expr &,
-  //                                                   const z3::expr &)>>>(
-  //                  &wireTransform)) {
-  //     mlir::Value firstOperand = std::get<0>(transform->first);
-  //     mlir::Value secondOperand = std::get<1>(transform->first);
-  //     std::function<z3::expr(const z3::expr &, const z3::expr &)>
-  //         transformFunc = transform->second;
-  //     z3::expr firstOperandExpr = stateTable.find(firstOperand)->second;
-  //     z3::expr secondOperandExpr = stateTable.find(secondOperand)->second;
-  //     stateTable.find(wire)->second =
-  //         transformFunc(firstOperandExpr, secondOperandExpr);
-  //   } else if (auto *transform = std::get_if<std::pair<
-  //                  std::tuple<mlir::Value, mlir::Value, mlir::Value>,
-  //                  std::function<z3::expr(const z3::expr &, const z3::expr
-  //                  &,
-  //                                         const z3::expr &)>>>(
-  //                  &wireTransform)) {
-  //     mlir::Value firstOperand = std::get<0>(transform->first);
-  //     mlir::Value secondOperand = std::get<1>(transform->first);
-  //     mlir::Value thirdOperand = std::get<2>(transform->first);
-  //     std::function<z3::expr(const z3::expr &, const z3::expr &,
-  //                            const z3::expr &)>
-  //         transformFunc = transform->second;
-  //     z3::expr firstOperandExpr = stateTable.find(firstOperand)->second;
-  //     z3::expr secondOperandExpr = stateTable.find(secondOperand)->second;
-  //     z3::expr thirdOperandExpr = stateTable.find(thirdOperand)->second;
-  //     stateTable.find(wire)->second =
-  //         transformFunc(firstOperandExpr, secondOperandExpr,
-  //         thirdOperandExpr);
-  //   }
-  // }
+  for (auto wire : wires) {
+    auto resultState = wire.first;
+    auto opInfo = wire.second;
+    if (auto *info = std::get_if<std::tuple<mlir::Value, llvm::StringLiteral>>(
+            &opInfo)) {
+      mlir::Value input = std::get<0>(*info);
+      llvm::StringLiteral operationName = std::get<1>(*info);
+      auto updateFuncPair = combTransformTable.find(operationName);
+      assert(updateFuncPair != combTransformTable.end() &&
+             "Combinational value to update has no update function");
+      stateTable.find(resultState)->second =
+          std::get<std::function<z3::expr(const z3::expr &)>>(
+              updateFuncPair->second)(fetchOrAllocateExpr(input));
+    } else if (auto *info = std::get_if<
+                   std::tuple<mlir::Value, mlir::Value, llvm::StringLiteral>>(
+                   &opInfo)) {
+      mlir::Value input0 = std::get<0>(*info);
+      mlir::Value input1 = std::get<1>(*info);
+      llvm::StringLiteral operationName = std::get<2>(*info);
+      auto updateFuncPair = combTransformTable.find(operationName);
+      assert(updateFuncPair != combTransformTable.end() &&
+             "Combinational value to update has no update function");
+      stateTable.find(resultState)->second =
+          std::get<std::function<z3::expr(const z3::expr &, const z3::expr &)>>(
+              updateFuncPair->second)(fetchOrAllocateExpr(input0),
+                                      fetchOrAllocateExpr(input1));
+    } else if (auto *info =
+                   std::get_if<std::tuple<mlir::Value, mlir::Value, mlir::Value,
+                                          llvm::StringLiteral>>(&opInfo)) {
+      mlir::Value input0 = std::get<0>(*info);
+      mlir::Value input1 = std::get<1>(*info);
+      mlir::Value input2 = std::get<2>(*info);
+      llvm::StringLiteral operationName = std::get<3>(*info);
+      auto updateFuncPair = combTransformTable.find(operationName);
+      assert(updateFuncPair != combTransformTable.end() &&
+             "Combinational value to update has no update function");
+      stateTable.find(resultState)->second = std::get<std::function<z3::expr(
+          const z3::expr &, const z3::expr &, const z3::expr &)>>(
+          updateFuncPair->second)(fetchOrAllocateExpr(input0),
+                                  fetchOrAllocateExpr(input1),
+                                  fetchOrAllocateExpr(input2));
+    } else if (auto *info = std::get_if<
+                   std::tuple<mlir::OperandRange, llvm::StringLiteral>>(
+                   &opInfo)) {
+      stateTable.find(resultState)->second = variadicOperation(*info);
+    } else if (auto *info = std::get_if<
+                   std::tuple<circt::comb::ICmpPredicate, mlir::Value,
+                              mlir::Value, llvm::StringLiteral>>(&opInfo)) {
+      circt::comb::ICmpPredicate predicate = std::get<0>(*info);
+      mlir::Value input0 = std::get<1>(*info);
+      mlir::Value input1 = std::get<2>(*info);
+      llvm::StringLiteral operationName = std::get<3>(*info);
+      auto updateFuncPair = combTransformTable.find(operationName);
+      assert(updateFuncPair != combTransformTable.end() &&
+             "Combinational value to update has no update function");
+      stateTable.find(resultState)->second = std::get<std::function<z3::expr(
+          circt::comb::ICmpPredicate, const z3::expr &, const z3::expr &)>>(
+          updateFuncPair->second)(predicate, fetchOrAllocateExpr(input0),
+                                  fetchOrAllocateExpr(input1));
+    } else if (auto *info = std::get_if<
+                   std::tuple<mlir::Value, int, llvm::StringLiteral>>(
+                   &opInfo)) {
+      mlir::Value input = std::get<0>(*info);
+      int num = std::get<1>(*info);
+      llvm::StringLiteral operationName = std::get<2>(*info);
+      auto updateFuncPair = combTransformTable.find(operationName);
+      assert(updateFuncPair != combTransformTable.end() &&
+             "Combinational value to update has no update function");
+      stateTable.find(resultState)->second =
+          std::get<std::function<z3::expr(const z3::expr &, int)>>(
+              updateFuncPair->second)(fetchOrAllocateExpr(input), num);
+    } else if (auto *info = std::get_if<
+                   std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>(
+                   &opInfo)) {
+      mlir::Value input = std::get<0>(*info);
+      uint32_t lowBit = std::get<1>(*info);
+      int width = std::get<2>(*info);
+      llvm::StringLiteral operationName = std::get<3>(*info);
+      auto updateFuncPair = combTransformTable.find(operationName);
+      assert(updateFuncPair != combTransformTable.end() &&
+             "Combinational value to update has no update function");
+      stateTable.find(resultState)->second =
+          std::get<std::function<z3::expr(const z3::expr &, uint32_t, int)>>(
+              updateFuncPair->second)(fetchOrAllocateExpr(input), lowBit,
+                                      width);
+    }
+  }
 }
 
 /// Helper function for applying a variadic update operation: it executes a
