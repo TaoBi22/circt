@@ -172,8 +172,9 @@ struct Visitor : public hw::StmtVisitor<Visitor, LogicalResult>,
   LogicalResult visitComb(comb::ICmpOp op) {
     if (!op.getTwoState())
       return op.emitOpError("without 'bin' unsupported");
-    return circuit->performICmp(op.getResult(), op.getPredicate(), op.getLhs(),
-                                op.getRhs());
+    circuit->performICmp(op.getResult(), op.getPredicate(), op.getLhs(),
+                         op.getRhs());
+    return success();
   }
   LogicalResult visitComb(comb::ModSOp op) {
     return visitBinaryCombOp(op, &Solver::Circuit::performModS);

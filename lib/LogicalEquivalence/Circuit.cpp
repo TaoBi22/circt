@@ -129,7 +129,7 @@ void Solver::Circuit::populateCombTransformTable() {
         case circt::comb::ICmpPredicate::weq:
         case circt::comb::ICmpPredicate::cne:
         case circt::comb::ICmpPredicate::wne:
-          assert(false);
+          assert(false && "Multi-valued logic comparisons are not supported.");
         };
         return boolToBv(result);
       }));
@@ -317,10 +317,15 @@ void Solver::Circuit::performExtract(Value result, Value input,
 }
 
 // TODO: make void, add predicate assertions
-LogicalResult Solver::Circuit::performICmp(Value result,
-                                           circt::comb::ICmpPredicate predicate,
-                                           Value lhs, Value rhs) {
+void Solver::Circuit::performICmp(Value result,
+                                  circt::comb::ICmpPredicate predicate,
+                                  Value lhs, Value rhs) {
   LLVM_DEBUG(lec::dbgs() << name << " performICmp\n");
+  assert(predicate != circt::comb::ICmpPredicate::ceq &&
+         predicate != circt::comb::ICmpPredicate::weq &&
+         predicate != circt::comb::ICmpPredicate::cne &&
+         predicate != circt::comb::ICmpPredicate::wne &&
+         "Multi-valued logic comparisons are not supported.");
   lec::Scope indent;
   LLVM_DEBUG(lec::dbgs() << "lhs:\n");
   z3::expr lhsExpr = fetchOrAllocateExpr(lhs);
@@ -329,7 +334,6 @@ LogicalResult Solver::Circuit::performICmp(Value result,
   WireVariant opInfo =
       std::tuple(predicate, lhs, rhs, comb::ICmpOp::getOperationName());
   constrainResult(result, opInfo);
-  return success();
 }
 
 void Solver::Circuit::performModS(Value result, Value lhs, Value rhs) {
