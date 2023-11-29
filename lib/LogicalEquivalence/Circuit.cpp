@@ -28,7 +28,6 @@ using namespace circt;
 
 /// Populate the table of combinational transforms
 void Solver::Circuit::populateCombTransformTable() {
-
   this->combTransformTable.insert(std::pair(
       comb::AddOp::getOperationName(),
       (std::function<z3::expr(const z3::expr &, const z3::expr &)>)[](
@@ -142,7 +141,8 @@ void Solver::Circuit::populateCombTransformTable() {
       }));
   this->combTransformTable.insert(std::pair(
       comb::ParityOp::getOperationName(),
-      (std::function<z3::expr(const z3::expr &, int)>)[](auto op1, int width) {
+      (std::function<z3::expr(const z3::expr &, unsigned int)>)[](
+          auto op1, unsigned int width) {
         // input has 1 or more bits
         z3::expr parity = op1.extract(0, 0);
         // calculate parity with every other bit
@@ -153,7 +153,8 @@ void Solver::Circuit::populateCombTransformTable() {
       }));
   this->combTransformTable.insert(std::pair(
       comb::ReplicateOp::getOperationName(),
-      (std::function<z3::expr(const z3::expr &, int)>)[](auto op1, int times) {
+      (std::function<z3::expr(const z3::expr &, unsigned int)>)[](
+          auto op1, unsigned int times) {
         z3::expr replicate = op1;
         for (unsigned int i = 1; i < times; i++) {
           replicate = z3::concat(replicate, op1);
@@ -673,16 +674,16 @@ z3::expr Solver::Circuit::generateConstraint(WireVariant opInfo) {
         circt::comb::ICmpPredicate, const z3::expr &, const z3::expr &)>>(
         updateFuncPair->second)(predicate, fetchOrAllocateExpr(input0),
                                 fetchOrAllocateExpr(input1));
-  } else if (auto *info =
-                 std::get_if<std::tuple<mlir::Value, int, llvm::StringLiteral>>(
-                     &opInfo)) {
+  } else if (auto *info = std::get_if<
+                 std::tuple<mlir::Value, unsigned int, llvm::StringLiteral>>(
+                 &opInfo)) {
     mlir::Value input = std::get<0>(*info);
     int num = std::get<1>(*info);
     llvm::StringLiteral operationName = std::get<2>(*info);
     auto updateFuncPair = combTransformTable.find(operationName);
     assert(updateFuncPair != combTransformTable.end() &&
            "Combinational value to update has no update function");
-    result = std::get<std::function<z3::expr(const z3::expr &, int)>>(
+    result = std::get<std::function<z3::expr(const z3::expr &, unsigned int)>>(
         updateFuncPair->second)(fetchOrAllocateExpr(input), num);
   } else if (auto *info = std::get_if<
                  std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>(
@@ -917,7 +918,7 @@ void Solver::Circuit::applyCombUpdates() {
           updateFuncPair->second)(predicate, fetchOrAllocateExpr(input0),
                                   fetchOrAllocateExpr(input1));
     } else if (auto *info = std::get_if<
-                   std::tuple<mlir::Value, int, llvm::StringLiteral>>(
+                   std::tuple<mlir::Value, unsigned int, llvm::StringLiteral>>(
                    &opInfo)) {
       mlir::Value input = std::get<0>(*info);
       int num = std::get<1>(*info);
@@ -926,7 +927,7 @@ void Solver::Circuit::applyCombUpdates() {
       assert(updateFuncPair != combTransformTable.end() &&
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second =
-          std::get<std::function<z3::expr(const z3::expr &, int)>>(
+          std::get<std::function<z3::expr(const z3::expr &, unsigned int)>>(
               updateFuncPair->second)(fetchOrAllocateExpr(input), num);
     } else if (auto *info = std::get_if<
                    std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>(
@@ -950,8 +951,8 @@ void Solver::Circuit::applyCombUpdates() {
 /// lambda over a range of operands and updates the state.
 void Solver::Circuit::applyCombVariadicOperation(
     mlir::Value result,
-    std::pair<mlir::OperandRange,
-              std::function<z3::expr(const z3::expr &, const z3::expr &)>>
+    const std::pair<mlir::OperandRange,
+                    std::function<z3::expr(const z3::expr &, const z3::expr &)>>
         operationPair) {
   LLVM_DEBUG(lec::dbgs() << "comb variadic operation\n");
   lec::Scope indent;
