@@ -270,7 +270,7 @@ private:
                           std::variant<Value, std::shared_ptr<CaseMuxItem>>>;
   struct CaseMuxItem {
     // The target wire to be assigned.
-    sv::RegOp wire;
+    seq::CompRegOp wire;
 
     // The case select signal to be used.
     Value select;
@@ -362,8 +362,9 @@ void MachineOpConverter::buildStateCaseMux(
     // e.g. swap variables without tmp
     // BPAssign: replace by creating a reg
     if (assignment.defaultValue)
-      b.create<sv::BPAssignOp>(assignment.wire.getLoc(), assignment.wire,
-                               *assignment.defaultValue);
+      assignment.wire.getInputMutable().set(assignment.defaultValue.value());
+      // b.create<sv::BPAssignOp>(assignment.wire.getLoc(), assignment.wire,
+      //                          *assignment.defaultValue);
   }
 
   // Case assignments.
@@ -434,13 +435,13 @@ LogicalResult MachineOpConverter::dispatch() {
       std::make_unique<StateEncoding>(b, typeScope, machineOp, hwModuleOp);
   auto stateType = encoding->getStateType();
 
-  auto nextStateWire =
-      b.create<sv::RegOp>(loc, stateType, b.getStringAttr("state_next"));
-  auto nextStateWireRead = b.create<sv::ReadInOutOp>(loc, nextStateWire);
+  // TODO: make this CompReg
+  mlir::Value tempVal;
   stateReg = b.create<seq::CompRegOp>(
-      loc, nextStateWireRead, clock, reset,
+      loc, tempVal, clock, reset,
       /*reset value=*/encoding->encode(machineOp.getInitialStateOp()),
       "state_reg");
+  auto nextStateWire = stateReg;
 
   llvm::DenseMap<VariableOp, sv::RegOp> variableNextStateWires;
   for (auto variableOp : machineOp.front().getOps<fsm::VariableOp>()) {
@@ -492,9 +493,8 @@ LogicalResult MachineOpConverter::dispatch() {
       continue;
     auto outputPortType = port.type;
     CaseMuxItem outputAssignment;
-    outputAssignment.wire = b.create<sv::RegOp>(
-        machineOp.getLoc(), outputPortType,
-        b.getStringAttr("output_" + std::to_string(portIndex)));
+    outputAssignment.wire = b.create<seq::CompRegOp>(
+        machineOp.getLoc(), outputPortType);
     outputAssignment.select = stateReg;
     for (auto &state : orderedStates)
       outputAssignment.assignmentInState[state] = {
