@@ -358,6 +358,9 @@ void MachineOpConverter::buildStateCaseMux(
   sv::CaseOp caseMux;
   // Default assignments.
   for (auto &assignment : assignments) {
+    // blocking = everything in the block happening at the same time 
+    // e.g. swap variables without tmp
+    // BPAssign: replace by creating a reg
     if (assignment.defaultValue)
       b.create<sv::BPAssignOp>(assignment.wire.getLoc(), assignment.wire,
                                *assignment.defaultValue);
