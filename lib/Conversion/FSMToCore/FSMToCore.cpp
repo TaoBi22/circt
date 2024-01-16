@@ -431,6 +431,7 @@ LogicalResult MachineOpConverter::dispatch() {
   auto reset = hwModuleOp.getBodyBlock()->getArgument(clkRstIdxs.resetIdx);
 
   // 2) Build state and variable registers.
+
   encoding =
       std::make_unique<StateEncoding>(b, typeScope, machineOp, hwModuleOp);
   auto stateType = encoding->getStateType();
@@ -442,8 +443,10 @@ LogicalResult MachineOpConverter::dispatch() {
       /*reset value=*/encoding->encode(machineOp.getInitialStateOp()),
       "state_reg");
   auto nextStateWire = stateReg;
+  auto nextStateWireRead = b.create<sv::ReadInOutOp>(loc, nextStateWire);
 
-  llvm::DenseMap<VariableOp, sv::RegOp> variableNextStateWires;
+
+  llvm::DenseMap<VariableOp, seq::CompRegOp> variableNextStateWires;
   for (auto variableOp : machineOp.front().getOps<fsm::VariableOp>()) {
     auto initValueAttr = variableOp.getInitValueAttr().dyn_cast<IntegerAttr>();
     if (!initValueAttr)
@@ -451,12 +454,15 @@ LogicalResult MachineOpConverter::dispatch() {
                                          "for the initial value.";
     Type varType = variableOp.getType();
     auto varLoc = variableOp.getLoc();
-    auto varNextState = b.create<sv::RegOp>(
-        varLoc, varType, b.getStringAttr(variableOp.getName() + "_next"));
-    auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
+    // TODO
+    mlir::Value val;
     auto variableReg = b.create<seq::CompRegOp>(
-        varLoc, b.create<sv::ReadInOutOp>(varLoc, varNextState), clock, reset,
-        varResetVal, b.getStringAttr(variableOp.getName() + "_reg"));
+        varLoc, val, clock, b.getStringAttr(variableOp.getName() + "_next"));
+    auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
+    auto varNextState = variableReg;
+    // auto variableReg = b.create<seq::CompRegOp>(
+    //     varLoc, b.create<sv::ReadInOutOp>(varLoc, varNextState), clock, reset,
+    //     varResetVal, b.getStringAttr(variableOp.getName() + "_reg"));
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = varNextState;
     // Postpone value replacement until all logic has been created.
@@ -492,9 +498,10 @@ LogicalResult MachineOpConverter::dispatch() {
     if (!port.isOutput())
       continue;
     auto outputPortType = port.type;
+    mlir::Value val;
     CaseMuxItem outputAssignment;
     outputAssignment.wire = b.create<seq::CompRegOp>(
-        machineOp.getLoc(), outputPortType);
+        machineOp.getLoc(), val, clock, b.getStringAttr("output_" + std::to_string(portIndex)));
     outputAssignment.select = stateReg;
     for (auto &state : orderedStates)
       outputAssignment.assignmentInState[state] = {
