@@ -197,11 +197,11 @@ void StateEncoding::setEncoding(StateOp state, Value v, bool wire) {
   if (wire) {
     auto loc = machine.getLoc();
     auto stateType = getStateType();
-    // auto stateEncodingWire = b.create<sv::RegOp>(
+    // auto stateEncodingWire = b.create<sv: :RegOp>(
     //     loc, stateType, b.getStringAttr("to_" + state.getName()),
     //     hw::InnerSymAttr::get(state.getNameAttr()));
     encodedValue = b.create<comb::ReplicateOp>(loc, v.getType(), v);
-    // encodedValue = b.create<sv::ReadInOutOp>(loc, stateEncodingWire);
+    // encodedValue = b.create<sv: :ReadInOutOp>(loc, stateEncodingWire);
   } else
     encodedValue = v;
   stateToValue[state] = encodedValue;
@@ -363,14 +363,14 @@ void MachineOpConverter::buildStateCaseMux(
     // BPAssign: replace by creating a reg
     if (assignment.defaultValue)
       assignment.wire.getInputMutable().set(assignment.defaultValue.value());
-      // b.create<sv::BPAssignOp>(assignment.wire.getLoc(), assignment.wire,
+      // b.create<sv: :BPAssignOp>(assignment.wire.getLoc(), assignment.wire,
       //                          *assignment.defaultValue);
   }
 
   // Case assignments.
   caseMux = b.create<sv::CaseOp>(
       machineOp.getLoc(), CaseStmtType::CaseStmt,
-      /*sv::ValidationQualifierTypeEnum::ValidationQualifierUnique, */ select,
+      /*sv: :ValidationQualifierTypeEnum::ValidationQualifierUnique, */ select,
       /*numCases=*/machineOp.getNumStates() + 1, [&](size_t caseIdx) {
         // Make Verilator happy for sized enums.
         if (caseIdx == machineOp.getNumStates())
@@ -390,7 +390,8 @@ void MachineOpConverter::buildStateCaseMux(
         continue;
       b.setInsertionPointToEnd(caseInfo.block);
       if (auto v = std::get_if<Value>(&assignmentInState->second); v) {
-        b.create<sv::BPAssignOp>(machineOp.getLoc(), assignment.wire, *v);
+        assignment.wire.getInputMutable().set(*v);
+        // b.create<sv: :BPAssignOp>(machineOp.getLoc(), assignment.wire, *v);
       } else {
         // Nested case statement.
         llvm::SmallVector<CaseMuxItem, 4> nestedAssignments;
@@ -443,7 +444,7 @@ LogicalResult MachineOpConverter::dispatch() {
       /*reset value=*/encoding->encode(machineOp.getInitialStateOp()),
       "state_reg");
   auto nextStateWire = stateReg;
-  auto nextStateWireRead = b.create<sv::ReadInOutOp>(loc, nextStateWire);
+  auto nextStateWireRead = stateReg.getData(); //b.create<sv: :ReadInOutOp>(loc, nextStateWire);
 
 
   llvm::DenseMap<VariableOp, seq::CompRegOp> variableNextStateWires;
@@ -461,7 +462,7 @@ LogicalResult MachineOpConverter::dispatch() {
     auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
     auto varNextState = variableReg;
     // auto variableReg = b.create<seq::CompRegOp>(
-    //     varLoc, b.create<sv::ReadInOutOp>(varLoc, varNextState), clock, reset,
+    //     varLoc, b.create<sv: :ReadInOutOp>(varLoc, varNextState), clock, reset,
     //     varResetVal, b.getStringAttr(variableOp.getName() + "_reg"));
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = varNextState;
