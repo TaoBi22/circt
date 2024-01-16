@@ -200,7 +200,7 @@ void StateEncoding::setEncoding(StateOp state, Value v, bool wire) {
     // auto stateEncodingWire = b.create<sv: :RegOp>(
     //     loc, stateType, b.getStringAttr("to_" + state.getName()),
     //     hw::InnerSymAttr::get(state.getNameAttr()));
-    encodedValue = b.create<comb::ReplicateOp>(loc, v.getType(), v);
+    encodedValue = v;//= b.create<comb::ReplicateOp>(loc, v.getType(), v)->getResult(0);
     // encodedValue = b.create<sv: :ReadInOutOp>(loc, stateEncodingWire);
   } else
     encodedValue = v;
@@ -361,8 +361,10 @@ void MachineOpConverter::buildStateCaseMux(
     // blocking = everything in the block happening at the same time 
     // e.g. swap variables without tmp
     // BPAssign: replace by creating a reg
-    if (assignment.defaultValue)
+    if (assignment.defaultValue) {
       assignment.wire.getInputMutable().set(assignment.defaultValue.value());
+      assignment.wire->getResult(0).setType(assignment.defaultValue->getType());
+    }
       // b.create<sv: :BPAssignOp>(assignment.wire.getLoc(), assignment.wire,
       //                          *assignment.defaultValue);
   }
@@ -391,6 +393,7 @@ void MachineOpConverter::buildStateCaseMux(
       b.setInsertionPointToEnd(caseInfo.block);
       if (auto v = std::get_if<Value>(&assignmentInState->second); v) {
         assignment.wire.getInputMutable().set(*v);
+        assignment.wire->getResult(0).setType(v->getType());
         // b.create<sv: :BPAssignOp>(machineOp.getLoc(), assignment.wire, *v);
       } else {
         // Nested case statement.
@@ -440,7 +443,7 @@ LogicalResult MachineOpConverter::dispatch() {
   // TODO: make this CompReg
   mlir::Value tempVal;
   stateReg = b.create<seq::CompRegOp>(
-      loc, tempVal, clock, reset,
+      loc, clock, clock, reset,
       /*reset value=*/encoding->encode(machineOp.getInitialStateOp()),
       "state_reg");
   auto nextStateWire = stateReg;
@@ -458,7 +461,7 @@ LogicalResult MachineOpConverter::dispatch() {
     // TODO
     mlir::Value val;
     auto variableReg = b.create<seq::CompRegOp>(
-        varLoc, val, clock, b.getStringAttr(variableOp.getName() + "_next"));
+        varLoc, clock, clock, b.getStringAttr(variableOp.getName() + "_next"));
     auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
     auto varNextState = variableReg;
     // auto variableReg = b.create<seq::CompRegOp>(
@@ -502,7 +505,7 @@ LogicalResult MachineOpConverter::dispatch() {
     mlir::Value val;
     CaseMuxItem outputAssignment;
     outputAssignment.wire = b.create<seq::CompRegOp>(
-        machineOp.getLoc(), val, clock, b.getStringAttr("output_" + std::to_string(portIndex)));
+        machineOp.getLoc(), clock, clock, b.getStringAttr("output_" + std::to_string(portIndex)));
     outputAssignment.select = stateReg;
     for (auto &state : orderedStates)
       outputAssignment.assignmentInState[state] = {
@@ -575,9 +578,10 @@ LogicalResult MachineOpConverter::dispatch() {
 
   // Assing output ports.
   llvm::SmallVector<Value> outputPortAssignments;
+  // TODO: find substitute for this
   for (auto outputAssignment : outputCaseAssignments)
-    outputPortAssignments.push_back(
-        b.create<sv::ReadInOutOp>(machineOp.getLoc(), outputAssignment.wire));
+    outputPortAssignments.push_back(outputAssignment.wire.getData()
+);
 
   // Delete the default created output op and replace it with the output
   // muxes.
