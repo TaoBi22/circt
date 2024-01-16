@@ -1,4 +1,4 @@
-//===- FSMToSV.cpp - Convert FSM to HW and SV Dialect ---------------------===//
+//===- FSMToCore.cpp - Convert FSM to HW and SV Dialect -------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "circt/Conversion/FSMToSV.h"
+#include "circt/Conversion/FSMToCore.h"
 #include "../PassDetail.h"
 #include "circt/Dialect/Comb/CombOps.h"
 #include "circt/Dialect/FSM/FSMOps.h"
@@ -676,11 +676,11 @@ MachineOpConverter::convertState(StateOp state) {
   return res;
 }
 
-struct FSMToSVPass : public ConvertFSMToSVBase<FSMToSVPass> {
+struct FSMToCorePass : public ConvertFSMToCoreBase<FSMToCorePass> {
   void runOnOperation() override;
 };
 
-void FSMToSVPass::runOnOperation() {
+void FSMToCorePass::runOnOperation() {
   auto module = getOperation();
   auto b = OpBuilder(module);
   SmallVector<Operation *, 16> opToErase;
@@ -743,6 +743,6 @@ void FSMToSVPass::runOnOperation() {
 
 } // end anonymous namespace
 
-std::unique_ptr<mlir::Pass> circt::createConvertFSMToSVPass() {
-  return std::make_unique<FSMToSVPass>();
+std::unique_ptr<mlir::Pass> circt::createConvertFSMToCorePass() {
+  return std::make_unique<FSMToCorePass>();
 }
