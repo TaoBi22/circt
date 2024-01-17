@@ -270,7 +270,7 @@ private:
                           std::variant<Value, std::shared_ptr<CaseMuxItem>>>;
   struct CaseMuxItem {
     // The target wire to be assigned.
-    seq::CompRegOp wire;
+    Value wire;
 
     // The case select signal to be used.
     Value select;
@@ -362,8 +362,8 @@ void MachineOpConverter::buildStateCaseMux(
     // e.g. swap variables without tmp
     // BPAssign: replace by creating a reg
     if (assignment.defaultValue) {
-      assignment.wire.getInputMutable().set(assignment.defaultValue.value());
-      assignment.wire->getResult(0).setType(assignment.defaultValue->getType());
+      assignment.wire = assignment.defaultValue.value();
+      // assignment.wire.getResult(0).setType(assignment.defaultValue->getType());
     }
       // b.create<sv: :BPAssignOp>(assignment.wire.getLoc(), assignment.wire,
       //                          *assignment.defaultValue);
@@ -392,8 +392,8 @@ void MachineOpConverter::buildStateCaseMux(
         continue;
       b.setInsertionPointToEnd(caseInfo.block);
       if (auto v = std::get_if<Value>(&assignmentInState->second); v) {
-        assignment.wire.getInputMutable().set(*v);
-        assignment.wire->getResult(0).setType(v->getType());
+        assignment.wire = *v;
+        // assignment.wire->getResult(0).setType(v->getType());
         // b.create<sv: :BPAssignOp>(machineOp.getLoc(), assignment.wire, *v);
       } else {
         // Nested case statement.
@@ -504,8 +504,9 @@ LogicalResult MachineOpConverter::dispatch() {
     auto outputPortType = port.type;
     mlir::Value val;
     CaseMuxItem outputAssignment;
-    outputAssignment.wire = b.create<seq::CompRegOp>(
-        machineOp.getLoc(), clock, clock, b.getStringAttr("output_" + std::to_string(portIndex)));
+    outputAssignment.wire = clock;
+    // b.create<seq::CompRegOp>(
+    //     machineOp.getLoc(), clock, clock, b.getStringAttr("output_" + std::to_string(portIndex)));
     outputAssignment.select = stateReg;
     for (auto &state : orderedStates)
       outputAssignment.assignmentInState[state] = {
@@ -566,9 +567,9 @@ LogicalResult MachineOpConverter::dispatch() {
                                   outputCaseAssignments.end());
 
   {
-    auto alwaysCombOp = b.create<sv::AlwaysCombOp>(loc);
-    OpBuilder::InsertionGuard g(b);
-    b.setInsertionPointToStart(alwaysCombOp.getBodyBlock());
+    // auto alwaysCombOp = b.create<sv: :AlwaysCombOp>(loc);
+    // OpBuilder::InsertionGuard g(b);
+    // b.setInsertionPointToStart(alwaysCombOp.getBodyBlock());
     buildStateCaseMux(nextStateCaseAssignments);
   }
 
@@ -580,8 +581,7 @@ LogicalResult MachineOpConverter::dispatch() {
   llvm::SmallVector<Value> outputPortAssignments;
   // TODO: find substitute for this
   for (auto outputAssignment : outputCaseAssignments)
-    outputPortAssignments.push_back(outputAssignment.wire.getData()
-);
+    outputPortAssignments.push_back(outputAssignment.wire);
 
   // Delete the default created output op and replace it with the output
   // muxes.
@@ -742,7 +742,8 @@ void FSMToCorePass::runOnOperation() {
     b.setInsertionPointToStart(module.getBody());
     b.create<sv::VerbatimOp>(
         module.getLoc(), "`include \"" + typeScopeFilename.getValue() + "\"");
-  }
+  }module.dump();
+
 }
 
 } // end anonymous namespace
