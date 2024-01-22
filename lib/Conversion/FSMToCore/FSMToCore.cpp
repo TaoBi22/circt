@@ -1,4 +1,4 @@
-//===- FSMToCore.cpp - Convert FSM to HW and SV Dialect -------------------===//
+//===- FSMToCore.cpp - Convert FSM to Core Dialects -----------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -16,6 +16,7 @@
 #include "circt/Support/BackedgeBuilder.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <memory>
 #include <variant>
@@ -347,63 +348,84 @@ MachineOpConverter::moveOps(Block *block,
 void MachineOpConverter::buildStateCaseMux(
     llvm::MutableArrayRef<CaseMuxItem> assignments) {
 
-  // Gather the select signal. All assignments are expected to use the same
-  // select signal.
-  Value select = assignments.front().select;
-  assert(llvm::all_of(
-             assignments,
-             [&](const CaseMuxItem &item) { return item.select == select; }) &&
-         "All assignments must use the same select signal.");
+      
 
-  sv::CaseOp caseMux;
-  // Default assignments.
-  for (auto &assignment : assignments) {
-    // blocking = everything in the block happening at the same time 
-    // e.g. swap variables without tmp
-    // BPAssign: replace by creating a reg
-    if (assignment.defaultValue) {
-      assignment.wire = assignment.defaultValue.value();
-      // assignment.wire.getResult(0).setType(assignment.defaultValue->getType());
-    }
-      // b.create<sv: :BPAssignOp>(assignment.wire.getLoc(), assignment.wire,
-      //                          *assignment.defaultValue);
-  }
-
-  // Case assignments.
-  caseMux = b.create<sv::CaseOp>(
-      machineOp.getLoc(), CaseStmtType::CaseStmt,
-      /*sv: :ValidationQualifierTypeEnum::ValidationQualifierUnique, */ select,
-      /*numCases=*/machineOp.getNumStates() + 1, [&](size_t caseIdx) {
-        // Make Verilator happy for sized enums.
-        if (caseIdx == machineOp.getNumStates())
-          return std::unique_ptr<sv::CasePattern>(
-              new sv::CaseDefaultPattern(b.getContext()));
-        StateOp state = orderedStates[caseIdx];
-        return encoding->getCasePattern(state);
-      });
-
-  // Create case assignments.
-  for (auto assignment : assignments) {
-    OpBuilder::InsertionGuard g(b);
-    for (auto [caseInfo, stateOp] :
-         llvm::zip(caseMux.getCases(), orderedStates)) {
-      auto assignmentInState = assignment.assignmentInState.find(stateOp);
-      if (assignmentInState == assignment.assignmentInState.end())
-        continue;
-      b.setInsertionPointToEnd(caseInfo.block);
-      if (auto v = std::get_if<Value>(&assignmentInState->second); v) {
-        assignment.wire = *v;
-        // assignment.wire->getResult(0).setType(v->getType());
-        // b.create<sv: :BPAssignOp>(machineOp.getLoc(), assignment.wire, *v);
-      } else {
-        // Nested case statement.
-        llvm::SmallVector<CaseMuxItem, 4> nestedAssignments;
-        nestedAssignments.push_back(
-            *std::get<std::shared_ptr<CaseMuxItem>>(assignmentInState->second));
-        buildStateCaseMux(nestedAssignments);
+    for(auto assignment : assignments) {
+      llvm::outs() << "AAA assignment: " << assignment.wire << "\n";
+      llvm::outs() << "AAA select: " << assignment.select << "\n";
+      for(auto [state, value] : assignment.assignmentInState) {
+        llvm::outs() << "AAA state: " << state << "\n";
       }
+
+      b.create<comb::MuxOp>(assignment.wire.getLoc(), assignment.select, orderedStates[0], orderedStates[1], false);
+
+
+      //       comb::MuxOp nextStateMux = b.create<comb::MuxOp>(
+      //     transition.getLoc(), guard, nextState, *otherNextState, false);
+      // nextState = nextStateMux;
+
     }
-  }
+
+  // // Gather the select signal. All assignments are expected to use the same
+  // // select signal.
+  // Value select = assignments.front().select;
+  // assert(llvm::all_of(
+  //            assignments,
+  //            [&](const CaseMuxItem &item) { return item.select == select; }) &&
+  //        "All assignments must use the same select signal.");
+
+  // sv::CaseOp caseMux;
+  // // Default assignments.
+  // for (auto &assignment : assignments) {
+  //   // blocking = everything in the block happening at the same time 
+  //   // e.g. swap variables without tmp
+  //   // BPAssign: replace by creating a reg
+  //   if (assignment.defaultValue) {
+  //     assignment.wire = assignment.defaultValue.value();
+  //     // assignment.wire.getResult(0).setType(assignment.defaultValue->getType());
+  //   }
+  //     // b.create<sv: :BPAssignOp>(assignment.wire.getLoc(), assignment.wire,
+  //     //                          *assignment.defaultValue);
+  // }
+
+  // // Case assignments.
+  // caseMux = b.create<sv::CaseOp>(
+  //     machineOp.getLoc(), CaseStmtType::CaseStmt,
+  //     /*sv: :ValidationQualifierTypeEnum::ValidationQualifierUnique, */ select,
+  //     /*numCases=*/machineOp.getNumStates() + 1, [&](size_t caseIdx) {
+  //       // Make Verilator happy for sized enums.
+  //       if (caseIdx == machineOp.getNumStates())
+  //         return std::unique_ptr<sv::CasePattern>(
+  //             new sv::CaseDefaultPattern(b.getContext()));
+  //       StateOp state = orderedStates[caseIdx];
+  //       return encoding->getCasePattern(state);
+  //     });
+
+  // // Create case assignments.
+  // for (auto assignment : assignments) {
+  //   OpBuilder::InsertionGuard g(b);
+  //   for (auto [caseInfo, stateOp] :
+  //        llvm::zip(caseMux.getCases(), orderedStates)) {
+  //     auto assignmentInState = assignment.assignmentInState.find(stateOp);
+  //     if (assignmentInState == assignment.assignmentInState.end())
+  //       continue;
+  //     b.setInsertionPointToEnd(caseInfo.block);
+  //     if (auto v = std::get_if<Value>(&assignmentInState->second); v) {
+  //       assignment.wire = *v;
+  //       // assignment.wire->getResult(0).setType(v->getType());
+  //       // b.create<sv: :BPAssignOp>(machineOp.getLoc(), assignment.wire, *v);
+  //     } else {
+  //       // Nested case statement.
+  //       llvm::SmallVector<CaseMuxItem, 4> nestedAssignments;
+  //       nestedAssignments.push_back(
+  //           *std::get<std::shared_ptr<CaseMuxItem>>(assignmentInState->second));
+  //       buildStateCaseMux(nestedAssignments);
+  //     }
+  //   }
+  // }
+
+    
+
 }
 
 LogicalResult MachineOpConverter::dispatch() {
@@ -488,6 +510,8 @@ LogicalResult MachineOpConverter::dispatch() {
     auto stateConvRes = convertState(state);
     if (failed(stateConvRes))
       return failure();
+
+    // start 
 
     stateConvResults[state] = *stateConvRes;
     orderedStates.push_back(state);
@@ -751,3 +775,20 @@ void FSMToCorePass::runOnOperation() {
 std::unique_ptr<mlir::Pass> circt::createConvertFSMToCorePass() {
   return std::make_unique<FSMToCorePass>();
 }
+
+
+// for every clock cycle 
+// update var <- var_next 
+// switch case state_reg (for all cases)
+// case A
+//  assign state_next = MUX(guard_A)
+//  assign output 
+// case B
+//  assign state_next = MUX(guard_B)
+//  switch case state_next (for all transitions)
+//    case A
+//    action_A
+//    case B
+//    action_B
+//  assign output
+
