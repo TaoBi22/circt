@@ -576,9 +576,7 @@ LogicalResult MachineOpConverter::dispatch() {
                                   outputCaseAssignments.end());
 
   {
-    auto alwaysCombOp = b.create<sv::AlwaysCombOp>(loc);
     OpBuilder::InsertionGuard g(b);
-    b.setInsertionPointToStart(alwaysCombOp.getBodyBlock());
     buildStateCaseMux(nextStateCaseAssignments);
   }
 
@@ -601,7 +599,7 @@ LogicalResult MachineOpConverter::dispatch() {
 
   // Erase the original machine op.
   machineOp.erase();
-
+  bb.abandon();
   return success();
 }
 
@@ -707,11 +705,6 @@ void FSMToCorePass::runOnOperation() {
   auto typeScope = b.create<hw::TypeScopeOp>(
       module.getLoc(), b.getStringAttr("fsm_enum_typedecls"));
   typeScope.getBodyRegion().push_back(new Block());
-  typeScope->setAttr(
-      "output_file",
-      hw::OutputFileAttr::get(typeScopeFilename,
-                              /*excludeFromFileList*/ b.getBoolAttr(false),
-                              /*includeReplicatedOps*/ b.getBoolAttr(false)));
 
   // Traverse all machines and convert.
   for (auto machine : llvm::make_early_inc_range(module.getOps<MachineOp>())) {
@@ -750,8 +743,6 @@ void FSMToCorePass::runOnOperation() {
     // Else, add an include file to the top-level (will include typescope
     // in all files).
     b.setInsertionPointToStart(module.getBody());
-    b.create<sv::VerbatimOp>(
-        module.getLoc(), "`include \"" + typeScopeFilename.getValue() + "\"");
   }
 }
 
