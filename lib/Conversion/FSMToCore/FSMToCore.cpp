@@ -1,4 +1,4 @@
-//===- FSMToCore.cpp - Convert FSM to Core Dialects -----------------------===//
+//===- FSMToCore.cpp - Convert FSM to HW Dialect --------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,15 +8,22 @@
 
 #include "circt/Conversion/FSMToCore.h"
 #include "../PassDetail.h"
+#include "circt/Dialect/Comb/CombDialect.h"
 #include "circt/Dialect/Comb/CombOps.h"
 #include "circt/Dialect/FSM/FSMOps.h"
 #include "circt/Dialect/HW/HWOps.h"
+#include "circt/Dialect/HW/HWTypes.h"
 #include "circt/Dialect/SV/SVOps.h"
 #include "circt/Dialect/Seq/SeqOps.h"
 #include "circt/Support/BackedgeBuilder.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Transforms/RegionUtils.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include <memory>
 #include <variant>
@@ -201,7 +208,8 @@ void StateEncoding::setEncoding(StateOp state, Value v, bool wire) {
     // auto stateEncodingWire = b.create<sv: :RegOp>(
     //     loc, stateType, b.getStringAttr("to_" + state.getName()),
     //     hw::InnerSymAttr::get(state.getNameAttr()));
-    encodedValue = v;//= b.create<comb::ReplicateOp>(loc, v.getType(), v)->getResult(0);
+    encodedValue =
+        v; //= b.create<comb::ReplicateOp>(loc, v.getType(), v)->getResult(0);
     // encodedValue = b.create<sv: :ReadInOutOp>(loc, stateEncodingWire);
   } else
     encodedValue = v;
@@ -271,7 +279,7 @@ private:
                           std::variant<Value, std::shared_ptr<CaseMuxItem>>>;
   struct CaseMuxItem {
     // The target wire to be assigned.
-    Value wire;
+    Backedge wire;
 
     // The case select signal to be used.
     Value select;
@@ -348,84 +356,61 @@ MachineOpConverter::moveOps(Block *block,
 void MachineOpConverter::buildStateCaseMux(
     llvm::MutableArrayRef<CaseMuxItem> assignments) {
 
-      
+  // Gather the select signal. All assignments are expected to use the same
+  // select signal.
+  Value select = assignments.front().select;
+  assert(llvm::all_of(
+             assignments,
+             [&](const CaseMuxItem &item) { return item.select == select; }) &&
+         "All assignments must use the same select signal.");
 
-    for(auto assignment : assignments) {
-      llvm::outs() << "AAA assignment: " << assignment.wire << "\n";
-      llvm::outs() << "AAA select: " << assignment.select << "\n";
-      for(auto [state, value] : assignment.assignmentInState) {
-        llvm::outs() << "AAA state: " << state << "\n";
+  sv::CaseOp caseMux;
+  // Default assignments.
+
+  llvm::DenseMap<mlir::Value, mlir::Value> defaultWires;
+  for (auto assignment : assignments) {
+    defaultWires.insert(
+        std::pair(assignment.wire, assignment.defaultValue
+                                       ? assignment.defaultValue.value()
+                                       : assignment.wire));
+  }
+
+  llvm::SmallVector<mlir::Value> doneWires;
+  for (auto &firstAssignment : assignments) {
+    OpBuilder::InsertionGuard g(b);
+    if (std::find(doneWires.begin(), doneWires.end(), firstAssignment.wire) !=
+        doneWires.end())
+      continue;
+
+    auto noMatchInput = defaultWires[firstAssignment.wire];
+    // TODO: probably only one assignment per wire so we don't need the inner
+    // iteration on assignments
+    for (auto assignment : assignments) {
+      if ((Value)assignment.wire != (Value)firstAssignment.wire)
+        continue;
+      for (auto assignmentInState : assignment.assignmentInState) {
+        if (auto v = std::get_if<Value>(&assignmentInState.second); v) {
+          auto thisState = assignmentInState.first;
+          auto compVal = encoding->encode(thisState);
+          auto cmpOp =
+              b.create<hw::EnumCmpOp>(machineOp.getLoc(), assignment.select,
+                                      /* THIS SHOULD BE WHATEVER
+     THE CASE IS MATCHING AGAINST*/ compVal);
+          auto muxOp = b.create<comb::MuxOp>(machineOp.getLoc(), cmpOp, *v,
+                                             noMatchInput);
+          noMatchInput = muxOp.getResult();
+        } else {
+          // TODO: figure out the outputs of this
+          llvm::SmallVector<CaseMuxItem, 4> nestedAssignments;
+          nestedAssignments.push_back(*std::get<std::shared_ptr<CaseMuxItem>>(
+              assignmentInState.second));
+          buildStateCaseMux(nestedAssignments);
+        }
       }
-
-      b.create<comb::MuxOp>(assignment.wire.getLoc(), assignment.select, orderedStates[0], orderedStates[1], false);
-
-
-      //       comb::MuxOp nextStateMux = b.create<comb::MuxOp>(
-      //     transition.getLoc(), guard, nextState, *otherNextState, false);
-      // nextState = nextStateMux;
-
     }
-
-  // // Gather the select signal. All assignments are expected to use the same
-  // // select signal.
-  // Value select = assignments.front().select;
-  // assert(llvm::all_of(
-  //            assignments,
-  //            [&](const CaseMuxItem &item) { return item.select == select; }) &&
-  //        "All assignments must use the same select signal.");
-
-  // sv::CaseOp caseMux;
-  // // Default assignments.
-  // for (auto &assignment : assignments) {
-  //   // blocking = everything in the block happening at the same time 
-  //   // e.g. swap variables without tmp
-  //   // BPAssign: replace by creating a reg
-  //   if (assignment.defaultValue) {
-  //     assignment.wire = assignment.defaultValue.value();
-  //     // assignment.wire.getResult(0).setType(assignment.defaultValue->getType());
-  //   }
-  //     // b.create<sv: :BPAssignOp>(assignment.wire.getLoc(), assignment.wire,
-  //     //                          *assignment.defaultValue);
-  // }
-
-  // // Case assignments.
-  // caseMux = b.create<sv::CaseOp>(
-  //     machineOp.getLoc(), CaseStmtType::CaseStmt,
-  //     /*sv: :ValidationQualifierTypeEnum::ValidationQualifierUnique, */ select,
-  //     /*numCases=*/machineOp.getNumStates() + 1, [&](size_t caseIdx) {
-  //       // Make Verilator happy for sized enums.
-  //       if (caseIdx == machineOp.getNumStates())
-  //         return std::unique_ptr<sv::CasePattern>(
-  //             new sv::CaseDefaultPattern(b.getContext()));
-  //       StateOp state = orderedStates[caseIdx];
-  //       return encoding->getCasePattern(state);
-  //     });
-
-  // // Create case assignments.
-  // for (auto assignment : assignments) {
-  //   OpBuilder::InsertionGuard g(b);
-  //   for (auto [caseInfo, stateOp] :
-  //        llvm::zip(caseMux.getCases(), orderedStates)) {
-  //     auto assignmentInState = assignment.assignmentInState.find(stateOp);
-  //     if (assignmentInState == assignment.assignmentInState.end())
-  //       continue;
-  //     b.setInsertionPointToEnd(caseInfo.block);
-  //     if (auto v = std::get_if<Value>(&assignmentInState->second); v) {
-  //       assignment.wire = *v;
-  //       // assignment.wire->getResult(0).setType(v->getType());
-  //       // b.create<sv: :BPAssignOp>(machineOp.getLoc(), assignment.wire, *v);
-  //     } else {
-  //       // Nested case statement.
-  //       llvm::SmallVector<CaseMuxItem, 4> nestedAssignments;
-  //       nestedAssignments.push_back(
-  //           *std::get<std::shared_ptr<CaseMuxItem>>(assignmentInState->second));
-  //       buildStateCaseMux(nestedAssignments);
-  //     }
-  //   }
-  // }
-
-    
-
+    doneWires.push_back(firstAssignment.wire);
+    firstAssignment.wire.setValue(noMatchInput);
+  }
 }
 
 LogicalResult MachineOpConverter::dispatch() {
@@ -462,17 +447,17 @@ LogicalResult MachineOpConverter::dispatch() {
       std::make_unique<StateEncoding>(b, typeScope, machineOp, hwModuleOp);
   auto stateType = encoding->getStateType();
 
+  BackedgeBuilder bb(b, loc);
+
   // TODO: make this CompReg
-  mlir::Value tempVal;
+  Backedge nextStateWire = bb.get(stateType);
+
   stateReg = b.create<seq::CompRegOp>(
-      loc, clock, clock, reset,
+      loc, nextStateWire, clock, reset,
       /*reset value=*/encoding->encode(machineOp.getInitialStateOp()),
       "state_reg");
-  auto nextStateWire = stateReg;
-  auto nextStateWireRead = stateReg.getData(); //b.create<sv: :ReadInOutOp>(loc, nextStateWire);
 
-
-  llvm::DenseMap<VariableOp, seq::CompRegOp> variableNextStateWires;
+  llvm::DenseMap<VariableOp, Backedge> variableNextStateWires;
   for (auto variableOp : machineOp.front().getOps<fsm::VariableOp>()) {
     auto initValueAttr = variableOp.getInitValueAttr().dyn_cast<IntegerAttr>();
     if (!initValueAttr)
@@ -481,16 +466,17 @@ LogicalResult MachineOpConverter::dispatch() {
     Type varType = variableOp.getType();
     auto varLoc = variableOp.getLoc();
     // TODO
-    mlir::Value val;
+    auto nextVariableStateWire = bb.get(varType);
     auto variableReg = b.create<seq::CompRegOp>(
-        varLoc, clock, clock, b.getStringAttr(variableOp.getName() + "_next"));
+        varLoc, nextVariableStateWire, clock,
+        b.getStringAttr(variableOp.getName() + "_next"));
     auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
     auto varNextState = variableReg;
     // auto variableReg = b.create<seq::CompRegOp>(
-    //     varLoc, b.create<sv: :ReadInOutOp>(varLoc, varNextState), clock, reset,
-    //     varResetVal, b.getStringAttr(variableOp.getName() + "_reg"));
+    //     varLoc, b.create<sv: :ReadInOutOp>(varLoc, varNextState), clock,
+    //     reset, varResetVal, b.getStringAttr(variableOp.getName() + "_reg"));
     variableToRegister[variableOp] = variableReg;
-    variableNextStateWires[variableOp] = varNextState;
+    variableNextStateWires[variableOp] = nextVariableStateWire;
     // Postpone value replacement until all logic has been created.
     // fsm::UpdateOp's require their target variables to refer to a
     // fsm::VariableOp - if this is not the case, they'll throw an assert.
@@ -511,8 +497,6 @@ LogicalResult MachineOpConverter::dispatch() {
     if (failed(stateConvRes))
       return failure();
 
-    // start 
-
     stateConvResults[state] = *stateConvRes;
     orderedStates.push_back(state);
     nextStateFromState[state] = {stateConvRes->nextState};
@@ -526,11 +510,12 @@ LogicalResult MachineOpConverter::dispatch() {
     if (!port.isOutput())
       continue;
     auto outputPortType = port.type;
-    mlir::Value val;
+    auto nextOutputStateWire = bb.get(outputPortType);
     CaseMuxItem outputAssignment;
-    outputAssignment.wire = clock;
+    outputAssignment.wire = nextOutputStateWire;
     // b.create<seq::CompRegOp>(
-    //     machineOp.getLoc(), clock, clock, b.getStringAttr("output_" + std::to_string(portIndex)));
+    //     machineOp.getLoc(), nextOutputStateWire, clock,
+    //     b.getStringAttr("output_" + std::to_string(portIndex)));
     outputAssignment.select = stateReg;
     for (auto &state : orderedStates)
       outputAssignment.assignmentInState[state] = {
@@ -566,7 +551,7 @@ LogicalResult MachineOpConverter::dispatch() {
           // the current state, switching on the next-state value.
           CaseMuxItem innerCaseMuxItem;
           innerCaseMuxItem.wire = caseMuxItemIt->second.wire;
-          innerCaseMuxItem.select = nextStateWireRead;
+          innerCaseMuxItem.select = nextStateWire;
           caseMuxItemIt->second.assignmentInState[currentState] = {
               std::make_shared<CaseMuxItem>(innerCaseMuxItem)};
         }
@@ -591,9 +576,9 @@ LogicalResult MachineOpConverter::dispatch() {
                                   outputCaseAssignments.end());
 
   {
-    // auto alwaysCombOp = b.create<sv: :AlwaysCombOp>(loc);
-    // OpBuilder::InsertionGuard g(b);
-    // b.setInsertionPointToStart(alwaysCombOp.getBodyBlock());
+    auto alwaysCombOp = b.create<sv::AlwaysCombOp>(loc);
+    OpBuilder::InsertionGuard g(b);
+    b.setInsertionPointToStart(alwaysCombOp.getBodyBlock());
     buildStateCaseMux(nextStateCaseAssignments);
   }
 
@@ -603,6 +588,7 @@ LogicalResult MachineOpConverter::dispatch() {
 
   // Assing output ports.
   llvm::SmallVector<Value> outputPortAssignments;
+
   // TODO: find substitute for this
   for (auto outputAssignment : outputCaseAssignments)
     outputPortAssignments.push_back(outputAssignment.wire);
@@ -766,8 +752,7 @@ void FSMToCorePass::runOnOperation() {
     b.setInsertionPointToStart(module.getBody());
     b.create<sv::VerbatimOp>(
         module.getLoc(), "`include \"" + typeScopeFilename.getValue() + "\"");
-  }module.dump();
-
+  }
 }
 
 } // end anonymous namespace
@@ -775,20 +760,3 @@ void FSMToCorePass::runOnOperation() {
 std::unique_ptr<mlir::Pass> circt::createConvertFSMToCorePass() {
   return std::make_unique<FSMToCorePass>();
 }
-
-
-// for every clock cycle 
-// update var <- var_next 
-// switch case state_reg (for all cases)
-// case A
-//  assign state_next = MUX(guard_A)
-//  assign output 
-// case B
-//  assign state_next = MUX(guard_B)
-//  switch case state_next (for all transitions)
-//    case A
-//    action_A
-//    case B
-//    action_B
-//  assign output
-
