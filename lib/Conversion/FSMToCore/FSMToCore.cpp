@@ -11,6 +11,7 @@
 #include "circt/Dialect/Comb/CombDialect.h"
 #include "circt/Dialect/Comb/CombOps.h"
 #include "circt/Dialect/FSM/FSMOps.h"
+#include "circt/Dialect/HW/HWOpInterfaces.h"
 #include "circt/Dialect/HW/HWOps.h"
 #include "circt/Dialect/HW/HWTypes.h"
 #include "circt/Dialect/SV/SVOps.h"
@@ -26,7 +27,9 @@
 #include "llvm/ADT/TypeSwitch.h"
 
 #include <memory>
+#include <optional>
 #include <variant>
+#include <vector>
 
 using namespace mlir;
 using namespace circt;
@@ -38,7 +41,29 @@ struct ClkRstIdxs {
   size_t clockIdx;
   size_t resetIdx;
 };
-} // namespace
+
+// Clones constants implicitly captured by the region, into the region.
+static void cloneConstantsIntoRegion(Region &region, OpBuilder &builder) {
+  // Values implicitly captured by the region.
+  llvm::SetVector<Value> captures;
+  getUsedValuesDefinedAbove(region, region, captures);
+
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(&region.front());
+
+  // Clone ConstantLike operations into the region.
+  for (auto &capture : captures) {
+    Operation *op = capture.getDefiningOp();
+    if (!op || !op->hasTrait<OpTrait::ConstantLike>())
+      continue;
+
+    Operation *cloned = builder.clone(*op);
+    for (auto [orig, replacement] :
+         llvm::zip(op->getResults(), cloned->getResults()))
+      replaceAllUsesInRegionWith(orig, replacement, region);
+  }
+}
+
 static ClkRstIdxs getMachinePortInfo(SmallVectorImpl<hw::PortInfo> &ports,
                                      MachineOp machine, OpBuilder &b) {
   // Get the port info of the machine inputs and outputs.
@@ -65,28 +90,7 @@ static ClkRstIdxs getMachinePortInfo(SmallVectorImpl<hw::PortInfo> &ports,
 
   return specialPorts;
 }
-
-// Clones constants implicitly captured by the region, into the region.
-static void cloneConstantsIntoRegion(Region &region, OpBuilder &builder) {
-  // Values implicitly captured by the region.
-  llvm::SetVector<Value> captures;
-  getUsedValuesDefinedAbove(region, region, captures);
-
-  OpBuilder::InsertionGuard guard(builder);
-  builder.setInsertionPointToStart(&region.front());
-
-  // Clone ConstantLike operations into the region.
-  for (auto &capture : captures) {
-    Operation *op = capture.getDefiningOp();
-    if (!op || !op->hasTrait<OpTrait::ConstantLike>())
-      continue;
-
-    Operation *cloned = builder.clone(*op);
-    for (auto [orig, replacement] :
-         llvm::zip(op->getResults(), cloned->getResults()))
-      replaceAllUsesInRegionWith(orig, replacement, region);
-  }
-}
+} // namespace
 
 namespace {
 
@@ -217,6 +221,7 @@ void StateEncoding::setEncoding(StateOp state, Value v, bool wire) {
   valueToState[encodedValue] = state;
   valueToSrcValue[encodedValue] = v;
 }
+} // namespace
 
 class MachineOpConverter {
 public:
@@ -297,7 +302,13 @@ private:
   // Build an SV-based case mux for the given assignments. Assignments are
   // merged into the same case statement. Caller is expected to ensure that the
   // insertion point is within an `always_...` block.
-  void buildStateCaseMux(llvm::MutableArrayRef<CaseMuxItem> assignments);
+  void
+  buildStateCaseMux(llvm::MutableArrayRef<CaseMuxItem> assignments,
+                    std::optional<mlir::Value> outerCondition = std::nullopt);
+
+  void printStateCaseMux(CaseMuxItem assignment, int ws);
+
+  DenseMap<Value, std::string> backedgeMap;
 
   // A handle to the state encoder for this machine.
   std::unique_ptr<StateEncoding> encoding;
@@ -307,6 +318,14 @@ private:
 
   // A mapping from a fsm.variable op to its register.
   llvm::SmallDenseMap<VariableOp, seq::CompRegOp> variableToRegister;
+
+  // A mapping from a fsm.variable op to the output of the mux chain that
+  // calculates its next value.
+  llvm::SmallDenseMap<VariableOp, mlir::Value> variableToMuxChainOut;
+
+  // Mapping from a hw port to 
+  llvm::SmallVector<mlir::Value> outputMuxChainOuts;
+
 
   // A mapping from a state to variable updates performed during outgoing state
   // transitions.
@@ -330,88 +349,9 @@ private:
   hw::TypeScopeOp typeScope;
 
   OpBuilder &b;
+
+  mlir::Value stateMuxChainOut;
 };
-
-FailureOr<Operation *>
-MachineOpConverter::moveOps(Block *block,
-                            llvm::function_ref<bool(Operation *)> exclude) {
-  for (auto &op : llvm::make_early_inc_range(*block)) {
-    if (!isa<comb::CombDialect, hw::HWDialect, fsm::FSMDialect>(
-            op.getDialect()))
-      return op.emitOpError()
-             << "is unsupported (op from the "
-             << op.getDialect()->getNamespace() << " dialect).";
-
-    if (exclude && exclude(&op))
-      continue;
-
-    if (op.hasTrait<OpTrait::IsTerminator>())
-      return &op;
-
-    op.moveBefore(hwModuleOp.getBodyBlock(), b.getInsertionPoint());
-  }
-  return nullptr;
-}
-
-void MachineOpConverter::buildStateCaseMux(
-    llvm::MutableArrayRef<CaseMuxItem> assignments) {
-
-  // Gather the select signal. All assignments are expected to use the same
-  // select signal.
-  Value select = assignments.front().select;
-  assert(llvm::all_of(
-             assignments,
-             [&](const CaseMuxItem &item) { return item.select == select; }) &&
-         "All assignments must use the same select signal.");
-
-  sv::CaseOp caseMux;
-  // Default assignments.
-
-  llvm::DenseMap<mlir::Value, mlir::Value> defaultWires;
-  for (auto assignment : assignments) {
-    defaultWires.insert(
-        std::pair(assignment.wire, assignment.defaultValue
-                                       ? assignment.defaultValue.value()
-                                       : assignment.wire));
-  }
-
-  llvm::SmallVector<mlir::Value> doneWires;
-  for (auto &firstAssignment : assignments) {
-    OpBuilder::InsertionGuard g(b);
-    if (std::find(doneWires.begin(), doneWires.end(), firstAssignment.wire) !=
-        doneWires.end())
-      continue;
-
-    auto noMatchInput = defaultWires[firstAssignment.wire];
-    // TODO: probably only one assignment per wire so we don't need the inner
-    // iteration on assignments
-    for (auto assignment : assignments) {
-      if ((Value)assignment.wire != (Value)firstAssignment.wire)
-        continue;
-      for (auto assignmentInState : assignment.assignmentInState) {
-        if (auto v = std::get_if<Value>(&assignmentInState.second); v) {
-          auto thisState = assignmentInState.first;
-          auto compVal = encoding->encode(thisState);
-          auto cmpOp =
-              b.create<hw::EnumCmpOp>(machineOp.getLoc(), assignment.select,
-                                      /* THIS SHOULD BE WHATEVER
-     THE CASE IS MATCHING AGAINST*/ compVal);
-          auto muxOp = b.create<comb::MuxOp>(machineOp.getLoc(), cmpOp, *v,
-                                             noMatchInput);
-          noMatchInput = muxOp.getResult();
-        } else {
-          // TODO: figure out the outputs of this
-          llvm::SmallVector<CaseMuxItem, 4> nestedAssignments;
-          nestedAssignments.push_back(*std::get<std::shared_ptr<CaseMuxItem>>(
-              assignmentInState.second));
-          buildStateCaseMux(nestedAssignments);
-        }
-      }
-    }
-    doneWires.push_back(firstAssignment.wire);
-    firstAssignment.wire.setValue(noMatchInput);
-  }
-}
 
 LogicalResult MachineOpConverter::dispatch() {
   b.setInsertionPoint(machineOp);
@@ -449,13 +389,14 @@ LogicalResult MachineOpConverter::dispatch() {
 
   BackedgeBuilder bb(b, loc);
 
-  // TODO: make this CompReg
   Backedge nextStateWire = bb.get(stateType);
 
   stateReg = b.create<seq::CompRegOp>(
       loc, nextStateWire, clock, reset,
       /*reset value=*/encoding->encode(machineOp.getInitialStateOp()),
       "state_reg");
+
+  stateMuxChainOut = stateReg;
 
   llvm::DenseMap<VariableOp, Backedge> variableNextStateWires;
   for (auto variableOp : machineOp.front().getOps<fsm::VariableOp>()) {
@@ -467,6 +408,8 @@ LogicalResult MachineOpConverter::dispatch() {
     auto varLoc = variableOp.getLoc();
     // TODO
     auto nextVariableStateWire = bb.get(varType);
+    backedgeMap.insert(
+        std::pair(nextVariableStateWire, "nextVariableStateWire"));
     auto variableReg = b.create<seq::CompRegOp>(
         varLoc, nextVariableStateWire, clock,
         b.getStringAttr(variableOp.getName() + "_next"));
@@ -474,20 +417,36 @@ LogicalResult MachineOpConverter::dispatch() {
     auto varNextState = variableReg;
     // auto variableReg = b.create<seq::CompRegOp>(
     //     varLoc, b.create<sv: :ReadInOutOp>(varLoc, varNextState), clock,
-    //     reset, varResetVal, b.getStringAttr(variableOp.getName() + "_reg"));
+    //     reset, varResetVal, b.getStringAttr(variableOp.getName() +
+    //     "_reg"));
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = nextVariableStateWire;
+    variableToMuxChainOut[variableOp] = nextVariableStateWire;
     // Postpone value replacement until all logic has been created.
     // fsm::UpdateOp's require their target variables to refer to a
     // fsm::VariableOp - if this is not the case, they'll throw an assert.
   }
 
-  // Move any operations at the machine-level scope, excluding state ops, which
-  // are handled separately.
+  // Move any operations at the machine-level scope, excluding state ops,
+  // which are handled separately.
   if (failed(moveOps(&machineOp.front(), [](Operation *op) {
         return isa<fsm::StateOp, fsm::VariableOp>(op);
       })))
     return failure();
+
+  // Begin mux chains for outputs
+
+  auto hwPortList = hwModuleOp.getPortList();
+  size_t portIndex = 0;
+  llvm::SmallVector<Backedge> outputBackedges;
+  for (auto &port : hwPortList) {
+    if (!port.isOutput())
+      continue;
+    auto outputPortType = port.type;
+    auto nextOutputStateWire = bb.get(outputPortType);
+    outputMuxChainOuts.push_back(nextOutputStateWire);
+    outputBackedges.push_back(nextOutputStateWire);
+  }
 
   // 3) Convert states and record their next-state value assignments.
   StateCaseMapping nextStateFromState;
@@ -496,110 +455,32 @@ LogicalResult MachineOpConverter::dispatch() {
     auto stateConvRes = convertState(state);
     if (failed(stateConvRes))
       return failure();
-
-    stateConvResults[state] = *stateConvRes;
-    orderedStates.push_back(state);
-    nextStateFromState[state] = {stateConvRes->nextState};
   }
 
-  // 4/5) Create next-state assignments for each output.
-  llvm::SmallVector<CaseMuxItem, 4> outputCaseAssignments;
-  auto hwPortList = hwModuleOp.getPortList();
-  size_t portIndex = 0;
-  for (auto &port : hwPortList) {
-    if (!port.isOutput())
-      continue;
-    auto outputPortType = port.type;
-    auto nextOutputStateWire = bb.get(outputPortType);
-    CaseMuxItem outputAssignment;
-    outputAssignment.wire = nextOutputStateWire;
-    // b.create<seq::CompRegOp>(
-    //     machineOp.getLoc(), nextOutputStateWire, clock,
-    //     b.getStringAttr("output_" + std::to_string(portIndex)));
-    outputAssignment.select = stateReg;
-    for (auto &state : orderedStates)
-      outputAssignment.assignmentInState[state] = {
-          stateConvResults[state].outputs[portIndex]};
-
-    outputCaseAssignments.push_back(outputAssignment);
-    ++portIndex;
+  nextStateWire.setValue(stateMuxChainOut);
+  for (auto varPair: variableToMuxChainOut) {
+    variableNextStateWires[varPair.first].setValue(varPair.second);
   }
-
-  // Create next-state maps for the FSM variables.
-  llvm::DenseMap<VariableOp, CaseMuxItem> variableCaseMuxItems;
-  for (auto &[currentState, it] : stateToVariableUpdates) {
-    for (auto &[targetState, it2] : it) {
-      for (auto &[variableOp, targetValue] : it2) {
-        auto caseMuxItemIt = variableCaseMuxItems.find(variableOp);
-        if (caseMuxItemIt == variableCaseMuxItems.end()) {
-          // First time seeing this variable. Initialize the outer case
-          // statement. The outer case has a default assignment to the current
-          // value of the variable register.
-          variableCaseMuxItems[variableOp];
-          caseMuxItemIt = variableCaseMuxItems.find(variableOp);
-          assert(variableOp);
-          assert(variableNextStateWires.count(variableOp));
-          caseMuxItemIt->second.wire = variableNextStateWires[variableOp];
-          caseMuxItemIt->second.select = stateReg;
-          caseMuxItemIt->second.defaultValue =
-              variableToRegister[variableOp].getResult();
-        }
-
-        if (!std::get_if<std::shared_ptr<CaseMuxItem>>(
-                &caseMuxItemIt->second.assignmentInState[currentState])) {
-          // Initialize the inner case statement. This is an inner case within
-          // the current state, switching on the next-state value.
-          CaseMuxItem innerCaseMuxItem;
-          innerCaseMuxItem.wire = caseMuxItemIt->second.wire;
-          innerCaseMuxItem.select = nextStateWire;
-          caseMuxItemIt->second.assignmentInState[currentState] = {
-              std::make_shared<CaseMuxItem>(innerCaseMuxItem)};
-        }
-
-        // Append to the nested case mux for the variable, with a case select
-        // on the next-state signal.
-        // Append an assignment in the case that nextState == targetState.
-        auto &innerCaseMuxItem = std::get<std::shared_ptr<CaseMuxItem>>(
-            caseMuxItemIt->second.assignmentInState[currentState]);
-        innerCaseMuxItem->assignmentInState[targetState] = {targetValue};
-      }
-    }
-  }
-
-  // Materialize the case mux.
-  llvm::SmallVector<CaseMuxItem, 4> nextStateCaseAssignments;
-  nextStateCaseAssignments.push_back(
-      CaseMuxItem{nextStateWire, stateReg, nextStateFromState});
-  for (auto &[_, caseMuxItem] : variableCaseMuxItems)
-    nextStateCaseAssignments.push_back(caseMuxItem);
-  nextStateCaseAssignments.append(outputCaseAssignments.begin(),
-                                  outputCaseAssignments.end());
-
-  {
-    OpBuilder::InsertionGuard g(b);
-    buildStateCaseMux(nextStateCaseAssignments);
+  for (int i = 0; i < outputBackedges.size(); i++) {
+    outputBackedges[i].setValue(outputMuxChainOuts[i]);
   }
 
   // Replace variable values with their register counterparts.
   for (auto &[variableOp, variableReg] : variableToRegister)
     variableOp.getResult().replaceAllUsesWith(variableReg);
 
-  // Assing output ports.
-  llvm::SmallVector<Value> outputPortAssignments;
 
-  // TODO: find substitute for this
-  for (auto outputAssignment : outputCaseAssignments)
-    outputPortAssignments.push_back(outputAssignment.wire);
-
-  // Delete the default created output op and replace it with the output
-  // muxes.
+  // Cast to values to appease builder
+  llvm::SmallVector<Value> outputValues;
+  for (auto backedge: outputBackedges){
+    outputValues.push_back(backedge);
+  }
   auto *oldOutputOp = hwModuleOp.getBodyBlock()->getTerminator();
-  b.create<hw::OutputOp>(loc, outputPortAssignments);
+  // b.setInsertionPointToEnd();
+  b.setInsertionPointToEnd(oldOutputOp->getBlock());
   oldOutputOp->erase();
-
-  // Erase the original machine op.
+  auto op = b.create<hw::OutputOp>(loc, outputValues);
   machineOp.erase();
-  bb.abandon();
   return success();
 }
 
@@ -607,6 +488,9 @@ FailureOr<Value>
 MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
     StateOp currentState, ArrayRef<TransitionOp> transitions) {
   Value nextState;
+  DenseMap<fsm::VariableOp, Value> variableUpdates;
+  auto stateCmp = b.create<hw::EnumCmpOp>(machineOp.getLoc(), stateReg,
+                                          encoding->encode(currentState));
   if (transitions.empty()) {
     // Base case
     // State: transition to the current state.
@@ -627,7 +511,6 @@ MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
         return failure();
 
       // Gather variable updates during the action.
-      DenseMap<fsm::VariableOp, Value> variableUpdates;
       for (auto updateOp : transition.getAction().getOps<fsm::UpdateOp>()) {
         VariableOp variableOp = updateOp.getVariableOp();
         variableUpdates[variableOp] = updateOp.getValue();
@@ -655,11 +538,43 @@ MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
       comb::MuxOp nextStateMux = b.create<comb::MuxOp>(
           transition.getLoc(), guard, nextState, *otherNextState, false);
       nextState = nextStateMux;
+      auto stateAndGuard = b.create<comb::AndOp>(machineOp.getLoc(), guard, stateCmp);
+      for (auto variableUpdate: variableUpdates) {
+        auto muxChainOut = variableToMuxChainOut[variableUpdate.first];
+    auto newMuxChainOut =
+        b.create<comb::MuxOp>(machineOp.getLoc(), stateAndGuard,
+                              variableUpdate.second, muxChainOut, false);
+        variableToMuxChainOut[variableUpdate.first] = newMuxChainOut;
+      }
+      
     }
   }
 
+  stateMuxChainOut = b.create<comb::MuxOp>(machineOp.getLoc(), stateCmp,
+                                           nextState, stateMuxChainOut);
   assert(nextState && "next state should be defined");
   return nextState;
+}
+
+FailureOr<Operation *>
+MachineOpConverter::moveOps(Block *block,
+                            llvm::function_ref<bool(Operation *)> exclude) {
+  for (auto &op : llvm::make_early_inc_range(*block)) {
+    if (!isa<comb::CombDialect, hw::HWDialect, fsm::FSMDialect>(
+            op.getDialect()))
+      return op.emitOpError()
+             << "is unsupported (op from the "
+             << op.getDialect()->getNamespace() << " dialect).";
+
+    if (exclude && exclude(&op))
+      continue;
+
+    if (op.hasTrait<OpTrait::IsTerminator>())
+      return &op;
+
+    op.moveBefore(hwModuleOp.getBodyBlock(), b.getInsertionPoint());
+  }
+  return nullptr;
 }
 
 FailureOr<MachineOpConverter::StateConversionResult>
@@ -674,6 +589,15 @@ MachineOpConverter::convertState(StateOp state) {
       return failure();
 
     OutputOp outputOp = cast<fsm::OutputOp>(*outputOpRes);
+  // TODO: two of these, dedup - one in convertTransitions too
+    auto stateCmp = b.create<hw::EnumCmpOp>(machineOp.getLoc(), stateReg,
+                                          encoding->encode(state));
+
+    for (int i = 0; i < outputOp->getNumOperands(); i++) {
+      auto muxChainOut = outputMuxChainOuts[i];
+      auto muxOp = b.create<comb::MuxOp>(machineOp->getLoc(), stateCmp, outputOp->getOperand(i), muxChainOut);
+      outputMuxChainOuts[i] = muxOp;
+    }
     res.outputs = outputOp.getOperands(); // 3.2
   }
 
@@ -688,6 +612,7 @@ MachineOpConverter::convertState(StateOp state) {
   return res;
 }
 
+namespace {
 struct FSMToCorePass : public ConvertFSMToCoreBase<FSMToCorePass> {
   void runOnOperation() override;
 };
@@ -698,8 +623,8 @@ void FSMToCorePass::runOnOperation() {
   SmallVector<Operation *, 16> opToErase;
 
   // Create a typescope shared by all of the FSMs. This typescope will be
-  // emitted in a single separate file to avoid polluting each output file with
-  // typedefs.
+  // emitted in a single separate file to avoid polluting each output file
+  // with typedefs.
   StringAttr typeScopeFilename = b.getStringAttr("fsm_enum_typedefs.sv");
   b.setInsertionPointToStart(module.getBody());
   auto typeScope = b.create<hw::TypeScopeOp>(
@@ -734,15 +659,6 @@ void FSMToCorePass::runOnOperation() {
         operands, nullptr);
     instance.replaceAllUsesWith(hwInstance);
     instance.erase();
-  }
-
-  if (typeScope.getBodyBlock()->empty()) {
-    // If the typescope is empty (no FSMs were converted), erase it.
-    typeScope.erase();
-  } else {
-    // Else, add an include file to the top-level (will include typescope
-    // in all files).
-    b.setInsertionPointToStart(module.getBody());
   }
 }
 
