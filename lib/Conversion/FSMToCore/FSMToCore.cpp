@@ -100,8 +100,7 @@ class StateEncoding {
   // values, and used as selection signals for muxes.
 
 public:
-  StateEncoding(OpBuilder &b, hw::TypeScopeOp typeScope, MachineOp machine,
-                hw::HWModuleOp hwModule);
+  StateEncoding(OpBuilder &b, MachineOp machine, hw::HWModuleOp hwModule);
 
   // Get the encoded value for a state.
   Value encode(StateOp state);
@@ -132,9 +131,6 @@ protected:
   // A mapping between an encoded value and the source value in the IR.
   SmallDenseMap<Value, Value> valueToSrcValue;
 
-  // A typescope to emit the FSM enum type within.
-  hw::TypeScopeOp typeScope;
-
   // The enum type for the states.
   Type stateType;
 
@@ -143,9 +139,9 @@ protected:
   hw::HWModuleOp hwModule;
 };
 
-StateEncoding::StateEncoding(OpBuilder &b, hw::TypeScopeOp typeScope,
-                             MachineOp machine, hw::HWModuleOp hwModule)
-    : typeScope(typeScope), b(b), machine(machine), hwModule(hwModule) {
+StateEncoding::StateEncoding(OpBuilder &b, MachineOp machine,
+                             hw::HWModuleOp hwModule)
+    : b(b), machine(machine), hwModule(hwModule) {
   Location loc = machine.getLoc();
   llvm::SmallVector<Attribute> stateNames;
 
@@ -157,24 +153,29 @@ StateEncoding::StateEncoding(OpBuilder &b, hw::TypeScopeOp typeScope,
       hw::EnumType::get(b.getContext(), b.getArrayAttr(stateNames));
 
   OpBuilder::InsertionGuard guard(b);
-  b.setInsertionPointToStart(&typeScope.getBodyRegion().front());
-  auto typedeclEnumType = b.create<hw::TypedeclOp>(
-      loc, b.getStringAttr(hwModule.getName() + "_state_t"),
-      TypeAttr::get(rawEnumType), nullptr);
-
-  stateType = hw::TypeAliasType::get(
-      SymbolRefAttr::get(typeScope.getSymNameAttr(),
-                         {FlatSymbolRefAttr::get(typedeclEnumType)}),
-      rawEnumType);
-
-  // And create enum values for the states
+  b.setInsertionPointToStart(&hwModule.getBodyRegion().front());
+  // If stateType is explicitly provided, use this - otherwise, calculate the
+  // minimum int size that can represent all states
+  if (machine->getAttr("stateType"))
+    stateType = machine->getAttr("stateType").cast<TypeAttr>().getValue();
+  else {
+    int numOps = std::distance(machine.getBody().getOps<StateOp>().begin(),
+                               machine.getBody().getOps<StateOp>().end());
+    // Manual log2
+    int width = 1;
+    int maxVal = 2;
+    while (maxVal < numOps) {
+      width++;
+      maxVal *= 2;
+    }
+    stateType = IntegerType::get(machine.getContext(), width);
+  }
+  int stateValue = 0;
+  // And create values for the states
   b.setInsertionPointToStart(&hwModule.getBody().front());
   for (auto state : machine.getBody().getOps<StateOp>()) {
-    auto fieldAttr = hw::EnumFieldAttr::get(
-        loc, b.getStringAttr(state.getName()), stateType);
-    auto enumConstantOp = b.create<hw::EnumConstantOp>(
-        loc, fieldAttr.getType().getValue(), fieldAttr);
-    setEncoding(state, enumConstantOp,
+    auto constantOp = b.create<hw::ConstantOp>(loc, stateType, stateValue++);
+    setEncoding(state, constantOp,
                 /*wire=*/true);
   }
 }
@@ -225,9 +226,8 @@ void StateEncoding::setEncoding(StateOp state, Value v, bool wire) {
 
 class MachineOpConverter {
 public:
-  MachineOpConverter(OpBuilder &builder, hw::TypeScopeOp typeScope,
-                     MachineOp machineOp)
-      : machineOp(machineOp), typeScope(typeScope), b(builder) {}
+  MachineOpConverter(OpBuilder &builder, MachineOp machineOp)
+      : machineOp(machineOp), b(builder) {}
 
   // Converts the machine op to a hardware module.
   // 1. Creates a HWModuleOp for the machine op, with the same I/O as the FSM +
@@ -323,9 +323,8 @@ private:
   // calculates its next value.
   llvm::SmallDenseMap<VariableOp, mlir::Value> variableToMuxChainOut;
 
-  // Mapping from a hw port to 
+  // Mapping from a hw port to
   llvm::SmallVector<mlir::Value> outputMuxChainOuts;
-
 
   // A mapping from a state to variable updates performed during outgoing state
   // transitions.
@@ -344,9 +343,6 @@ private:
 
   // A handle to the state register of the machine.
   seq::CompRegOp stateReg;
-
-  // A typescope to emit the FSM enum type within.
-  hw::TypeScopeOp typeScope;
 
   OpBuilder &b;
 
@@ -383,8 +379,7 @@ LogicalResult MachineOpConverter::dispatch() {
 
   // 2) Build state and variable registers.
 
-  encoding =
-      std::make_unique<StateEncoding>(b, typeScope, machineOp, hwModuleOp);
+  encoding = std::make_unique<StateEncoding>(b, machineOp, hwModuleOp);
   auto stateType = encoding->getStateType();
 
   BackedgeBuilder bb(b, loc);
@@ -458,7 +453,7 @@ LogicalResult MachineOpConverter::dispatch() {
   }
 
   nextStateWire.setValue(stateMuxChainOut);
-  for (auto varPair: variableToMuxChainOut) {
+  for (auto varPair : variableToMuxChainOut) {
     variableNextStateWires[varPair.first].setValue(varPair.second);
   }
   for (int i = 0; i < outputBackedges.size(); i++) {
@@ -469,10 +464,9 @@ LogicalResult MachineOpConverter::dispatch() {
   for (auto &[variableOp, variableReg] : variableToRegister)
     variableOp.getResult().replaceAllUsesWith(variableReg);
 
-
   // Cast to values to appease builder
   llvm::SmallVector<Value> outputValues;
-  for (auto backedge: outputBackedges){
+  for (auto backedge : outputBackedges) {
     outputValues.push_back(backedge);
   }
   auto *oldOutputOp = hwModuleOp.getBodyBlock()->getTerminator();
@@ -489,8 +483,9 @@ MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
     StateOp currentState, ArrayRef<TransitionOp> transitions) {
   Value nextState;
   DenseMap<fsm::VariableOp, Value> variableUpdates;
-  auto stateCmp = b.create<hw::EnumCmpOp>(machineOp.getLoc(), stateReg,
-                                          encoding->encode(currentState));
+  auto stateCmp =
+      b.create<comb::ICmpOp>(machineOp.getLoc(), comb::ICmpPredicate::eq,
+                             stateReg, encoding->encode(currentState));
   if (transitions.empty()) {
     // Base case
     // State: transition to the current state.
@@ -538,15 +533,15 @@ MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
       comb::MuxOp nextStateMux = b.create<comb::MuxOp>(
           transition.getLoc(), guard, nextState, *otherNextState, false);
       nextState = nextStateMux;
-      auto stateAndGuard = b.create<comb::AndOp>(machineOp.getLoc(), guard, stateCmp);
-      for (auto variableUpdate: variableUpdates) {
+      auto stateAndGuard =
+          b.create<comb::AndOp>(machineOp.getLoc(), guard, stateCmp);
+      for (auto variableUpdate : variableUpdates) {
         auto muxChainOut = variableToMuxChainOut[variableUpdate.first];
-    auto newMuxChainOut =
-        b.create<comb::MuxOp>(machineOp.getLoc(), stateAndGuard,
-                              variableUpdate.second, muxChainOut, false);
+        auto newMuxChainOut =
+            b.create<comb::MuxOp>(machineOp.getLoc(), stateAndGuard,
+                                  variableUpdate.second, muxChainOut, false);
         variableToMuxChainOut[variableUpdate.first] = newMuxChainOut;
       }
-      
     }
   }
 
@@ -589,13 +584,15 @@ MachineOpConverter::convertState(StateOp state) {
       return failure();
 
     OutputOp outputOp = cast<fsm::OutputOp>(*outputOpRes);
-  // TODO: two of these, dedup - one in convertTransitions too
-    auto stateCmp = b.create<hw::EnumCmpOp>(machineOp.getLoc(), stateReg,
-                                          encoding->encode(state));
+    // TODO: two of these, dedup - one in convertTransitions too
+    auto stateCmp =
+        b.create<comb::ICmpOp>(machineOp.getLoc(), comb::ICmpPredicate::eq,
+                               stateReg, encoding->encode(state));
 
     for (int i = 0; i < outputOp->getNumOperands(); i++) {
       auto muxChainOut = outputMuxChainOuts[i];
-      auto muxOp = b.create<comb::MuxOp>(machineOp->getLoc(), stateCmp, outputOp->getOperand(i), muxChainOut);
+      auto muxOp = b.create<comb::MuxOp>(machineOp->getLoc(), stateCmp,
+                                         outputOp->getOperand(i), muxChainOut);
       outputMuxChainOuts[i] = muxOp;
     }
     res.outputs = outputOp.getOperands(); // 3.2
@@ -622,18 +619,10 @@ void FSMToCorePass::runOnOperation() {
   auto b = OpBuilder(module);
   SmallVector<Operation *, 16> opToErase;
 
-  // Create a typescope shared by all of the FSMs. This typescope will be
-  // emitted in a single separate file to avoid polluting each output file
-  // with typedefs.
-  StringAttr typeScopeFilename = b.getStringAttr("fsm_enum_typedefs.sv");
   b.setInsertionPointToStart(module.getBody());
-  auto typeScope = b.create<hw::TypeScopeOp>(
-      module.getLoc(), b.getStringAttr("fsm_enum_typedecls"));
-  typeScope.getBodyRegion().push_back(new Block());
-
   // Traverse all machines and convert.
   for (auto machine : llvm::make_early_inc_range(module.getOps<MachineOp>())) {
-    MachineOpConverter converter(b, typeScope, machine);
+    MachineOpConverter converter(b, machine);
 
     if (failed(converter.dispatch())) {
       signalPassFailure();
