@@ -405,10 +405,10 @@ LogicalResult MachineOpConverter::dispatch() {
     backedgeMap.insert(
         std::pair(nextVariableStateWire, "nextVariableStateWire"));
     // TODO: RESET
-    auto variableReg =
-        b.create<seq::CompRegOp>(varLoc, nextVariableStateWire, clock,
-                                 b.getStringAttr(variableOp.getName()));
     auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
+    auto variableReg = b.create<seq::CompRegOp>(
+        varLoc, nextVariableStateWire, clock, reset, varResetVal,
+        b.getStringAttr(variableOp.getName()));
     auto varNextState = variableReg;
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = nextVariableStateWire;
@@ -490,7 +490,7 @@ MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
     // Recursive case - transition to a named state.
     auto transition = cast<fsm::TransitionOp>(transitions.front());
     nextState = encoding->encode(transition.getNextStateOp());
-
+    mlir::Value varUpdateCondition;
     // Action conversion
     if (transition.hasAction()) {
       // Move any ops from the action region to the general scope, excluding
@@ -529,15 +529,17 @@ MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
       comb::MuxOp nextStateMux = b.create<comb::MuxOp>(
           transition.getLoc(), guard, nextState, *otherNextState, false);
       nextState = nextStateMux;
-      auto stateAndGuard =
+      varUpdateCondition =
           b.create<comb::AndOp>(machineOp.getLoc(), guard, stateCmp);
-      for (auto variableUpdate : variableUpdates) {
-        auto muxChainOut = variableToMuxChainOut[variableUpdate.first];
-        auto newMuxChainOut =
-            b.create<comb::MuxOp>(machineOp.getLoc(), stateAndGuard,
-                                  variableUpdate.second, muxChainOut, false);
-        variableToMuxChainOut[variableUpdate.first] = newMuxChainOut;
-      }
+    } else
+      varUpdateCondition = stateCmp;
+    // Handle variable updates
+    for (auto variableUpdate : variableUpdates) {
+      auto muxChainOut = variableToMuxChainOut[variableUpdate.first];
+      auto newMuxChainOut =
+          b.create<comb::MuxOp>(machineOp.getLoc(), varUpdateCondition,
+                                variableUpdate.second, muxChainOut, false);
+      variableToMuxChainOut[variableUpdate.first] = newMuxChainOut;
     }
   }
 
