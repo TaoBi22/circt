@@ -247,8 +247,11 @@ struct Visitor : public hw::StmtVisitor<Visitor, LogicalResult>,
   }
 
   LogicalResult visitVerif(verif::CoverOp op) {
-    return op->emitError(
-        "Coverage checks not currently supported for model checking.");
+    if (op.getProperty().getType().isSignlessInteger(1)) {
+      circuit->performCover(op.getProperty());
+      return success();
+    }
+    return op->emitError("LTL properties not yet handled");
   }
 
   LogicalResult visitInvalidVerif(Operation *op) { return visitSeq(op); }

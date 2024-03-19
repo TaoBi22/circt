@@ -844,16 +844,70 @@ bool Solver::Circuit::checkState() {
   }
 }
 
+bool Solver::Circuit::checkStateCover() {
+  solver.solver.push();
+  // loadStateConstraints();
+  for (auto coverProp : coverProps) {
+    solver.solver.add(coverProp);
+  }
+  auto result = solver.solver.check();
+  // Print all solver assertions:
+  llvm::outs() << solver.solver;
+  llvm::outs() << solver.solver.to_smt2();
+  solver.printModel();
+  solver.solver.pop();
+  switch (result) {
+  case z3::sat:
+    return true;
+    break;
+  case z3::unsat:
+    return false;
+    break;
+  default:
+    // TODO: maybe add handler for other return vals?
+    return false;
+  }
+}
+
 /// Execute a clock cycle and check that the properties hold throughout
 bool Solver::Circuit::checkCycle(int count) {
+  // if (count == 0) {
+  //   solver.solver.push();
+  //   for (auto assume : initAssumes) {
+  //     solver.solver.add(assume);
+  //   }
+  //   solver.solver.push();
+  // }
+
   updateInputs(count, true);
+  solver.solver.push();
+  if (count == 0){
+      auto regState = stateTable.find(data)->second;
+  solver.solver.add(regState == solver.context.bv_val(0, width));
+
+  }
   runClockPosedge();
-  if (!checkState()) {
-    return false;
+  for (auto prop : coverProps)
+    llvm::outs() << "one";
+  // if (!checkState()) {
+  //   return false;
+  // }
+
+  if (checkStateCover()) {
+    llvm::outs() << "Cover hit on " << count << "th cycle\n";
+    return true;
   }
   updateInputs(count, false);
   runClockNegedge();
-  return checkState();
+  // auto x = checkState();
+  if (checkStateCover()) {
+    llvm::outs() << "Cover hit on " << count << "th cycle\n";
+    return true;
+  }
+  // if (count == 0)
+  //   solver.solver.pop();
+  solver.solver.pop();
+  return true;
 }
 
 /// Update combinatorial logic states (to propagate new inputs/reg outputs)
@@ -990,6 +1044,9 @@ void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk,
                                      mlir::Value data, mlir::Value reset,
                                      mlir::Value resetValue) {
   z3::expr regData = fetchOrAllocateExpr(data);
+  auto width = data.getType().getIntOrFloatBitWidth();
+  auto regState = stateTable.find(data)->second;
+  solver.solver.add(regState == solver.context.bv_val(0, width));
   CompRegStruct reg;
   reg.input = input;
   reg.clk = clk;
@@ -1033,6 +1090,11 @@ void Solver::Circuit::performAssert(mlir::Value property) {
 void Solver::Circuit::performAssume(mlir::Value property) {
   z3::expr propExpr = exprTable.find(property)->second;
   solver.solver.add(bvToBool(propExpr));
+}
+
+void Solver::Circuit::performCover(mlir::Value property) {
+  z3::expr propExpr = exprTable.find(property)->second;
+  coverProps.push_back(bvToBool(propExpr));
 }
 
 #undef DEBUG_TYPE

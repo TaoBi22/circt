@@ -76,13 +76,13 @@ static LogicalResult checkProperty(ModuleOp input, MLIRContext &context,
     return failure();
 
   for (int i = 0; i < bound; i++) {
-    if (!circuitModel->checkCycle(i)) {
-      lec::outs() << "Failure\n";
-      return input->emitError("Properties do not hold on module.");
+    if (circuitModel->checkCycle(i)) {
+      lec::outs() << "Covered\n";
+      return success();
     }
   }
-  lec::outs() << "Success!\n";
-  return success();
+  lec::outs() << "Couldn't cover!\n";
+  return failure();
 }
 
 static LogicalResult processBuffer(MLIRContext &context,

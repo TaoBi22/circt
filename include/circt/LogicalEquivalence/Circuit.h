@@ -167,6 +167,8 @@ private:
   void updateInputs(int count, bool posedge);
   /// Check that the properties hold for the current state
   bool checkState();
+  /// Check whether the cover properties hold for the current state
+  bool checkStateCover();
   /// Update combinatorial logic states (to propagate new inputs/reg outputs)
   void applyCombUpdates();
 
@@ -226,6 +228,10 @@ private:
   llvm::DenseMap<llvm::StringRef, TransformVariant> combTransformTable;
   /// A map from IR values to their corresponding name.
   llvm::DenseMap<mlir::Value, std::string> nameTable;
+  /// Hacky store of cycle 1 assumes
+  llvm::SmallVector<z3::expr> initAssumes;
+  /// Hacky store of cycle 1 assumes
+  llvm::SmallVector<z3::expr> coverProps;
 };
 
 } // namespace circt
