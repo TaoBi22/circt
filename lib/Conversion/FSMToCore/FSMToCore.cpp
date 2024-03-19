@@ -401,19 +401,15 @@ LogicalResult MachineOpConverter::dispatch() {
                                          "for the initial value.";
     Type varType = variableOp.getType();
     auto varLoc = variableOp.getLoc();
-    // TODO
     auto nextVariableStateWire = bb.get(varType);
     backedgeMap.insert(
         std::pair(nextVariableStateWire, "nextVariableStateWire"));
-    auto variableReg = b.create<seq::CompRegOp>(
-        varLoc, nextVariableStateWire, clock,
-        b.getStringAttr(variableOp.getName() + "_next"));
+    // TODO: RESET
+    auto variableReg =
+        b.create<seq::CompRegOp>(varLoc, nextVariableStateWire, clock,
+                                 b.getStringAttr(variableOp.getName()));
     auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
     auto varNextState = variableReg;
-    // auto variableReg = b.create<seq::CompRegOp>(
-    //     varLoc, b.create<sv: :ReadInOutOp>(varLoc, varNextState), clock,
-    //     reset, varResetVal, b.getStringAttr(variableOp.getName() +
-    //     "_reg"));
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = nextVariableStateWire;
     variableToMuxChainOut[variableOp] = nextVariableStateWire;
