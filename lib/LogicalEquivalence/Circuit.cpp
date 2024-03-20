@@ -741,12 +741,23 @@ void Solver::Circuit::loadStateConstraints() {
 
     solver.solver.add(symbolPair->second == statePair->second);
   }
+  for (auto wire : wires) {
+    auto symbolPair = exprTable.find(wire.first);
+    assert(symbolPair != exprTable.end() &&
+           "Z3 expression not found for register output");
+    auto statePair = stateTable.find(wire.first);
+    assert(statePair != stateTable.end() &&
+           "Z3 state not found for register output");
+
+    solver.solver.add(symbolPair->second == statePair->second);
+  }
   // Combinatorial values are handled by the constraints we already have, so
   // we do not need their state
 }
 
 /// Execute a clock posedge (i.e. update registers and combinatorial logic)
-void Solver::Circuit::runClockPosedge() {
+void Solver::Circuit::runClockPosedge(bool first) {
+  applyCombUpdates();
   for (auto clk : clks) {
     // Currently we explicitly handle only one clock, so we can just update
     // every clock in clks (of which there are 0 or 1)
@@ -773,7 +784,12 @@ void Solver::Circuit::runClockPosedge() {
     // async resets aren't supported
     z3::expr inputState = stateTable.find(input)->second;
     // Make sure that a reset value is present
-    if (reset) {
+    if (first) {
+      auto initState =
+          solver.context.bv_val(0, input.getType().getIntOrFloatBitWidth());
+      stateTable.find(data)->second = initState;
+      stateTable.find(input)->second = initState;
+    } else if (reset) {
       z3::expr resetState = stateTable.find(reset)->second;
       z3::expr resetValueState = stateTable.find(resetValue)->second;
       z3::expr newState =
@@ -785,6 +801,7 @@ void Solver::Circuit::runClockPosedge() {
     }
   }
   // Update combinational updates so register outputs can propagate
+  // for (int i = 0; i < 10; i++)
   applyCombUpdates();
 }
 
@@ -796,6 +813,7 @@ void Solver::Circuit::runClockNegedge() {
     stateTable.find(clk)->second = solver.context.bv_val(0, 1);
   }
   // Update combinational updates so changes in inputs can propagate
+  // for (int i = 0; i < 10; i++)
   applyCombUpdates();
 }
 
@@ -829,10 +847,13 @@ bool Solver::Circuit::checkState() {
   solver.solver.push();
   loadStateConstraints();
   auto result = solver.solver.check();
+  // solver.printAssertions();
+  // solver.printModel();
   solver.solver.pop();
   switch (result) {
   case z3::sat:
-    solver.printModel();
+    // solver.printModel();
+    // solver.printAssertions();
     return false;
     break;
   case z3::unsat:
@@ -846,14 +867,25 @@ bool Solver::Circuit::checkState() {
 
 /// Execute a clock cycle and check that the properties hold throughout
 bool Solver::Circuit::checkCycle(int count) {
+  if (count == 0) {
+    solver.solver.push();
+    for (auto regPair : regInits) {
+      auto regState = exprTable.find(regPair.first)->second;
+      solver.solver.add(regState == regPair.second);
+    }
+  }
   updateInputs(count, true);
-  runClockPosedge();
+  runClockPosedge(count == 0);
   if (!checkState()) {
     return false;
   }
   updateInputs(count, false);
   runClockNegedge();
-  return checkState();
+  auto x = checkState();
+  if (count == 0) {
+    solver.solver.pop();
+  }
+  return x;
 }
 
 /// Update combinatorial logic states (to propagate new inputs/reg outputs)
@@ -990,6 +1022,9 @@ void Solver::Circuit::performCompReg(mlir::Value input, mlir::Value clk,
                                      mlir::Value data, mlir::Value reset,
                                      mlir::Value resetValue) {
   z3::expr regData = fetchOrAllocateExpr(data);
+  unsigned int width = data.getType().getIntOrFloatBitWidth();
+  z3::expr regInitVal = solver.context.bv_val(0, width);
+  regInits.insert(std::pair(data, regInitVal));
   CompRegStruct reg;
   reg.input = input;
   reg.clk = clk;

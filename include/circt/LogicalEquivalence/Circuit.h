@@ -160,7 +160,7 @@ private:
   /// state
   void loadStateConstraints();
   /// Execute a clock posedge (i.e. update registers and combinatorial logic)
-  void runClockPosedge();
+  void runClockPosedge(bool first = false);
   /// Execute a clock negedge (i.e. update combinatorial logic)
   void runClockNegedge();
   /// Assign a new set of symbolic values to all inputs
@@ -196,6 +196,9 @@ private:
 
   /// The list for the circuit's registers.
   llvm::SmallVector<std::variant<CompRegStruct, FirRegStruct>> regs;
+
+  /// Map from reg value to its initial value
+  llvm::DenseMap<mlir::Value, z3::expr> regInits;
 
   /// The list for the circuit's wires.
   llvm::SmallVector<std::pair<mlir::Value, WireVariant>> wires;
