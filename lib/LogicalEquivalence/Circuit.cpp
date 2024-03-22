@@ -490,7 +490,7 @@ z3::expr Solver::Circuit::variadicOperation(
   // Vacuous base case.
   auto it = operands.begin();
   Value operand = *it;
-  z3::expr varOp = fetchOrAllocateExpr(operand);
+  z3::expr varOp = stateTable.find(operand)->second;
   {
     LLVM_DEBUG(lec::dbgs() << "first operand:\n");
     lec::Scope indent;
@@ -500,7 +500,7 @@ z3::expr Solver::Circuit::variadicOperation(
   // Inductive step.
   while (it != operands.end()) {
     operand = *it;
-    varOp = operation(varOp, fetchOrAllocateExpr(operand));
+    varOp = operation(varOp, stateTable.find(operand)->second);
     {
       LLVM_DEBUG(lec::dbgs() << "next operand:\n");
       lec::Scope indent;
@@ -587,6 +587,8 @@ void Solver::Circuit::allocateConstant(Value result, const APInt &value) {
     // already formed using the symbolic form).
     solver.solver.add(allocatedPair->second == constant);
     LLVM_DEBUG(lec::dbgs() << "constraining symbolic value to constant:\n");
+    auto stateInsertion = stateTable.insert(std::pair(result, constant));
+    (void)stateInsertion; // Suppress Warning
     lec::Scope indent;
     LLVM_DEBUG(lec::printExpr(constant));
     LLVM_DEBUG(lec::printValue(result));
@@ -902,7 +904,7 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second =
           std::get<std::function<z3::expr(const z3::expr &)>>(
-              updateFuncPair->second)(fetchOrAllocateExpr(input));
+              updateFuncPair->second)(stateTable.find(input)->second);
     } else if (auto *info = std::get_if<
                    std::tuple<mlir::Value, mlir::Value, llvm::StringLiteral>>(
                    &opInfo)) {
@@ -914,8 +916,8 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second =
           std::get<std::function<z3::expr(const z3::expr &, const z3::expr &)>>(
-              updateFuncPair->second)(fetchOrAllocateExpr(input0),
-                                      fetchOrAllocateExpr(input1));
+              updateFuncPair->second)(stateTable.find(input0)->second,
+                                      stateTable.find(input1)->second);
     } else if (auto *info =
                    std::get_if<std::tuple<mlir::Value, mlir::Value, mlir::Value,
                                           llvm::StringLiteral>>(&opInfo)) {
@@ -928,9 +930,9 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second = std::get<std::function<z3::expr(
           const z3::expr &, const z3::expr &, const z3::expr &)>>(
-          updateFuncPair->second)(fetchOrAllocateExpr(input0),
-                                  fetchOrAllocateExpr(input1),
-                                  fetchOrAllocateExpr(input2));
+          updateFuncPair->second)(stateTable.find(input0)->second,
+                                  stateTable.find(input1)->second,
+                                  stateTable.find(input2)->second);
     } else if (auto *info = std::get_if<
                    std::tuple<mlir::OperandRange, llvm::StringLiteral>>(
                    &opInfo)) {
@@ -947,8 +949,8 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second = std::get<std::function<z3::expr(
           circt::comb::ICmpPredicate, const z3::expr &, const z3::expr &)>>(
-          updateFuncPair->second)(predicate, fetchOrAllocateExpr(input0),
-                                  fetchOrAllocateExpr(input1));
+          updateFuncPair->second)(predicate, stateTable.find(input0)->second,
+                                  stateTable.find(input1)->second);
     } else if (auto *info = std::get_if<
                    std::tuple<mlir::Value, unsigned int, llvm::StringLiteral>>(
                    &opInfo)) {
@@ -960,7 +962,7 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second =
           std::get<std::function<z3::expr(const z3::expr &, unsigned int)>>(
-              updateFuncPair->second)(fetchOrAllocateExpr(input), num);
+              updateFuncPair->second)(stateTable.find(input)->second, num);
     } else if (auto *info = std::get_if<
                    std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>(
                    &opInfo)) {
@@ -973,7 +975,7 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second =
           std::get<std::function<z3::expr(const z3::expr &, uint32_t, int)>>(
-              updateFuncPair->second)(fetchOrAllocateExpr(input), lowBit,
+              updateFuncPair->second)(stateTable.find(input)->second, lowBit,
                                       width);
     }
   }
