@@ -490,7 +490,7 @@ z3::expr Solver::Circuit::variadicOperation(
   // Vacuous base case.
   auto it = operands.begin();
   Value operand = *it;
-  z3::expr varOp = fetchOrAllocateExpr(operand);
+  z3::expr varOp = stateTable.find(operand)->second;
   {
     LLVM_DEBUG(lec::dbgs() << "first operand:\n");
     lec::Scope indent;
@@ -500,7 +500,7 @@ z3::expr Solver::Circuit::variadicOperation(
   // Inductive step.
   while (it != operands.end()) {
     operand = *it;
-    varOp = operation(varOp, fetchOrAllocateExpr(operand));
+    varOp = operation(varOp, stateTable.find(operand)->second);
     {
       LLVM_DEBUG(lec::dbgs() << "next operand:\n");
       lec::Scope indent;
@@ -590,6 +590,17 @@ void Solver::Circuit::allocateConstant(Value result, const APInt &value) {
     lec::Scope indent;
     LLVM_DEBUG(lec::printExpr(constant));
     LLVM_DEBUG(lec::printValue(result));
+    // Remove from wires
+    // int index = 0;
+    // for (auto wire : wires) {
+    //   if (wire.first == result) {
+    //     break;
+    //   }
+    //   index++;
+    // }
+    // wires.erase(wires.begin() + index);
+    auto stateInsertion = stateTable.insert(std::pair(result, constant));
+    (void)stateInsertion; // Suppress Warning
   }
 }
 
@@ -749,7 +760,7 @@ void Solver::Circuit::loadStateConstraints() {
     assert(statePair != stateTable.end() &&
            "Z3 state not found for register output");
 
-    solver.solver.add(symbolPair->second == statePair->second);
+    // solver.solver.add(symbolPair->second == statePair->second);
   }
   // Combinatorial values are handled by the constraints we already have, so
   // we do not need their state
@@ -852,12 +863,12 @@ bool Solver::Circuit::checkState() {
   solver.solver.pop();
   switch (result) {
   case z3::sat:
-    // solver.printModel();
-    // solver.printAssertions();
-    return false;
+    // Return true to indicate the cover has been achieved
+    return true;
     break;
   case z3::unsat:
-    return true;
+    // If unsat, return false to indicate the cover has not been achieved
+    return false;
     break;
   default:
     // TODO: maybe add handler for other return vals?
@@ -876,8 +887,9 @@ bool Solver::Circuit::checkCycle(int count) {
   }
   updateInputs(count, true);
   runClockPosedge(count == 0);
-  if (!checkState()) {
-    return false;
+  if (checkState()) {
+    // If cover is sat, return true
+    return true;
   }
   updateInputs(count, false);
   runClockNegedge();
@@ -885,6 +897,7 @@ bool Solver::Circuit::checkCycle(int count) {
   if (count == 0) {
     solver.solver.pop();
   }
+  // Return true if cover is sat, else false
   return x;
 }
 
@@ -902,7 +915,7 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second =
           std::get<std::function<z3::expr(const z3::expr &)>>(
-              updateFuncPair->second)(fetchOrAllocateExpr(input));
+              updateFuncPair->second)(stateTable.find(input)->second);
     } else if (auto *info = std::get_if<
                    std::tuple<mlir::Value, mlir::Value, llvm::StringLiteral>>(
                    &opInfo)) {
@@ -914,8 +927,8 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second =
           std::get<std::function<z3::expr(const z3::expr &, const z3::expr &)>>(
-              updateFuncPair->second)(fetchOrAllocateExpr(input0),
-                                      fetchOrAllocateExpr(input1));
+              updateFuncPair->second)(stateTable.find(input0)->second,
+                                      stateTable.find(input1)->second);
     } else if (auto *info =
                    std::get_if<std::tuple<mlir::Value, mlir::Value, mlir::Value,
                                           llvm::StringLiteral>>(&opInfo)) {
@@ -928,9 +941,9 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second = std::get<std::function<z3::expr(
           const z3::expr &, const z3::expr &, const z3::expr &)>>(
-          updateFuncPair->second)(fetchOrAllocateExpr(input0),
-                                  fetchOrAllocateExpr(input1),
-                                  fetchOrAllocateExpr(input2));
+          updateFuncPair->second)(stateTable.find(input0)->second,
+                                  stateTable.find(input1)->second,
+                                  stateTable.find(input2)->second);
     } else if (auto *info = std::get_if<
                    std::tuple<mlir::OperandRange, llvm::StringLiteral>>(
                    &opInfo)) {
@@ -947,8 +960,8 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second = std::get<std::function<z3::expr(
           circt::comb::ICmpPredicate, const z3::expr &, const z3::expr &)>>(
-          updateFuncPair->second)(predicate, fetchOrAllocateExpr(input0),
-                                  fetchOrAllocateExpr(input1));
+          updateFuncPair->second)(predicate, stateTable.find(input0)->second,
+                                  stateTable.find(input1)->second);
     } else if (auto *info = std::get_if<
                    std::tuple<mlir::Value, unsigned int, llvm::StringLiteral>>(
                    &opInfo)) {
@@ -960,7 +973,7 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second =
           std::get<std::function<z3::expr(const z3::expr &, unsigned int)>>(
-              updateFuncPair->second)(fetchOrAllocateExpr(input), num);
+              updateFuncPair->second)(stateTable.find(input)->second, num);
     } else if (auto *info = std::get_if<
                    std::tuple<mlir::Value, uint32_t, int, llvm::StringLiteral>>(
                    &opInfo)) {
@@ -973,7 +986,7 @@ void Solver::Circuit::applyCombUpdates() {
              "Combinational value to update has no update function");
       stateTable.find(resultState)->second =
           std::get<std::function<z3::expr(const z3::expr &, uint32_t, int)>>(
-              updateFuncPair->second)(fetchOrAllocateExpr(input), lowBit,
+              updateFuncPair->second)(stateTable.find(input)->second, lowBit,
                                       width);
     }
   }
@@ -1061,11 +1074,16 @@ void Solver::Circuit::performFromClock(mlir::Value result, mlir::Value input) {
 // `seq` dialect operations
 //===----------------------------------------------------------------------===//
 void Solver::Circuit::performAssert(mlir::Value property) {
-  z3::expr propExpr = exprTable.find(property)->second;
-  solver.solver.add(!bvToBool(propExpr));
+  property.getUsers().begin()->emitError(
+      "Assert not supported in cover simulation");
 }
 
 void Solver::Circuit::performAssume(mlir::Value property) {
+  z3::expr propExpr = exprTable.find(property)->second;
+  solver.solver.add(bvToBool(propExpr));
+}
+
+void Solver::Circuit::performCover(mlir::Value property) {
   z3::expr propExpr = exprTable.find(property)->second;
   solver.solver.add(bvToBool(propExpr));
 }
