@@ -412,7 +412,7 @@ LogicalResult MachineOpConverter::dispatch() {
     auto varNextState = variableReg;
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = nextVariableStateWire;
-    variableToMuxChainOut[variableOp] = nextVariableStateWire;
+    variableToMuxChainOut[variableOp] = variableReg;
     // Postpone value replacement until all logic has been created.
     // fsm::UpdateOp's require their target variables to refer to a
     // fsm::VariableOp - if this is not the case, they'll throw an assert.
