@@ -391,7 +391,8 @@ LogicalResult MachineOpConverter::dispatch() {
   stateReg = b.create<seq::CompRegOp>(
       loc, nextStateWire, clock, reset,
       /*reset value=*/encoding->encode(machineOp.getInitialStateOp()),
-      "state_reg");
+      "state_reg",
+      /*powerOn value=*/encoding->encode(machineOp.getInitialStateOp()));
 
   stateMuxChainOut = stateReg;
 
@@ -409,7 +410,7 @@ LogicalResult MachineOpConverter::dispatch() {
     auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
     auto variableReg = b.create<seq::CompRegOp>(
         varLoc, nextVariableStateWire, clock, reset, varResetVal,
-        b.getStringAttr(variableOp.getName()));
+        b.getStringAttr(variableOp.getName()), varResetVal);
     auto varNextState = variableReg;
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = nextVariableStateWire;
