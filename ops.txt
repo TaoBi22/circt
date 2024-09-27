@@ -1,0 +1,101 @@
+hw.aggregate_constant: 54
+comb.icmp: 3949
+seq.firreg: 2063
+ with 2 operands: 1359
+ with 4 operands: 704
+om.class: 1
+hw.constant: 2976
+comb.add: 387
+ with 2 operands: 381
+ with 3 operands: 6
+hw.array_get: 176
+comb.shrs: 16
+seq.firmem.read_port: 21
+comb.mux: 4801
+hw.module.extern: 2
+comb.and: 5745
+ with 2 operands: 4598
+ with 3 operands: 972
+ with 4 operands: 121
+ with 5 operands: 25
+ with 6 operands: 19
+ with 7 operands: 5
+ with 8 operands: 2
+ with 9 operands: 2
+ with 10 operands: 1
+seq.from_clock: 57
+seq.firmem: 23
+comb.replicate: 160
+hw.instance: 412
+seq.firmem.read_write_port: 5
+comb.concat: 2372
+ with 2 operands: 1411
+ with 3 operands: 398
+ with 4 operands: 90
+ with 5 operands: 27
+ with 6 operands: 23
+ with 7 operands: 26
+ with 8 operands: 87
+ with 9 operands: 28
+ with 10 operands: 24
+ with 11 operands: 17
+ with 12 operands: 50
+ with 13 operands: 33
+ with 14 operands: 22
+ with 15 operands: 36
+ with 16 operands: 17
+ with 17 operands: 5
+ with 18 operands: 7
+ with 19 operands: 8
+ with 20 operands: 6
+ with 21 operands: 7
+ with 22 operands: 3
+ with 23 operands: 26
+ with 24 operands: 1
+ with 25 operands: 2
+ with 26 operands: 1
+ with 28 operands: 7
+ with 29 operands: 1
+ with 31 operands: 3
+ with 32 operands: 2
+ with 41 operands: 1
+ with 42 operands: 1
+ with 48 operands: 1
+ with 64 operands: 1
+comb.mul: 5
+comb.xor: 3513
+ with 2 operands: 3508
+ with 3 operands: 4
+ with 4 operands: 1
+comb.shl: 428
+sv.always: 57
+builtin.module: 1
+sv.assert: 2263
+comb.shru: 216
+comb.sub: 89
+comb.extract: 5809
+hw.output: 219
+comb.or: 2946
+ with 2 operands: 2313
+ with 3 operands: 414
+ with 4 operands: 68
+ with 5 operands: 31
+ with 6 operands: 48
+ with 7 operands: 15
+ with 8 operands: 12
+ with 9 operands: 1
+ with 11 operands: 2
+ with 12 operands: 15
+ with 13 operands: 6
+ with 14 operands: 10
+ with 18 operands: 1
+ with 24 operands: 2
+ with 27 operands: 1
+ with 28 operands: 4
+ with 33 operands: 1
+ with 112 operands: 1
+ with 150 operands: 1
+seq.firmem.write_port: 19
+hw.array_create: 76
+hw.module: 219
+sv.if: 2263

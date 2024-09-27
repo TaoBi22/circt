@@ -1,0 +1,100 @@
+hw.module: 219
+comb.add: 362
+ with 2 operands: 356
+ with 3 operands: 6
+hw.module.extern: 2
+seq.firmem: 22
+comb.xor: 3388
+ with 2 operands: 3383
+ with 3 operands: 4
+ with 4 operands: 1
+seq.from_clock: 57
+comb.sub: 61
+comb.extract: 5614
+comb.replicate: 162
+seq.firmem.read_write_port: 5
+comb.shrs: 16
+builtin.module: 1
+comb.and: 5465
+ with 2 operands: 4348
+ with 3 operands: 944
+ with 4 operands: 119
+ with 5 operands: 26
+ with 6 operands: 18
+ with 7 operands: 5
+ with 8 operands: 2
+ with 9 operands: 2
+ with 10 operands: 1
+comb.icmp: 3740
+hw.array_create: 76
+hw.output: 219
+comb.mux: 4575
+sv.assert: 2208
+sv.always: 57
+seq.firmem.read_port: 20
+om.class: 1
+hw.array_get: 176
+comb.shl: 421
+comb.shru: 214
+seq.firmem.write_port: 18
+hw.aggregate_constant: 54
+hw.instance: 394
+hw.constant: 2858
+comb.or: 2735
+ with 2 operands: 2122
+ with 3 operands: 430
+ with 4 operands: 66
+ with 5 operands: 32
+ with 6 operands: 16
+ with 7 operands: 15
+ with 8 operands: 11
+ with 9 operands: 1
+ with 11 operands: 2
+ with 12 operands: 15
+ with 13 operands: 6
+ with 14 operands: 10
+ with 18 operands: 1
+ with 27 operands: 1
+ with 28 operands: 4
+ with 33 operands: 1
+ with 112 operands: 1
+ with 150 operands: 1
+comb.concat: 2417
+ with 2 operands: 1341
+ with 3 operands: 393
+ with 4 operands: 88
+ with 5 operands: 29
+ with 6 operands: 19
+ with 7 operands: 26
+ with 8 operands: 85
+ with 9 operands: 28
+ with 10 operands: 24
+ with 11 operands: 17
+ with 12 operands: 49
+ with 13 operands: 32
+ with 14 operands: 22
+ with 15 operands: 36
+ with 16 operands: 17
+ with 17 operands: 5
+ with 18 operands: 7
+ with 19 operands: 8
+ with 20 operands: 6
+ with 21 operands: 7
+ with 22 operands: 3
+ with 23 operands: 26
+ with 24 operands: 129
+ with 25 operands: 2
+ with 26 operands: 1
+ with 28 operands: 7
+ with 29 operands: 1
+ with 31 operands: 3
+ with 32 operands: 2
+ with 41 operands: 1
+ with 42 operands: 1
+ with 48 operands: 1
+ with 64 operands: 1
+sv.if: 2208
+comb.mul: 5
+seq.firreg: 1995
+ with 2 operands: 1351
+ with 4 operands: 644

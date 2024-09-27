@@ -1,0 +1,88 @@
+comb.extract: 2926
+hw.array_create: 39
+comb.xor: 1942
+comb.sub: 73
+comb.mux: 2509
+seq.firmem.write_port: 16
+comb.shrs: 1
+hw.output: 183
+comb.add: 319
+ with 2 operands: 317
+ with 3 operands: 2
+sv.if: 2253
+comb.mul: 1
+sv.always: 51
+comb.shl: 406
+comb.concat: 1402
+ with 2 operands: 861
+ with 3 operands: 223
+ with 4 operands: 56
+ with 5 operands: 13
+ with 6 operands: 14
+ with 7 operands: 18
+ with 8 operands: 79
+ with 9 operands: 19
+ with 10 operands: 16
+ with 11 operands: 10
+ with 12 operands: 34
+ with 13 operands: 3
+ with 14 operands: 6
+ with 15 operands: 19
+ with 16 operands: 10
+ with 17 operands: 2
+ with 18 operands: 1
+ with 19 operands: 3
+ with 21 operands: 2
+ with 22 operands: 1
+ with 28 operands: 5
+ with 29 operands: 1
+ with 31 operands: 2
+ with 32 operands: 2
+ with 48 operands: 1
+ with 64 operands: 1
+sv.assert: 2253
+om.class: 1
+hw.module.extern: 2
+comb.and: 3818
+ with 2 operands: 2891
+ with 3 operands: 834
+ with 4 operands: 64
+ with 5 operands: 7
+ with 6 operands: 19
+ with 7 operands: 3
+comb.or: 1946
+ with 2 operands: 1641
+ with 3 operands: 145
+ with 4 operands: 33
+ with 5 operands: 24
+ with 6 operands: 48
+ with 7 operands: 14
+ with 8 operands: 6
+ with 9 operands: 1
+ with 11 operands: 2
+ with 12 operands: 14
+ with 13 operands: 5
+ with 14 operands: 7
+ with 17 operands: 1
+ with 18 operands: 1
+ with 24 operands: 2
+ with 112 operands: 1
+ with 132 operands: 1
+hw.instance: 354
+seq.firmem: 21
+seq.from_clock: 51
+comb.shru: 196
+seq.firmem.read_write_port: 5
+ with 6 operands: 4
+ with 7 operands: 1
+builtin.module: 1
+hw.module: 183
+hw.aggregate_constant: 54
+hw.constant: 1902
+seq.firreg: 1299
+ with 2 operands: 667
+ with 4 operands: 632
+hw.array_get: 139
+comb.replicate: 103
+seq.firmem.read_port: 17
+comb.icmp: 2784

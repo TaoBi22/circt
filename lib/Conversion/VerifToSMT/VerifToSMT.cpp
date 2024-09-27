@@ -16,10 +16,18 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
+#include <algorithm>
+#include <cmath>
+#include <fstream>
+#include <iostream>
 
 namespace circt {
 #define GEN_PASS_DEF_CONVERTVERIFTOSMT
@@ -388,6 +396,100 @@ void circt::populateVerifToSMTConversionPatterns(TypeConverter &converter,
 }
 
 void ConvertVerifToSMTPass::runOnOperation() {
+  DenseMap<OperationName, int> opCount;
+  DenseMap<OperationName, DenseMap<int, int>> operandCountMap;
+  // Cheeky bodge
+
+  getOperation()->walk([&](Operation *op) {
+    // Check number of each operation
+    auto opName = op->getName();
+    auto thisPair = opCount.find(op->getName());
+    if (thisPair != opCount.end()) {
+      opCount[opName]++;
+    } else {
+      opCount[opName] = 1;
+    }
+
+    auto operandPair = operandCountMap.find(opName);
+    if (operandPair != operandCountMap.end()) {
+      auto &innerMap = operandPair->second;
+      auto innerMapPair = innerMap.find(op->getNumOperands());
+      if (innerMapPair != innerMap.end()) {
+        innerMap[op->getNumOperands()]++;
+      } else {
+        innerMap[op->getNumOperands()] = 1;
+      }
+    } else {
+      // operandCountMap[opName] = dense{std::pair(op->getNumOperands(), 1)};
+      operandCountMap[opName] = DenseMap<int, int>();
+      operandCountMap[opName][op->getNumOperands()] = 1;
+    }
+  });
+
+  std::ofstream opsFile = std::ofstream("ops.txt");
+
+  for (auto [name, count] : opCount) {
+    opsFile << name.getStringRef().data() << ": " << count << "\n";
+    if (operandCountMap[name].size() > 1 &&
+        name.getDialectNamespace() != HWDialect::getDialectNamespace()) {
+      llvm::SmallVector<int> keys;
+      for (auto [num, count] : operandCountMap[name]) {
+        keys.push_back(num);
+      }
+      llvm::sort(keys);
+      for (auto num : keys)
+        opsFile << " with " << num
+                << " operands: " << operandCountMap[name][num] << "\n";
+    }
+  }
+
+  opsFile.close();
+
+  std::ofstream opsJson = std::ofstream("ops.json");
+
+  opsJson << "{";
+  auto sepChar = "";
+  for (auto [name, map] : operandCountMap) {
+    opsJson << sepChar << "\n";
+    opsJson << "\"" << name.getStringRef().data() << "\" : ";
+    opsJson << "{\n";
+    auto sepChar1 = "";
+    for (auto [num, count] : map) {
+      opsJson << sepChar1 << "\n\"" << num << "\": " << count;
+      sepChar1 = ",";
+    }
+    opsJson << "}";
+    sepChar = ",";
+  }
+  opsJson << "}";
+
+  opsJson.close();
+
+  int totalOps = 0, totalMods = 0;
+  SmallVector<int> modCounts;
+  for (auto modOp : getOperation().getOps<HWModuleOp>()) {
+    totalMods++;
+    int opsHere = 0;
+    modOp.walk([&](Operation *op) { opsHere++; });
+    modCounts.push_back(opsHere);
+    totalOps += opsHere;
+  }
+
+  float meanModSize = totalOps / totalMods;
+  float devSum = 0;
+  std::ofstream file = std::ofstream("modSizes.txt");
+
+  for (auto count : modCounts) {
+    devSum += (count - meanModSize) * (count - meanModSize);
+    file << count << "\n";
+  }
+  float stdDev = sqrt(devSum / totalMods);
+
+  llvm::outs() << "Average module size: " << meanModSize << " ops\n";
+  llvm::outs() << "Std dev: " << stdDev << " ops\n";
+
+  file.close();
+
   ConversionTarget target(getContext());
   target.addIllegalDialect<verif::VerifDialect>();
   target.addLegalDialect<smt::SMTDialect, arith::ArithDialect, scf::SCFDialect,
