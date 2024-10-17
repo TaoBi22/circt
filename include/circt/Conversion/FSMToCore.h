@@ -16,6 +16,10 @@ class Pass;
 } // namespace mlir
 
 namespace circt {
+
+#define GEN_PASS_DECL_CONVERTFSMTOCORE
+#include "circt/Conversion/Passes.h.inc"
+
 std::unique_ptr<mlir::Pass> createConvertFSMToCorePass();
 } // namespace circt
 
