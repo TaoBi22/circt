@@ -158,6 +158,7 @@ add_circt_public_c_api_library(CIRCTCAPIFSM
   CIRCTFSM
   CIRCTFSMTransforms
   CIRCTFSMToSV
+  CIRCTFSMToCore
 )
 
 add_circt_public_c_api_library(CIRCTCAPIHandshake
