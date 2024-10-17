@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/Conversion/FSMToCore.h"
-#include "../PassDetail.h"
 #include "circt/Dialect/Comb/CombDialect.h"
 #include "circt/Dialect/Comb/CombOps.h"
 #include "circt/Dialect/FSM/FSMOps.h"
@@ -21,6 +20,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
@@ -30,6 +30,11 @@
 #include <optional>
 #include <variant>
 #include <vector>
+
+namespace circt {
+#define GEN_PASS_DEF_CONVERTFSMTOCORE
+#include "circt/Conversion/Passes.h.inc"
+} // namespace circt
 
 using namespace mlir;
 using namespace circt;
@@ -609,7 +614,7 @@ MachineOpConverter::convertState(StateOp state) {
   return res;
 }
 namespace {
-struct FSMToCorePass : public ConvertFSMToCoreBase<FSMToCorePass> {
+struct FSMToCorePass : public circt::impl::ConvertFSMToCoreBase<FSMToCorePass> {
   void runOnOperation() override;
 };
 
