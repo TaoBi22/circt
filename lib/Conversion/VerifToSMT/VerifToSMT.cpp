@@ -270,7 +270,12 @@ struct VerifBoundedModelCheckingOpConversion
         inputDecls.push_back(initVals[initIndex++]);
         clockIndexes.push_back(curIndex);
       } else {
-        inputDecls.push_back(rewriter.create<smt::DeclareFunOp>(loc, newTy));
+        // slight bodge to zero initialize registers
+        if (curIndex < oldCircuitInputTy.size() - numRegs)
+          inputDecls.push_back(rewriter.create<smt::DeclareFunOp>(loc, newTy));
+        else
+          inputDecls.push_back(rewriter.create<smt::BVConstantOp>(
+              loc, APInt(oldTy.getIntOrFloatBitWidth(), 0)));
       }
     }
 
