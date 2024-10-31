@@ -5,9 +5,13 @@
 //  COUNTER: Assertion can be violated!
 
 hw.module @Counter(in %clk: !seq.clock, out count: i2) {
+  %init = seq.initial () {
+    %c0_i2 = hw.constant 0 : i2
+    seq.yield %c0_i2 : i2
+  } : () -> !seq.immutable<i2>
   %c1_i2 = hw.constant 1 : i2
   %regPlusOne = comb.add %reg, %c1_i2 : i2
-  %reg = seq.compreg %regPlusOne, %clk : i2
+  %reg = seq.compreg %regPlusOne, %clk initial %init : i2
   // Condition - count should never reach 3 (deliberately not true)
   // FIXME: add an initial condition here once we support them, currently it
   // can be violated on the first cycle as 3 is a potential initial value.

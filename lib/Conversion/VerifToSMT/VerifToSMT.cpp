@@ -16,6 +16,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -208,6 +209,7 @@ struct VerifBoundedModelCheckingOpConversion
 
     unsigned numRegs =
         cast<IntegerAttr>(op->getAttr("num_regs")).getValue().getZExtValue();
+    auto initialValues = cast<ArrayAttr>(op->getAttr("initial_values"));
 
     auto initFuncTy = rewriter.getFunctionType({}, initOutputTy);
     // Loop and init output types are necessarily the same, so just use init
@@ -270,7 +272,19 @@ struct VerifBoundedModelCheckingOpConversion
         inputDecls.push_back(initVals[initIndex++]);
         clockIndexes.push_back(curIndex);
       } else {
-        inputDecls.push_back(rewriter.create<smt::DeclareFunOp>(loc, newTy));
+        if (curIndex >= oldCircuitInputTy.size() - numRegs) {
+          auto initVal =
+              initialValues[curIndex - oldCircuitInputTy.size() + numRegs];
+          if (auto initIntAttr = dyn_cast<IntegerAttr>(initVal)) {
+            inputDecls.push_back(rewriter.create<smt::BVConstantOp>(
+                loc, initIntAttr.getValue()));
+          } else {
+            inputDecls.push_back(
+                rewriter.create<smt::DeclareFunOp>(loc, newTy));
+          }
+        } else {
+          inputDecls.push_back(rewriter.create<smt::DeclareFunOp>(loc, newTy));
+        }
       }
     }
 
