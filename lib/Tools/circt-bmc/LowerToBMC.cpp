@@ -58,7 +58,7 @@ void LowerToBMCPass::runOnOperation() {
     hwModule->emitError("could not resolve cycles in module");
     return signalPassFailure();
   }
-
+  
   if (bound < ignoreAssertionsUntil) {
     hwModule->emitError(
         "number of ignored cycles must be less than or equal to bound");
