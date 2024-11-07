@@ -54,18 +54,11 @@ void LowerToBMCPass::runOnOperation() {
     return signalPassFailure();
   }
 
-  // TODO: Check whether instances contain properties to check
-  if (hwModule.getOps<verif::AssertOp>().empty() &&
-      hwModule.getOps<hw::InstanceOp>().empty()) {
-    hwModule.emitError("no property provided to check in module");
-    return signalPassFailure();
-  }
-
   if (!sortTopologically(&hwModule.getBodyRegion().front())) {
     hwModule->emitError("could not resolve cycles in module");
     return signalPassFailure();
   }
-
+  
   if (bound < ignoreAssertionsUntil) {
     hwModule->emitError(
         "number of ignored cycles must be less than or equal to bound");
