@@ -1097,7 +1097,7 @@ module {
     %952 = llvm.alloca %951 x !llvm.array<2 x ptr> : (i32) -> !llvm.ptr
     %953 = llvm.mlir.undef : !llvm.array<2 x ptr>
     %954 = llvm.insertvalue %932, %953[0] : !llvm.array<2 x ptr> 
-    %955 = llvm.insertvalue %131, %954[1] : !llvm.array<2 x ptr> 
+    %955 = llvm.insertvalue %arg3, %954[1] : !llvm.array<2 x ptr> 
     llvm.store %955, %952 : !llvm.array<2 x ptr>, !llvm.ptr
     %956 = llvm.call @Z3_mk_distinct(%3, %950, %952) : (!llvm.ptr, i32, !llvm.ptr) -> !llvm.ptr
     %957 = llvm.mlir.constant(3 : i32) : i32

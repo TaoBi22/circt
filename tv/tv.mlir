@@ -352,7 +352,7 @@ module {
       ^bb0(%var: !smt.bv<16>, %sTime: !smt.bv<32>):
         %apply = smt.apply_func %bF__0(%var, %sTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
         %teq = smt.eq %arg4, %sTime : !smt.bv<32>
-        %vDiff = smt.distinct %var, %67 : !smt.bv<16>
+        %vDiff = smt.distinct %var, %arg3 : !smt.bv<16>
         %and = smt.and %apply, %teq, %vDiff
         %myfalse = smt.constant false
         %impl = smt.implies %and, %myfalse
