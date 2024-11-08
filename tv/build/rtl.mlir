@@ -1,5 +1,5 @@
 module {
-  hw.module @fsm10(in %in0 : i32, in %clk : !seq.clock, in %rst : i1) {
+  hw.module @fsm10(in %clk : !seq.clock, in %rst : i1) {
     %c0_i4 = hw.constant 0 : i4
     %c1_i4 = hw.constant 1 : i4
     %c2_i4 = hw.constant 2 : i4
