@@ -10,16 +10,30 @@ if len(sys.argv) < 2:
 
 moduleName = ""
 inputWidths = []
+outputWidths = []
+varWidths = []
 with open(fsmFile, "r") as f:
     x = ""
     while not "fsm.machine" in x:
         x = f.readline()
-    search = re.search(r"fsm.machine @([a-zA-Z0-9_\-]+)\(([\s\S]*)\) ->", x)
+    search = re.search(r"fsm.machine @([a-zA-Z0-9_\-]+)\(([\s\S]*)\) -> \(([\s\S]*)\)", x)
     moduleName = search.group(1)
     inputs = search.group(2)
     for input in inputs.split(","):
         width = re.search(r": i([0-9]+)", x).group(1)
         inputWidths.append(int(width))
+    outputs = search.group(3)
+    for output in outputs.split(","):
+        width = re.search(r"i([0-9]+)", x).group(1)
+        outputWidths.append(int(width))
+
+    # collect variable types
+    x = ""
+    while not "fsm.state" in x:
+        x = f.readline()
+        if search := re.search(r"%[\s\S]+ = fsm.variable [\s\S]+ : i([0-9]+)", x):
+            varWidths.append(search.group(1))
+
 
 print(inputWidths)
 print(moduleName)
