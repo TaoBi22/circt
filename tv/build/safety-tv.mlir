@@ -9,13 +9,14 @@ module {
       %c20_i32 = arith.constant 20 : i32
       %c1_i32 = arith.constant 1 : i32
       %c0_i32 = arith.constant 0 : i32
+      %c0_bv32 = smt.bv.constant #smt.bv<0> : !smt.bv<32>
       %c0_bv16 = smt.bv.constant #smt.bv<0> : !smt.bv<16>
       %c0_bv4 = smt.bv.constant #smt.bv<0> : !smt.bv<4>
       %4 = func.call @bmc_init() : () -> !smt.bv<1>
       %5 = smt.declare_fun : !smt.bv<32>
       %6 = smt.declare_fun : !smt.bv<1>
-      %7:6 = scf.for %arg0 = %c0_i32 to %c20_i32 step %c1_i32 iter_args(%arg1 = %5, %arg2 = %4, %arg3 = %6, %arg4 = %c0_bv4, %arg5 = %c0_bv16, %arg6 = %false) -> (!smt.bv<32>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, i1)  : i32 {
-        %9:2 = func.call @bmc_circuit(%arg1, %arg2, %arg3, %arg4, %arg5) : (!smt.bv<32>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>) -> (!smt.bv<4>, !smt.bv<16>)
+      %7:7 = scf.for %arg0 = %c0_i32 to %c20_i32 step %c1_i32 iter_args(%arg1 = %5, %arg2 = %4, %arg3 = %6, %arg4 = %c0_bv4, %arg5 = %c0_bv16, %arg6 = %c0_bv32, %arg7 = %false) -> (!smt.bv<32>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>, i1)  : i32 {
+        %9:3 = func.call @bmc_circuit(%arg1, %arg2, %arg3, %arg4, %arg5, %arg6) : (!smt.bv<32>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>) -> (!smt.bv<4>, !smt.bv<16>, !smt.bv<32>)
         %10 = smt.check sat {
           smt.yield %true : i1
         } unknown {
@@ -23,13 +24,13 @@ module {
         } unsat {
           smt.yield %false : i1
         } -> i1
-        %11 = arith.ori %10, %arg6 : i1
+        %11 = arith.ori %10, %arg7 : i1
         %12 = func.call @bmc_loop(%arg2) : (!smt.bv<1>) -> !smt.bv<1>
         %13 = smt.declare_fun : !smt.bv<32>
         %14 = smt.declare_fun : !smt.bv<1>
-        scf.yield %13, %12, %14, %9#0, %9#1, %11 : !smt.bv<32>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, i1
+        scf.yield %13, %12, %14, %9#0, %9#1, %9#2, %11 : !smt.bv<32>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>, i1
       }
-      %8 = arith.xori %7#5, %true : i1
+      %8 = arith.xori %7#6, %true : i1
       smt.yield %8 : i1
     }
     %3 = llvm.select %2, %1, %0 : i1, !llvm.ptr
@@ -47,7 +48,8 @@ module {
     %0 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
     return %0 : !smt.bv<1>
   }
-  func.func @bmc_circuit(%arg0: !smt.bv<32>, %arg1: !smt.bv<1>, %arg2: !smt.bv<1>, %arg3: !smt.bv<4>, %arg4: !smt.bv<16>) -> (!smt.bv<4>, !smt.bv<16>) {
+  func.func @bmc_circuit(%arg0: !smt.bv<32>, %arg1: !smt.bv<1>, %arg2: !smt.bv<1>, %arg3: !smt.bv<4>, %arg4: !smt.bv<16>, %arg5: !smt.bv<32>) -> (!smt.bv<4>, !smt.bv<16>, !smt.bv<32>) {
+    %c1_bv32 = smt.bv.constant #smt.bv<1> : !smt.bv<32>
     %c-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
     %c0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
     %c1_bv16 = smt.bv.constant #smt.bv<1> : !smt.bv<16>
@@ -136,7 +138,8 @@ module {
     %71 = smt.ite %70, %c-1_bv1, %c0_bv1 : !smt.bv<1>
     %72 = smt.eq %71, %c-1_bv1 : !smt.bv<1>
     %73 = smt.ite %72, %c-6_bv4, %69 : !smt.bv<4>
-    return %73, %67 : !smt.bv<4>, !smt.bv<16>
+    %74 = smt.bv.add %arg5, %c1_bv32 : !smt.bv<32>
+    return %73, %67, %74 : !smt.bv<4>, !smt.bv<16>, !smt.bv<32>
   }
 }
 
