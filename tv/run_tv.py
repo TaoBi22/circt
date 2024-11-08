@@ -103,5 +103,7 @@ for i, invariant in enumerate(invariants):
     applicationStr += "%rtlTime"
     signatureStr += "!smt.bv<32>) !smt.bool>"
     propertyStr += f"%apply = smt.apply_func {invariant}({applicationStr}) : {signatureStr}"
-    propertyStr += "}" 
+    # TODO handle input equivalence
+    propertyStr += "}"
+    propertyStr += f"smt.assert %tvclause_{i}"
     print(propertyStr)
