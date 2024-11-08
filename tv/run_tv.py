@@ -12,6 +12,7 @@ moduleName = ""
 inputWidths = []
 outputWidths = []
 varWidths = []
+timeWidth = 32
 with open(fsmFile, "r") as f:
     x = ""
     while not "fsm.machine" in x:
@@ -20,13 +21,12 @@ with open(fsmFile, "r") as f:
     moduleName = search.group(1)
     inputs = search.group(2)
     for input in inputs.split(","):
-        width = re.search(r": i([0-9]+)", x).group(1)
-        inputWidths.append(int(width))
+        if width := re.search(r": i([0-9]+)", input):
+            inputWidths.append(int(width.group(1)))
     outputs = search.group(3)
     for output in outputs.split(","):
-        width = re.search(r"i([0-9]+)", x).group(1)
-        outputWidths.append(int(width))
-
+        if width := re.search(r"i([0-9]+)", output):
+            outputWidths.append(int(width.group(1)))
     # collect variable types
     x = ""
     while not "fsm.state" in x:
@@ -78,9 +78,30 @@ textToInsert = open(builddir+"/safety.mlir").readlines()[2:-3]
 invariants = []
 for line in textToInsert:
     if result := re.search(r"(%[a-zA-Z0-9\-_]+) = smt.declare_fun", line):
-        invariants.append(result)
+        invariants.append(result.group(1))
 
 # Add properties that check equivalence
 properties = []
-for invariant in invariants:
-    propertyStr = ""
+for i, invariant in enumerate(invariants):
+    propertyStr = f"%tvclause_{i} = smt.forall" + "{\n"
+    propertyStr += "^bb0("
+    applicationStr = ""
+    signatureStr = "!smt.func<("
+    for j, inputWidth in enumerate(inputWidths):
+        propertyStr += f"%input_{j}: !smt.bv<{inputWidth}>, "
+        applicationStr += f"%input_{j}, "
+        signatureStr += f"!smt.bv<{inputWidth}>, "
+    for j, varWidth in enumerate(varWidths):
+        propertyStr += f"%var_{j}: !smt.bv<{varWidth}>, "
+        applicationStr += f"%var_{j}, "
+        signatureStr += f"!smt.bv<{varWidth}>, "
+    for j, outputWidth in enumerate(outputWidths):
+        propertyStr += f"%output_{j}: !smt.bv<{outputWidth}>, "
+        applicationStr += f"%output_{j}, "
+        signatureStr += f"!smt.bv<{outputWidth}>, "
+    propertyStr += "%rtlTime: !smt.bv<32>):\n"
+    applicationStr += "%rtlTime"
+    signatureStr += "!smt.bv<32>) !smt.bool>"
+    propertyStr += f"%apply = smt.apply_func {invariant}({applicationStr}) : {signatureStr}"
+    propertyStr += "}" 
+    print(propertyStr)
