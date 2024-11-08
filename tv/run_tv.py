@@ -31,7 +31,21 @@ if os.path.isdir(builddir):
 
 os.mkdir(builddir)
 # BMC file
-os.system(f"../build/bin/circt-opt --convert-fsm-to-core {fsmFile} > {builddir}/rtl.mlir")
+os.system(f"../build/bin/circt-opt --convert-fsm-to-core {fsmFile} > {builddir}/untimed_rtl.mlir")
+# Insert timer circuit
+with open(f"{builddir}/untimed_rtl.mlir") as file:
+    text = file.readlines()[:-3]
+    terminator = text[-1]
+    del[text[-1]]
+    # Timer circuit has to be last reg in module so we know where it'll appear in circuit signature
+    text += [    "%mySpecialConstant = hw.constant 1 : i32\n",
+    "%time_reg = seq.compreg sym @time_reg %added, %clk : i32\n",
+    "%added = comb.add %time_reg, %mySpecialConstant : i32\n"]
+    text.append(terminator)
+    text += ["}"]*2
+    with open(f"{builddir}/rtl.mlir", "w+") as newFile:
+        newFile.writelines(text)
+
 # get rid of reset values - they're bodged in in this version of the tool
 os.system(f"sed -i -E \"s/reset %.+, %.+ :/:/g\" {builddir}/rtl.mlir")
 os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound=10\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
@@ -46,3 +60,13 @@ os.system(f"sed -i \"s/%/%obs/g\" {builddir}/liveness.mlir")
 
 # setup safety
 os.system(f"cp {builddir}/bmc.mlir {builddir}/safety-tv.mlir")
+textToInsert = open(builddir+"/safety.mlir").readlines()[2:-3]
+invariants = []
+for line in textToInsert:
+    if result := re.search(r"(%[a-zA-Z0-9\-_]+) = smt.declare_fun", line):
+        invariants.append(result)
+
+# Add properties that check equivalence
+properties = []
+for invariant in invariants:
+    propertyStr = ""

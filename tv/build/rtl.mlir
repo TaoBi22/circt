@@ -57,7 +57,8 @@ module {
     %39 = comb.mux %36, %c-6_i4, %35 : i4
     %40 = comb.icmp eq %state_reg, %c-6_i4 : i4
     %41 = comb.mux %40, %c-6_i4, %39 : i4
+%mySpecialConstant = hw.constant 1 : i32
+%time_reg = seq.compreg sym @time_reg %added, %clk : i32
+%added = comb.add %time_reg, %mySpecialConstant : i32
     hw.output
-  }
-}
-
+}}
