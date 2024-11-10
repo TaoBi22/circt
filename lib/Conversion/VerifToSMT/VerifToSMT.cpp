@@ -302,6 +302,8 @@ struct VerifBoundedModelCheckingOpConversion
     auto forOp = rewriter.create<scf::ForOp>(
         loc, lowerBound, upperBound, step, inputDecls,
         [&](OpBuilder &builder, Location loc, Value i, ValueRange iterArgs) {
+          // Drop existing assertions
+          builder.create<smt::ResetOp>(loc);
           // Execute the circuit
           ValueRange circuitCallOuts =
               builder
