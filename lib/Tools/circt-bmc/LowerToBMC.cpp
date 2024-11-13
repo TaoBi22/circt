@@ -21,6 +21,7 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/SymbolTable.h"
 #include "llvm/Support/LogicalResult.h"
+#include "mlir/Analysis/TopologicalSortUtils.h"
 
 using namespace mlir;
 using namespace circt;
@@ -51,6 +52,8 @@ void LowerToBMCPass::runOnOperation() {
     moduleOp.emitError("hw.module named '") << topModule << "' not found";
     return signalPassFailure();
   }
+
+  sortTopologically(&hwModule->getRegion(0).front());
 
   // TODO: Check whether instances contain properties to check
   if (hwModule.getOps<verif::AssertOp>().empty() &&

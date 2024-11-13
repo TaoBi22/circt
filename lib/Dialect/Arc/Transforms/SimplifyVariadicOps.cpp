@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/Dialect/Arc/ArcOps.h"
+#include "circt/Dialect/Comb/CombOps.h"
 #include "circt/Dialect/Arc/ArcPasses.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
@@ -41,7 +42,7 @@ struct SimplifyVariadicOpsPass
 void SimplifyVariadicOpsPass::runOnOperation() {
   SmallVector<Operation *> opsToProcess;
   getOperation().walk([&](Operation *op) {
-    if (op->hasTrait<OpTrait::IsCommutative>() && op->getNumRegions() == 0 &&
+    if ((op->hasTrait<OpTrait::IsCommutative>() || isa<comb::ConcatOp>(op)) && op->getNumRegions() == 0 &&
         op->getNumSuccessors() == 0 && op->getNumResults() == 1 &&
         op->getNumOperands() > 2 && isMemoryEffectFree(op))
       opsToProcess.push_back(op);

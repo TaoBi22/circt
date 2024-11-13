@@ -221,9 +221,12 @@ private:
   }
 
   // Generates a constant declaration given a value, a width and a name.
-  void genConst(int64_t value, size_t width, Operation *op) {
+  void genConst(APInt value, size_t width, Operation *op) {
     // For now we're going to assume that the name isn't taken, given that hw
     // is already in SSA form
+    if (handledOps.contains(op))
+      return;
+
     size_t opLID = getOpLID(op);
 
     // Retrieve the lid associated with the sort (sid)
@@ -304,7 +307,7 @@ private:
     // Build and return the slice instruction
     os << opLID << " "
        << "slice"
-       << " " << sid << " " << op0LID << " " << (width - 1) << " " << lowbit
+       << " " << sid << " " << op0LID << " " << (lowbit + width - 1) << " " << lowbit
        << "\n";
   }
 
@@ -626,7 +629,7 @@ public:
 
     // Prepare for for const generation by extracting the const value and
     // generting the btor2 string
-    int64_t value = op.getValue().getSExtValue();
+    auto value = op.getValue();
     genConst(value, w, op);
   }
 
@@ -877,7 +880,6 @@ public:
     auto init = reg.getInitialValue();
 
     // Generate state instruction (represents the register declaration)
-    genState(reg, w, regName);
 
     if (init) {
       // Check that the initial value is a non-null constant
@@ -891,6 +893,7 @@ public:
 
       // Add it to the list of visited operations
       handledOps.insert(initialConstant);
+      genState(reg, w, regName);
 
       // Finally generate the init statement
       genInit(reg, initialConstant, w);
