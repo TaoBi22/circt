@@ -258,6 +258,8 @@ struct VerifBoundedModelCheckingOpConversion
     ValueRange initVals =
         rewriter.create<func::CallOp>(loc, initFuncOp)->getResults();
 
+    // Initial push
+    rewriter.create<smt::PushOp>(loc); 
     // InputDecls order should be <circuit arguments> <state arguments>
     // <wasViolated>
     // Get list of clock indexes in circuit args
@@ -303,7 +305,8 @@ struct VerifBoundedModelCheckingOpConversion
         loc, lowerBound, upperBound, step, inputDecls,
         [&](OpBuilder &builder, Location loc, Value i, ValueRange iterArgs) {
           // Drop existing assertions
-          builder.create<smt::ResetOp>(loc);
+          builder.create<smt::PopOp>(loc);
+          builder.create<smt::PushOp>(loc);
           // Execute the circuit
           ValueRange circuitCallOuts =
               builder

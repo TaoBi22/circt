@@ -686,6 +686,40 @@ struct ResetOpLowering : public SMTLoweringPattern<ResetOp> {
   }
 };
 
+struct PushOpLowering : public SMTLoweringPattern<PushOp> {
+  using SMTLoweringPattern::SMTLoweringPattern;
+
+  LogicalResult
+  matchAndRewrite(PushOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const final {
+    Location loc = op.getLoc();
+    buildAPICallWithContext(rewriter, loc, "Z3_solver_push",
+                            LLVM::LLVMVoidType::get(getContext()),
+                            {buildSolverPtr(rewriter, loc)});
+
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
+struct PopOpLowering : public SMTLoweringPattern<PopOp> {
+  using SMTLoweringPattern::SMTLoweringPattern;
+
+  LogicalResult
+  matchAndRewrite(PopOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const final {
+    Location loc = op.getLoc();
+    Value constOne =
+        rewriter.create<LLVM::ConstantOp>(loc, rewriter.getI32Type(), 1);
+    buildAPICallWithContext(rewriter, loc, "Z3_solver_pop",
+                            LLVM::LLVMVoidType::get(getContext()),
+                            {buildSolverPtr(rewriter, loc), constOne});
+
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 /// Lower `smt.yield` operations to `scf.yield` operations. This not necessary
 /// for the yield in `smt.solver` or in quantifiers since they are deleted
 /// directly by the parent operation, but makes the lowering of the `smt.check`
@@ -1395,7 +1429,7 @@ void circt::populateSMTToZ3LLVMConversionPatterns(
   // Other lowering patterns. Refer to their implementation directly for more
   // information.
   patterns.add<BVConstantOpLowering, DeclareFunOpLowering, AssertOpLowering,
-               ResetOpLowering, CheckOpLowering, SolverOpLowering,
+               ResetOpLowering, PushOpLowering, PopOpLowering, CheckOpLowering, SolverOpLowering,
                ApplyFuncOpLowering, YieldOpLowering, RepeatOpLowering,
                ExtractOpLowering, BoolConstantOpLowering, IntConstantOpLowering,
                ArrayBroadcastOpLowering, BVCmpOpLowering, IntCmpOpLowering,

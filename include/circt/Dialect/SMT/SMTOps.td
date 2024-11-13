@@ -158,6 +158,16 @@ def ResetOp : SMTOp<"reset", []> {
   let assemblyFormat = "attr-dict";
 }
 
+def PushOp : SMTOp<"push", []> {
+  let summary = "push the solver state";
+  let assemblyFormat = "attr-dict";
+}
+
+def PopOp : SMTOp<"pop", []> {
+  let summary = "pop the solver state";
+  let assemblyFormat = "attr-dict";
+}
+
 def CheckOp : SMTOp<"check", [
   NoRegionArguments,
   SingleBlockImplicitTerminator<"smt::YieldOp">,
