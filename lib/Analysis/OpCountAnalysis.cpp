@@ -20,6 +20,7 @@ using namespace analysis;
 
 OpCountAnalysis::OpCountAnalysis(Operation *moduleOp,
                                  mlir::AnalysisManager &am) {
+  edgeCount = 0;
   moduleOp->walk([&](Operation *op) {
     auto opName = op->getName();
     // Update opCounts
@@ -27,6 +28,17 @@ OpCountAnalysis::OpCountAnalysis(Operation *moduleOp,
 
     // Update operandCounts
     operandCounts[opName][op->getNumOperands()]++;
+
+    for (auto result: op->getResults()) {
+      edgeCount += std::distance(result.getUses().begin(), result.getUses().end());
+    }
+    for (auto &region: op->getRegions()) {
+      for (auto &block: region.getBlocks()) {
+        for (auto &arg: block.getArguments()){
+          edgeCount += std::distance(arg.getUses().begin(), arg.getUses().end());
+        }
+      }
+    }
   });
 }
 
@@ -39,6 +51,10 @@ SmallVector<OperationName> OpCountAnalysis::getFoundOpNames() {
 
 size_t OpCountAnalysis::getOpCount(OperationName opName) {
   return opCounts[opName];
+}
+
+size_t OpCountAnalysis::getEdgeCount() {
+  return edgeCount;
 }
 
 DenseMap<size_t, size_t>

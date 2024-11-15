@@ -39,9 +39,13 @@ public:
   /// operation
   DenseMap<size_t, size_t> getOperandCountMap(OperationName opName);
 
+  size_t getEdgeCount();
+
+
 private:
   DenseMap<OperationName, size_t> opCounts;
   DenseMap<OperationName, DenseMap<size_t, size_t>> operandCounts;
+  size_t edgeCount;
 };
 
 } // namespace analysis

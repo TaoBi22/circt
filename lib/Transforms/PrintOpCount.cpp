@@ -61,6 +61,7 @@ void printOpAndOperandJSON(analysis::OpCountAnalysis &opCount,
         for (auto pair : opCount.getOperandCountMap(opName))
           jos.attribute(std::to_string(pair.first), pair.second);
       });
+    jos.attribute("EdgeCount", opCount.getEdgeCount());
   });
 }
 
