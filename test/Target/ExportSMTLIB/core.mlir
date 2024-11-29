@@ -2,6 +2,8 @@
 // RUN: circt-translate --export-smtlib --smtlibexport-inline-single-use-values %s | FileCheck %s --check-prefix=CHECK-INLINED
 
 smt.solver () : () -> () {
+  // CHECK: (set-logic AUFLIA)
+  smt.set_logic "AUFLIA"
   %c0_bv32 = smt.bv.constant #smt.bv<0> : !smt.bv<32>
   %true = smt.constant true
   %false = smt.constant false
