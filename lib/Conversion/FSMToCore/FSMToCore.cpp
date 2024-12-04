@@ -108,7 +108,7 @@ public:
   StateEncoding(OpBuilder &b, MachineOp machine, hw::HWModuleOp hwModule);
 
   // Get the encoded value for a state.
-  Value encode(StateOp state, bool initial = false);
+  Value encode(StateOp state);
   // Get the state corresponding to an encoded value.
   StateOp decode(Value value);
 
@@ -129,9 +129,6 @@ protected:
 
   // A mapping between a StateOp and its corresponding encoded value.
   SmallDenseMap<StateOp, Value> stateToValue;
-
-  // A mapping between a StateOp and its corresponding encoded immutable value.
-  SmallDenseMap<StateOp, Value> stateToImmutableValue;
 
   // A mapping between an encoded value and its corresponding StateOp.
   SmallDenseMap<Value, StateOp> valueToState;
@@ -189,12 +186,7 @@ StateEncoding::StateEncoding(OpBuilder &b, MachineOp machine,
 }
 
 // Get the encoded value for a state.
-Value StateEncoding::encode(StateOp state, bool initial = false) {
-  if (initial) {
-    auto it = stateToImmutableValue.find(state);
-    assert(it != stateToImmutableValue.end() && "state not found");
-    return it->second;
-  }
+Value StateEncoding::encode(StateOp state) {
   auto it = stateToValue.find(state);
   assert(it != stateToValue.end() && "state not found");
   return it->second;
