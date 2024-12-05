@@ -397,8 +397,9 @@ LogicalResult MachineOpConverter::dispatch() {
       loc, nextStateWire, clock, reset,
       /*reset value=*/encoding->encode(machineOp.getInitialStateOp()),
       "state_reg",
-      /*powerOn value=*/encoding->encode(machineOp.getInitialStateOp()));
-
+      /*powerOn value=*/
+      seq::createConstantInitialValue(
+          b, encoding->encode(machineOp.getInitialStateOp()).getDefiningOp()));
   stateMuxChainOut = stateReg;
 
   llvm::DenseMap<VariableOp, Backedge> variableNextStateWires;
@@ -415,7 +416,8 @@ LogicalResult MachineOpConverter::dispatch() {
     auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
     auto variableReg = b.create<seq::CompRegOp>(
         varLoc, nextVariableStateWire, clock, reset, varResetVal,
-        b.getStringAttr(variableOp.getName()), varResetVal);
+        b.getStringAttr(variableOp.getName()),
+        seq::createConstantInitialValue(b, varResetVal));
     auto varNextState = variableReg;
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = nextVariableStateWire;
