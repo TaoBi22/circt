@@ -59,8 +59,13 @@ LogicalResult firtool::populateCHIRRTLToLowFIRRTL(mlir::PassManager &pm,
 
   pm.nest<firrtl::CircuitOp>().addPass(firrtl::createInjectDUTHierarchyPass());
 
-  if (!opt.shouldDisableOptimization())
-    pm.nest<firrtl::CircuitOp>().nestAny().addPass(mlir::createCSEPass());
+  if (!opt.shouldDisableOptimization()) {
+    if (opt.shouldDisableCSEinClasses())
+      pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
+          mlir::createCSEPass());
+    else
+      pm.nest<firrtl::CircuitOp>().nestAny().addPass(mlir::createCSEPass());
+  }
 
   pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
       firrtl::createPassiveWiresPass());
@@ -161,8 +166,6 @@ LogicalResult firtool::populateCHIRRTLToLowFIRRTL(mlir::PassManager &pm,
   if (opt.shouldReplaceSequentialMemories())
     pm.nest<firrtl::CircuitOp>().addPass(firrtl::createLowerMemoryPass());
 
-  pm.nest<firrtl::CircuitOp>().addPass(firrtl::createPrefixModulesPass());
-
   if (opt.shouldAddCompanionAssume())
     pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
         circt::firrtl::createCreateCompanionAssume());
@@ -208,6 +211,15 @@ LogicalResult firtool::populateCHIRRTLToLowFIRRTL(mlir::PassManager &pm,
     pm.addPass(firrtl::createIMDeadCodeElimPass());
   }
 
+  // Always run this, required for legalization.
+  pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
+      firrtl::createMergeConnectionsPass(
+          !opt.shouldDisableAggressiveMergeConnections()));
+
+  if (!opt.shouldDisableOptimization())
+    pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
+        firrtl::createVectorizationPass());
+
   // Layer lowering passes.  Move operations into layers when possible and
   // remove layers by converting them to other constructs.  This lowering
   // process can create a few optimization opportunities.
@@ -223,15 +235,6 @@ LogicalResult firtool::populateCHIRRTLToLowFIRRTL(mlir::PassManager &pm,
   if (!opt.shouldDisableOptimization())
     pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
         createSimpleCanonicalizerPass());
-
-  // Always run this, required for legalization.
-  pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
-      firrtl::createMergeConnectionsPass(
-          !opt.shouldDisableAggressiveMergeConnections()));
-
-  if (!opt.shouldDisableOptimization())
-    pm.nest<firrtl::CircuitOp>().nest<firrtl::FModuleOp>().addPass(
-        firrtl::createVectorizationPass());
 
   auto outputFilename = opt.getOutputFilename();
   if (outputFilename == "-")
@@ -764,8 +767,8 @@ circt::firtool::FirtoolOptions::FirtoolOptions()
       ckgModuleName("EICG_wrapper"), ckgInputName("in"), ckgOutputName("out"),
       ckgEnableName("en"), ckgTestEnableName("test_en"), ckgInstName("ckg"),
       exportModuleHierarchy(false), stripFirDebugInfo(true),
-      stripDebugInfo(false), fixupEICGWrapper(false),
-      addCompanionAssume(false) {
+      stripDebugInfo(false), fixupEICGWrapper(false), addCompanionAssume(false),
+      disableCSEinClasses(false) {
   if (!clOptions.isConstructed())
     return;
   outputFilename = clOptions->outputFilename;

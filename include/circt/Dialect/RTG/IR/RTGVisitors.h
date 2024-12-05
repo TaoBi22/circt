@@ -13,6 +13,7 @@
 #ifndef CIRCT_DIALECT_RTG_IR_RTGVISITORS_H
 #define CIRCT_DIALECT_RTG_IR_RTGVISITORS_H
 
+#include "circt/Dialect/RTG/IR/RTGISAAssemblyOpInterfaces.h"
 #include "circt/Dialect/RTG/IR/RTGOpInterfaces.h"
 #include "circt/Dialect/RTG/IR/RTGOps.h"
 #include "circt/Dialect/RTG/IR/RTGTypeInterfaces.h"
@@ -31,10 +32,15 @@ public:
     auto *thisCast = static_cast<ConcreteType *>(this);
     return TypeSwitch<Operation *, ResultType>(op)
         .template Case<SequenceOp, SequenceClosureOp, SetCreateOp,
-                       SetSelectRandomOp, SetDifferenceOp, InvokeSequenceOp>(
+                       SetSelectRandomOp, SetDifferenceOp, TestOp,
+                       InvokeSequenceOp, BagCreateOp, BagSelectRandomOp,
+                       BagDifferenceOp, TargetOp, YieldOp>(
             [&](auto expr) -> ResultType {
               return thisCast->visitOp(expr, args...);
             })
+        .template Case<RegisterOpInterface>([&](auto expr) -> ResultType {
+          return thisCast->visitRegisterOp(expr, args...);
+        })
         .template Case<ContextResourceOpInterface>(
             [&](auto expr) -> ResultType {
               return thisCast->visitContextResourceOp(expr, args...);
@@ -59,6 +65,10 @@ public:
   /// handled by the concrete visitor.
   ResultType visitUnhandledOp(Operation *op, ExtraArgs... args);
 
+  ResultType visitRegisterOp(RegisterOpInterface op, ExtraArgs... args) {
+    return static_cast<ConcreteType *>(this)->visitUnhandledOp(op, args...);
+  }
+
   ResultType visitContextResourceOp(ContextResourceOpInterface op,
                                     ExtraArgs... args) {
     return static_cast<ConcreteType *>(this)->visitUnhandledOp(op, args...);
@@ -79,6 +89,12 @@ public:
   HANDLE(SetCreateOp, Unhandled);
   HANDLE(SetSelectRandomOp, Unhandled);
   HANDLE(SetDifferenceOp, Unhandled);
+  HANDLE(BagCreateOp, Unhandled);
+  HANDLE(BagSelectRandomOp, Unhandled);
+  HANDLE(BagDifferenceOp, Unhandled);
+  HANDLE(TestOp, Unhandled);
+  HANDLE(TargetOp, Unhandled);
+  HANDLE(YieldOp, Unhandled);
 #undef HANDLE
 };
 
@@ -90,9 +106,10 @@ public:
   ResultType dispatchTypeVisitor(Type type, ExtraArgs... args) {
     auto *thisCast = static_cast<ConcreteType *>(this);
     return TypeSwitch<Type, ResultType>(type)
-        .template Case<SequenceType, SetType>([&](auto expr) -> ResultType {
-          return thisCast->visitType(expr, args...);
-        })
+        .template Case<SequenceType, SetType, BagType, DictType>(
+            [&](auto expr) -> ResultType {
+              return thisCast->visitType(expr, args...);
+            })
         .template Case<ContextResourceTypeInterface>(
             [&](auto expr) -> ResultType {
               return thisCast->visitContextResourceType(expr, args...);
@@ -134,6 +151,8 @@ public:
 
   HANDLE(SequenceType, Unhandled);
   HANDLE(SetType, Unhandled);
+  HANDLE(BagType, Unhandled);
+  HANDLE(DictType, Unhandled);
 #undef HANDLE
 };
 
