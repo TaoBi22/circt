@@ -54,8 +54,14 @@ void LowerToBMCPass::runOnOperation() {
   }
 
   // TODO: Check whether instances contain properties to check
-  if (hwModule.getOps<verif::AssertOp>().empty() &&
-      hwModule.getOps<hw::InstanceOp>().empty()) {
+  if (coverMode) {
+    if (hwModule.getOps<verif::CoverOp>().empty() &&
+        hwModule.getOps<hw::InstanceOp>().empty()) {
+      hwModule.emitError("no property provided to check in module");
+      return signalPassFailure();
+    }
+  } else if (hwModule.getOps<verif::AssertOp>().empty() &&
+             hwModule.getOps<hw::InstanceOp>().empty()) {
     hwModule.emitError("no property provided to check in module");
     return signalPassFailure();
   }
@@ -109,8 +115,8 @@ void LowerToBMCPass::runOnOperation() {
   }
 
   // Check that there's only one clock input to the module
-  // TODO: supporting multiple clocks isn't too hard, an interleaving of clock
-  // toggles just needs to be generated
+  // TODO: supporting multiple clocks isn't too hard, an interleaving of
+  // clock toggles just needs to be generated
   bool hasClk = false;
   for (auto input : hwModule.getInputTypes()) {
     if (isa<seq::ClockType>(input)) {
@@ -147,7 +153,8 @@ void LowerToBMCPass::runOnOperation() {
       builder.create<verif::YieldOp>(loc, ValueRange{});
     }
 
-    // Toggle clock in loop region if it exists, otherwise just yield nothing
+    // Toggle clock in loop region if it exists, otherwise just yield
+    // nothing
     auto *loopBlock = builder.createBlock(&bmcOp.getLoop());
     builder.setInsertionPointToStart(loopBlock);
     if (hasClk) {
@@ -185,10 +192,12 @@ void LowerToBMCPass::runOnOperation() {
         builder.create<LLVM::AddressOfOp>(loc, global)->getResult(0));
   };
 
-  auto successStrAddr =
-      createUniqueStringGlobal("Bound reached with no violations!\n");
+  auto successStrAddr = createUniqueStringGlobal(
+      coverMode ? "A cover could not be reached within bound\n"
+                : "Bound reached with no violations!\n");
   auto failureStrAddr =
-      createUniqueStringGlobal("Assertion can be violated!\n");
+      createUniqueStringGlobal(coverMode ? "Reached covers within bound!\n"
+                                         : "Assertion can be violated!\n");
 
   if (failed(successStrAddr) || failed(failureStrAddr)) {
     moduleOp->emitOpError("could not create result message strings");

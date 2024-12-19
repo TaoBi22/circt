@@ -4,6 +4,8 @@
 // Check propagation of state through comb ops
 //  RUN: circt-bmc %s -b 10 --module StateProp --shared-libs=%libz3 | FileCheck %s --check-prefix=STATEPROP
 //  STATEPROP: Bound reached with no violations!
+//  RUN: circt-bmc %s -b 10 --module StateProp --shared-libs=%libz3 --cover-mode=true | FileCheck %s --check-prefix=COVERSTATEPROP
+//  COVERSTATEPROP: A cover could not be reached within bound
 
 hw.module @StateProp(in %clk: !seq.clock, in %i0: i1) {
   %c-1_i1 = hw.constant -1 : i1
@@ -16,6 +18,7 @@ hw.module @StateProp(in %clk: !seq.clock, in %i0: i1) {
   %eq = comb.icmp bin eq %not_not_reg, %reg : i1
   %imp = comb.or bin %nclk, %eq : i1
   verif.assert %imp : i1
+  verif.cover %imp : i1
 }
 
 // RUN: circt-bmc %s -b 10 --module aggregateReg --shared-libs=%libz3 | FileCheck %s --check-prefix=AGGREGATEREG

@@ -82,6 +82,11 @@ static cl::opt<std::string> outputFilename("o", cl::desc("Output filename"),
                                            cl::cat(mainCategory));
 
 static cl::opt<bool>
+    coverMode("cover-mode",
+              cl::desc("Check only cover properties and ignore assertions."),
+              cl::init(false), cl::cat(mainCategory));
+
+static cl::opt<bool>
     verifyPasses("verify-each",
                  cl::desc("Run the verifier after each transformation pass"),
                  cl::init(true), cl::cat(mainCategory));
@@ -172,10 +177,13 @@ static LogicalResult executeBMC(MLIRContext &context) {
   LowerToBMCOptions lowerToBMCOptions;
   lowerToBMCOptions.bound = clockBound;
   lowerToBMCOptions.topModule = moduleName;
+  lowerToBMCOptions.coverMode = coverMode;
   pm.addPass(createLowerToBMC(lowerToBMCOptions));
   pm.addPass(createConvertHWToSMT());
   pm.addPass(createConvertCombToSMT());
-  pm.addPass(createConvertVerifToSMT());
+  ConvertVerifToSMTOptions verifToSMTOptions;
+  verifToSMTOptions.coverMode = coverMode;
+  pm.addPass(createConvertVerifToSMT(verifToSMTOptions));
   pm.addPass(createSimpleCanonicalizerPass());
 
   if (outputFormat != OutputMLIR && outputFormat != OutputSMTLIB) {

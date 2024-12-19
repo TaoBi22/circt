@@ -1,4 +1,5 @@
 // RUN: circt-opt --lower-to-bmc="top-module=comb bound=10" %s | FileCheck %s
+// RUN: circt-opt --lower-to-bmc="top-module=comb bound=10 cover-mode=true" %s | FileCheck %s --check-prefix=COVERCHECK
 
 // CHECK:  llvm.func @printf(!llvm.ptr, ...)
 // CHECK:  func.func @comb() {
@@ -19,11 +20,31 @@
 // CHECK:  }
 // CHECK:  llvm.mlir.global private constant [[SSTR]]("Bound reached with no violations!\0A\00") {addr_space = 0 : i32}
 // CHECK:  llvm.mlir.global private constant [[FSTR]]("Assertion can be violated!\0A\00") {addr_space = 0 : i32}
+// COVERCHECK:  llvm.func @printf(!llvm.ptr, ...)
+// COVERCHECK:  func.func @comb() {
+// COVERCHECK:    [[BMC:%.+]] = verif.bmc bound 20 num_regs 0 initial_values [] init {
+// COVERCHECK:    } loop {
+// COVERCHECK:    } circuit {
+// COVERCHECK:    ^bb0([[ARG0:%.+]]: i32, [[ARG1:%.+]]: i32):
+// COVERCHECK:      [[OP0:%.+]] = comb.add [[ARG0]], [[ARG1]]
+// COVERCHECK:      [[OP1:%.+]] = comb.icmp eq [[OP0]], [[ARG0]]
+// COVERCHECK:      verif.assert [[OP1]]
+// COVERCHECK:      verif.yield [[OP0]]
+// COVERCHECK:    }
+// COVERCHECK:    [[SSTR_ADDR:%.+]] = llvm.mlir.addressof [[SSTR:@.+]] : !llvm.ptr
+// COVERCHECK:    [[FSTR_ADDR:%.+]] = llvm.mlir.addressof [[FSTR:@.+]] : !llvm.ptr
+// COVERCHECK:    [[SEL:%.+]] = llvm.select [[BMC]], [[SSTR_ADDR]], [[FSTR_ADDR]]
+// COVERCHECK:    llvm.call @printf([[SEL]])
+// COVERCHECK:    return
+// COVERCHECK:  }
+// COVERCHECK:  llvm.mlir.global private constant [[SSTR]]("A cover could not be reached within bound\0A\00") {addr_space = 0 : i32}
+// COVERCHECK:  llvm.mlir.global private constant [[FSTR]]("Reached covers within bound!\0A\00") {addr_space = 0 : i32}
 
 hw.module @comb(in %in0: i32, in %in1: i32, out out: i32) attributes {num_regs = 0 : i32, initial_values = []} {
   %0 = comb.add %in0, %in1 : i32
   %prop = comb.icmp eq %0, %in0 : i32
   verif.assert %prop : i1
+  verif.cover %prop : i1
   hw.output %0 : i32
 }
 

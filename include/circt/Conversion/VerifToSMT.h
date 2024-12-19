@@ -21,7 +21,7 @@ class Namespace;
 /// Get the Verif to SMT conversion patterns.
 void populateVerifToSMTConversionPatterns(TypeConverter &converter,
                                           RewritePatternSet &patterns,
-                                          Namespace &names);
+                                          Namespace &names, bool coverMode);
 
 } // namespace circt
 

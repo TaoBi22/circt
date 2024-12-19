@@ -19,7 +19,7 @@ func.func @assert_with_unsupported_property_type(%arg0: !smt.bv<1>) {
 // -----
 
 func.func @multiple_assertions_bmc() -> (i1) {
-  // expected-error @below {{bounded model checking problems with multiple assertions are not yet correctly handled - instead, you can assert the conjunction of your assertions}}
+  // expected-error @below {{bounded model checking problems with multiple properties are not yet correctly handled - instead, you can assert the conjunction of your assertions}}
   %bmc = verif.bmc bound 10 num_regs 0 initial_values []
   init {}
   loop {}
@@ -39,7 +39,7 @@ func.func @multiple_assertions_bmc() -> (i1) {
 // -----
 
 func.func @multiple_asserting_modules_bmc() -> (i1) {
-  // expected-error @below {{bounded model checking problems with multiple assertions are not yet correctly handled - instead, you can assert the conjunction of your assertions}}
+  // expected-error @below {{bounded model checking problems with multiple properties are not yet correctly handled - instead, you can assert the conjunction of your assertions}}
   %bmc = verif.bmc bound 10 num_regs 0 initial_values []
   init {}
   loop {}
@@ -60,7 +60,7 @@ hw.module @OneAssertion(in %x: i1) {
 // -----
 
 func.func @two_separated_assertions() -> (i1) {
-  // expected-error @below {{bounded model checking problems with multiple assertions are not yet correctly handled - instead, you can assert the conjunction of your assertions}}
+  // expected-error @below {{bounded model checking problems with multiple properties are not yet correctly handled - instead, you can assert the conjunction of your assertions}}
   %bmc = verif.bmc bound 10 num_regs 0 initial_values []
   init {}
   loop {}
@@ -81,7 +81,7 @@ hw.module @OneAssertion(in %x: i1) {
 // -----
 
 func.func @multiple_nested_assertions() -> (i1) {
-  // expected-error @below {{bounded model checking problems with multiple assertions are not yet correctly handled - instead, you can assert the conjunction of your assertions}}
+  // expected-error @below {{bounded model checking problems with multiple properties are not yet correctly handled - instead, you can assert the conjunction of your assertions}}
   %bmc = verif.bmc bound 10 num_regs 0 initial_values []
   init {}
   loop {}

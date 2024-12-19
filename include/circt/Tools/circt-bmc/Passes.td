@@ -28,6 +28,9 @@ def LowerToBMC : Pass<"lower-to-bmc", "::mlir::ModuleOp"> {
     Option<"insertMainFunc", "insert-main", "bool",
            /*default=*/"false",
            "Whether a main function should be inserted for AOT compilation.">,
+    Option<"coverMode", "cover-mode", "bool",
+           /*default=*/"false",
+           "Prepare to check cover properties instead of assertions.">,
   ];
 
   let dependentDialects = [

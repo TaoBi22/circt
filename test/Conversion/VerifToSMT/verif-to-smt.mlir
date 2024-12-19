@@ -1,4 +1,5 @@
 // RUN: circt-opt %s --convert-verif-to-smt --reconcile-unrealized-casts -allow-unregistered-dialect | FileCheck %s
+// RUN: circt-opt %s --convert-verif-to-smt="cover-mode=true" --reconcile-unrealized-casts -allow-unregistered-dialect | FileCheck %s --check-prefix=COVERCHECK
 
 // CHECK: func.func @lower_assert([[ARG0:%.+]]: i1)
 // CHECK:   [[CAST:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : i1 to !smt.bv<1>
@@ -7,9 +8,26 @@
 // CHECK:   [[NEQ:%.+]] = smt.not [[EQ]]
 // CHECK:   smt.assert [[NEQ]]
 // CHECK:   return
+// COVERCHECK: func.func @lower_assert([[ARG0:%.+]]: i1)
+// COVERCHECK-NEXT:   return
 
 func.func @lower_assert(%arg0: i1) {
   verif.assert %arg0 : i1
+  return
+}
+
+// CHECK: func.func @lower_cover([[ARG0:%.+]]: i1)
+// CHECK-NEXT:   return
+// COVERCHECK: func.func @lower_cover([[ARG0:%.+]]: i1)
+// COVERCHECK:   [[CAST:%.+]] = builtin.unrealized_conversion_cast [[ARG0]] : i1 to !smt.bv<1>
+// COVERCHECK:   [[Cn1_BV:%.+]] = smt.bv.constant #smt.bv<-1>
+// COVERCHECK:   [[EQ:%.+]] = smt.eq [[CAST]], [[Cn1_BV]]
+// COVERCHECK:   [[NEQ:%.+]] = smt.not [[EQ]]
+// COVERCHECK:   smt.assert [[NEQ]]
+// COVERCHECK:   return
+
+func.func @lower_cover(%arg0: i1) {
+  verif.cover %arg0 : i1
   return
 }
 

@@ -3,6 +3,8 @@
 
 //  RUN: circt-bmc %s -b 10 --module OrCommutes --shared-libs=%libz3 | FileCheck %s --check-prefix=ORCOMMUTES
 //  ORCOMMUTES: Bound reached with no violations!
+//  RUN: circt-bmc %s -b 10 --module OrCommutes --shared-libs=%libz3 --cover-mode=true | FileCheck %s --check-prefix=COVERORCOMMUTES
+//  COVERORCOMMUTES: A cover could not be reached within bound
 
 hw.module @OrCommutes(in %i0: i1, in %i1: i1) {
   %or0 = comb.or bin %i0, %i1 : i1
@@ -10,6 +12,7 @@ hw.module @OrCommutes(in %i0: i1, in %i1: i1) {
   // Condition
   %cond = comb.icmp bin eq %or0, %or1 : i1
   verif.assert %cond : i1
+  verif.cover %cond : i1
 }
 
 //  RUN: circt-bmc %s -b 10 --module demorgan --shared-libs=%libz3 | FileCheck %s --check-prefix=DEMORGAN

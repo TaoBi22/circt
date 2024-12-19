@@ -718,6 +718,11 @@ def ConvertVerifToSMT : Pass<"convert-verif-to-smt", "mlir::ModuleOp"> {
     "mlir::scf::SCFDialect",
     "mlir::func::FuncDialect"
   ];
+
+  let options = [
+    Option<"coverMode", "cover-mode", "bool", "false",
+      "Check cover properties instead of assertions">,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

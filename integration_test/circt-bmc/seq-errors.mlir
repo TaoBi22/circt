@@ -6,6 +6,10 @@
 //  COUNTER2: Bound reached with no violations!
 //  RUN: circt-bmc %s -b 10 --module Counter --shared-libs=%libz3 | FileCheck %s --check-prefix=COUNTER10
 //  COUNTER10: Assertion can be violated!
+//  RUN: circt-bmc %s -b 2 --module Counter --shared-libs=%libz3 --cover-mode=true | FileCheck %s --check-prefix=COVERCOUNTER2
+//  COVERCOUNTER2: A cover could not be reached within bound
+//  RUN: circt-bmc %s -b 10 --module Counter --shared-libs=%libz3 --cover-mode=true | FileCheck %s --check-prefix=COVERCOUNTER10
+//  COVERCOUNTER10: Reached covers within bound!
 
 hw.module @Counter(in %clk: !seq.clock, out count: i2) {
   %init = seq.initial () {
@@ -19,5 +23,6 @@ hw.module @Counter(in %clk: !seq.clock, out count: i2) {
   %c3_i2 = hw.constant 3 : i2
   %lt = comb.icmp ult %reg, %c3_i2 : i2
   verif.assert %lt : i1
+  verif.cover %lt : i1
   hw.output %reg : i2
 }

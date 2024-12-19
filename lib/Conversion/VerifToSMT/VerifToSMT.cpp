@@ -41,9 +41,18 @@ namespace {
 struct VerifAssertOpConversion : OpConversionPattern<verif::AssertOp> {
   using OpConversionPattern<verif::AssertOp>::OpConversionPattern;
 
+  VerifAssertOpConversion(TypeConverter &converter, MLIRContext *context,
+                          bool coverMode)
+      : OpConversionPattern(converter, context), coverMode(coverMode) {}
+
   LogicalResult
   matchAndRewrite(verif::AssertOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    // In cover mode we ignore assertions
+    if (coverMode) {
+      rewriter.eraseOp(op);
+      return success();
+    }
     Value cond = typeConverter->materializeTargetConversion(
         rewriter, op.getLoc(), smt::BoolType::get(getContext()),
         adaptor.getProperty());
@@ -51,6 +60,8 @@ struct VerifAssertOpConversion : OpConversionPattern<verif::AssertOp> {
     rewriter.replaceOpWithNewOp<smt::AssertOp>(op, notCond);
     return success();
   }
+
+  bool coverMode;
 };
 
 /// Lower a verif::AssumeOp operation with an i1 operand to a smt::AssertOp
@@ -66,6 +77,34 @@ struct VerifAssumeOpConversion : OpConversionPattern<verif::AssumeOp> {
     rewriter.replaceOpWithNewOp<smt::AssertOp>(op, cond);
     return success();
   }
+};
+
+/// Lower a verif::CoverOp operation with an i1 operand to a smt::AssertOp,
+/// negated to check for satisfiability (on some cycle).
+struct VerifCoverOpConversion : OpConversionPattern<verif::CoverOp> {
+  using OpConversionPattern<verif::CoverOp>::OpConversionPattern;
+
+  VerifCoverOpConversion(TypeConverter &converter, MLIRContext *context,
+                         bool coverMode)
+      : OpConversionPattern(converter, context), coverMode(coverMode) {}
+
+  LogicalResult
+  matchAndRewrite(verif::CoverOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // In cover mode we ignore assertions
+    if (!coverMode) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+    Value cond = typeConverter->materializeTargetConversion(
+        rewriter, op.getLoc(), smt::BoolType::get(getContext()),
+        adaptor.getProperty());
+    Value notCond = rewriter.create<smt::NotOp>(op.getLoc(), cond);
+    rewriter.replaceOpWithNewOp<smt::AssertOp>(op, notCond);
+    return success();
+  }
+
+  bool coverMode;
 };
 
 /// Lower a verif::LecOp operation to a miter circuit encoded in SMT.
@@ -176,8 +215,10 @@ struct VerifBoundedModelCheckingOpConversion
   using OpConversionPattern<verif::BoundedModelCheckingOp>::OpConversionPattern;
 
   VerifBoundedModelCheckingOpConversion(TypeConverter &converter,
-                                        MLIRContext *context, Namespace &names)
-      : OpConversionPattern(converter, context), names(names) {}
+                                        MLIRContext *context, Namespace &names,
+                                        bool coverMode)
+      : OpConversionPattern(converter, context), names(names),
+        coverMode(coverMode) {}
 
   LogicalResult
   matchAndRewrite(verif::BoundedModelCheckingOp op, OpAdaptor adaptor,
@@ -407,6 +448,7 @@ struct VerifBoundedModelCheckingOpConversion
   }
 
   Namespace &names;
+  bool coverMode;
 };
 
 } // namespace
@@ -418,18 +460,24 @@ struct VerifBoundedModelCheckingOpConversion
 namespace {
 struct ConvertVerifToSMTPass
     : public circt::impl::ConvertVerifToSMTBase<ConvertVerifToSMTPass> {
+  using ConvertVerifToSMTBase::ConvertVerifToSMTBase;
+
   void runOnOperation() override;
 };
 } // namespace
 
 void circt::populateVerifToSMTConversionPatterns(TypeConverter &converter,
                                                  RewritePatternSet &patterns,
-                                                 Namespace &names) {
-  patterns.add<VerifAssertOpConversion, VerifAssumeOpConversion,
-               LogicEquivalenceCheckingOpConversion>(converter,
+                                                 Namespace &names,
+                                                 bool coverMode) {
+  patterns.add<LogicEquivalenceCheckingOpConversion>(converter,
                                                      patterns.getContext());
+  patterns.add<VerifAssertOpConversion, VerifAssumeOpConversion,
+               VerifCoverOpConversion>(converter, patterns.getContext(),
+                                       coverMode);
+
   patterns.add<VerifBoundedModelCheckingOpConversion>(
-      converter, patterns.getContext(), names);
+      converter, patterns.getContext(), names, coverMode);
 }
 
 void ConvertVerifToSMTPass::runOnOperation() {
@@ -439,11 +487,11 @@ void ConvertVerifToSMTPass::runOnOperation() {
                          func::FuncDialect>();
   target.addLegalOp<UnrealizedConversionCastOp>();
 
-  // Check BMC ops contain only one assertion (done outside pattern to avoid
-  // issues with whether assertions are/aren't lowered yet)
+  // Check BMC ops contain only one assertion/cover (done outside pattern to
+  // avoid issues with whether assertions/covers are/aren't lowered yet)
   SymbolTable symbolTable(getOperation());
-  WalkResult assertionCheck = getOperation().walk(
-      [&](Operation *op) { // Check there is exactly one assertion and clock
+  WalkResult propertyCheck = getOperation().walk(
+      [&](Operation *op) { // Check there is exactly one property and clock
         if (auto bmcOp = dyn_cast<verif::BoundedModelCheckingOp>(op)) {
           // We also currently don't support initial values on registers that
           // don't have integer inputs.
@@ -472,9 +520,12 @@ void ConvertVerifToSMTPass::runOnOperation() {
           }
           SmallVector<mlir::Operation *> worklist;
           int numAssertions = 0;
+          int numCovers = 0;
           op->walk([&](Operation *curOp) {
             if (isa<verif::AssertOp>(curOp))
               numAssertions++;
+            if (isa<verif::CoverOp>(curOp))
+              numCovers++;
             if (auto inst = dyn_cast<InstanceOp>(curOp))
               worklist.push_back(symbolTable.lookup(inst.getModuleName()));
           });
@@ -491,9 +542,9 @@ void ConvertVerifToSMTPass::runOnOperation() {
             if (numAssertions > 1)
               break;
           }
-          if (numAssertions > 1) {
+          if (numAssertions > 1 || numCovers > 1) {
             op->emitError(
-                "bounded model checking problems with multiple assertions are "
+                "bounded model checking problems with multiple properties are "
                 "not yet "
                 "correctly handled - instead, you can assert the "
                 "conjunction of your assertions");
@@ -502,7 +553,7 @@ void ConvertVerifToSMTPass::runOnOperation() {
         }
         return WalkResult::advance();
       });
-  if (assertionCheck.wasInterrupted())
+  if (propertyCheck.wasInterrupted())
     return signalPassFailure();
   RewritePatternSet patterns(&getContext());
   TypeConverter converter;
@@ -513,7 +564,7 @@ void ConvertVerifToSMTPass::runOnOperation() {
   Namespace names;
   names.add(symCache);
 
-  populateVerifToSMTConversionPatterns(converter, patterns, names);
+  populateVerifToSMTConversionPatterns(converter, patterns, names, coverMode);
 
   if (failed(mlir::applyPartialConversion(getOperation(), target,
                                           std::move(patterns))))
