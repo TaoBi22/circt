@@ -390,9 +390,9 @@ LogicalResult MachineOpConverter::dispatch() {
     if (!port.isOutput())
       continue;
     auto outputPortType = port.type;
-    auto nextOutputStateWire = bb.get(outputPortType);
+
+    auto nextOutputStateWire = b.create<hw::ConstantOp>(loc, outputPortType, 0);
     outputMuxChainOuts.push_back(nextOutputStateWire);
-    outputBackedges.push_back(nextOutputStateWire);
   }
 
   // 3) Convert states and record their next-state value assignments.
@@ -407,9 +407,6 @@ LogicalResult MachineOpConverter::dispatch() {
   for (auto varPair : variableToMuxChainOut) {
     variableNextStateWires[varPair.first].setValue(varPair.second);
   }
-  for (int i = 0; i < outputBackedges.size(); i++) {
-    outputBackedges[i].setValue(outputMuxChainOuts[i]);
-  }
 
   // Replace variable values with their register counterparts.
   for (auto &[variableOp, variableReg] : variableToRegister)
@@ -417,7 +414,7 @@ LogicalResult MachineOpConverter::dispatch() {
 
   // Cast to values to appease builder
   llvm::SmallVector<Value> outputValues;
-  for (auto backedge : outputBackedges) {
+  for (auto backedge : outputMuxChainOuts) {
     outputValues.push_back(backedge);
   }
   auto *oldOutputOp = hwModuleOp.getBodyBlock()->getTerminator();
