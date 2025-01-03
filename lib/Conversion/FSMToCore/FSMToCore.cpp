@@ -273,11 +273,11 @@ private:
   llvm::SmallVector<StateOp> orderedStates;
 
   // A mapping from a fsm.variable op to its register.
-  llvm::SmallDenseMap<VariableOp, seq::CompRegOp> variableToRegister;
+  llvm::MapVector<VariableOp, seq::CompRegOp> variableToRegister;
 
   // A mapping from a fsm.variable op to the output of the mux chain that
   // calculates its next value.
-  llvm::SmallDenseMap<VariableOp, mlir::Value> variableToMuxChainOut;
+  llvm::MapVector<VariableOp, mlir::Value> variableToMuxChainOut;
 
   // Mapping from a hw port to
   llvm::SmallVector<mlir::Value> outputMuxChainOuts;
@@ -288,7 +288,8 @@ private:
       /*currentState*/ StateOp,
       llvm::SmallDenseMap<
           /*targetState*/ StateOp,
-          llvm::DenseMap</*targetVariable*/ VariableOp, /*targetValue*/ Value>>>
+          llvm::MapVector</*targetVariable*/ VariableOp,
+                          /*targetValue*/ Value>>>
       stateToVariableUpdates;
 
   // A handle to the MachineOp being converted.
@@ -430,7 +431,7 @@ FailureOr<Value>
 MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
     StateOp currentState, ArrayRef<TransitionOp> transitions) {
   Value nextState;
-  DenseMap<fsm::VariableOp, Value> variableUpdates;
+  llvm::MapVector<fsm::VariableOp, Value> variableUpdates;
   auto stateCmp =
       b.create<comb::ICmpOp>(machineOp.getLoc(), comb::ICmpPredicate::eq,
                              stateReg, encoding->encode(currentState));
