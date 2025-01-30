@@ -1,0 +1,31 @@
+add_circt_tool(contract-splitter contract-splitter.cpp)
+target_link_libraries(contract-splitter
+  PRIVATE
+  CIRCTBMCTransforms
+  CIRCTComb
+  CIRCTCombToSMT
+  CIRCTEmitTransforms
+  CIRCTHW
+  CIRCTHWToSMT
+  CIRCTOMTransforms
+  CIRCTSeq
+  CIRCTSMT
+  CIRCTSMTToZ3LLVM
+  CIRCTSupport
+  CIRCTVerifTransforms
+  CIRCTVerifToSMT
+  LLVMSupport
+  MLIRArithDialect
+  MLIRBuiltinToLLVMIRTranslation
+  MLIRFuncDialect
+  MLIRFuncInlinerExtension
+  MLIRIR
+  MLIRLLVMIRTransforms
+  MLIRLLVMToLLVMIRTranslation
+  MLIRTargetLLVMIRExport
+  CIRCTTransforms
+  CIRCTHWToBTOR2
+)
+
+llvm_update_compile_flags(contract-splitter)
+mlir_check_all_link_libraries(contract-splitter)

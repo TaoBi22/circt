@@ -1,4 +1,5 @@
 add_subdirectory(arcilator)
+add_subdirectory(contract-splitter)
 add_subdirectory(circt-as)
 add_subdirectory(circt-bmc)
 add_subdirectory(circt-cocotb-driver)
