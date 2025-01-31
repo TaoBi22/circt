@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/Conversion/ExportVerilog.h"
+#include "circt/Conversion/HWToBTOR2.h"
 #include "circt/Conversion/VerifToSV.h"
 #include "circt/Dialect/Comb/CombDialect.h"
 #include "circt/Dialect/HW/HWDialect.h"
@@ -24,6 +25,7 @@
 #include "circt/Dialect/Verif/VerifOps.h"
 #include "circt/Dialect/Verif/VerifPasses.h"
 #include "circt/Support/JSON.h"
+#include "circt/Support/Passes.h"
 #include "circt/Support/Version.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
@@ -36,6 +38,8 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/ToolUtilities.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/InitLLVM.h"
@@ -44,6 +48,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/WithColor.h"
+#include <elf.h>
 
 using namespace llvm;
 using namespace mlir;
@@ -68,6 +73,10 @@ struct Options {
 
   cl::opt<bool> listTests{"l", cl::desc("List tests in the input and exit"),
                           cl::init(false), cl::cat(cat)};
+
+  cl::opt<bool> contractMode{"contract",
+                             cl::desc("Mode for BTOR-exported contracts"),
+                             cl::init(false), cl::cat(cat)};
 
   cl::opt<bool> listRunners{"list-runners", cl::desc("List test runners"),
                             cl::init(false), cl::cat(cat)};
@@ -126,6 +135,9 @@ public:
   std::string binaryPath;
   /// Whether this runner operates on Verilog or MLIR input.
   bool readsMLIR = false;
+  // FIXME: this should be an enum when I'm not hacking it together
+  /// Whether this runner operates on Verilog or MLIR input.
+  bool readsBtor = false;
   /// Whether this runner should be ignored.
   bool ignore = false;
   /// Whether this runner is available or not. This is set to false if the
@@ -165,6 +177,16 @@ void RunnerSuite::addDefaultRunners() {
     runner.readsMLIR = true;
     runners.push_back(std::move(runner));
   }
+  {
+    // btormc
+    Runner runner;
+    runner.name = StringAttr::get(context, "btormc");
+    runner.binary = "circt-test-runner-btormc.py";
+    runner.binaryPath = "/local/scratch/tah56/circt-fork/tools/circt-test/"
+                        "circt-test-runner-btormc.py";
+    runner.readsBtor = true;
+    runners.push_back(std::move(runner));
+  }
 }
 
 /// Resolve the `binary` field of each runner to a full `binaryPath`, and set
@@ -194,10 +216,14 @@ LogicalResult RunnerSuite::resolve() {
       return;
 
     auto findResult = llvm::sys::findProgramByName(runner.binary);
-    if (!findResult)
+    if (!findResult) {
+      llvm::outs() << "couldn't find " << runner.binary
+                   << " - make sure build dir is on your path.\n";
       return;
+    }
     runner.available = true;
     runner.binaryPath = findResult.get();
+    llvm::outs() << runner.binaryPath << "\n";
   });
   return success();
 }
@@ -412,7 +438,7 @@ static LogicalResult executeWithHandler(MLIRContext *context,
   TestSuite suite(context, opts.listIgnored);
   if (failed(suite.discoverInModule(*module)))
     return failure();
-  if (suite.tests.empty()) {
+  if (suite.tests.empty() && !opts.contractMode) {
     llvm::errs() << "no tests discovered\n";
     return success();
   }
@@ -438,123 +464,244 @@ static LogicalResult executeWithHandler(MLIRContext *context,
     return failure();
   }
 
-  // Generate Verilog output.
+  // // Generate Verilog output.
   PassManager pm(context);
   pm.enableVerifier(opts.verifyPasses);
-  pm.addPass(verif::createLowerFormalToHWPass());
-  pm.addNestedPass<hw::HWModuleOp>(createLowerVerifToSVPass());
-  pm.addNestedPass<hw::HWModuleOp>(sv::createHWLegalizeModulesPass());
-  pm.addNestedPass<hw::HWModuleOp>(sv::createPrettifyVerilogPass());
-  pm.addPass(createExportVerilogPass(verilogFile->os()));
-  if (failed(pm.run(*module)))
+  // pm.addPass(verif::createLowerFormalToHWPass());
+  // pm.addNestedPass<hw::HWModuleOp>(createLowerVerifToSVPass());
+  // pm.addNestedPass<hw::HWModuleOp>(sv::createHWLegalizeModulesPass());
+  // pm.addNestedPass<hw::HWModuleOp>(sv::createPrettifyVerilogPass());
+  // pm.addPass(createExportVerilogPass(verilogFile->os()));
+  // if (failed(pm.run(*module)))
+  //   return failure();
+  // verilogFile->keep();
+
+  // pm.clear();
+  // Generate BTOR
+  pm.addPass(verif::createLowerContractsPass());
+
+  if (failed(pm.run(module.get())))
     return failure();
-  verilogFile->keep();
+
+  llvm::SmallVector<llvm::SmallString<128>> btorPaths;
+  // Copy each contract to new MLIR context and lower
+  for (auto [j, op] : llvm::enumerate(module->getOps<verif::FormalOp>())) {
+    auto newContext =
+        std::make_unique<MLIRContext>(context->getDialectRegistry());
+    auto newModule = ModuleOp::create(UnknownLoc::get(newContext.get()));
+    newModule.push_back(op->clone());
+    op->remove();
+    PassManager pm(newContext.get());
+    std::string fileName = "contract" + std::to_string(j) + ".btor2";
+    SmallString<128> filePath(opts.resultDir);
+    llvm::sys::path::append(filePath, fileName);
+    std::string errorMessage;
+    auto output = mlir::openOutputFile(filePath, &errorMessage);
+    pm.addPass(verif::createLowerFormalToHWPass());
+    pm.addPass(circt::createConvertHWToBTOR2Pass(output->os()));
+    if (failed(pm.run(newModule)))
+      return failure();
+    output->keep();
+    btorPaths.push_back(filePath);
+  }
+
+  pm.clear();
+  std::string fileName = "top.btor2";
+  SmallString<128> filePath(opts.resultDir);
+  llvm::sys::path::append(filePath, fileName);
+  auto output = mlir::openOutputFile(filePath, &errorMessage);
+  pm.addPass(circt::createSimpleCanonicalizerPass());
+  pm.addPass(verif::createLowerFormalToHWPass());
+  pm.addPass(circt::createConvertHWToBTOR2Pass(output->os()));
+  if (failed(pm.run(module.get())))
+    return failure();
+  output->keep();
+  btorPaths.push_back(filePath);
 
   // Run the tests.
   std::atomic<unsigned> numPassed(0);
   std::atomic<unsigned> numIgnored(0);
   std::atomic<unsigned> numUnsupported(0);
 
-  mlir::parallelForEach(context, suite.tests, [&](auto &test) {
-    if (test.ignore) {
-      ++numIgnored;
-      return;
-    }
-
-    // Pick a runner for this test. In the future we'll want to filter this
-    // based on the test's and runner's metadata, and potentially use a
-    // prioritized list of runners.
-    Runner *runner = nullptr;
-    for (auto &candidate : runnerSuite.runners) {
-      if (candidate.ignore || !candidate.available)
-        continue;
-      if (!test.requiredRunners.empty() &&
-          !test.requiredRunners.contains(candidate.name))
-        continue;
-      if (test.excludedRunners.contains(candidate.name))
-        continue;
-      runner = &candidate;
-      break;
-    }
-    if (!runner) {
-      ++numUnsupported;
-      return;
-    }
-
-    // Create the directory in which we are going to run the test.
-    SmallString<128> testDir(opts.resultDir);
-    llvm::sys::path::append(testDir, test.name.getValue());
-    if (auto error = llvm::sys::fs::create_directory(testDir)) {
-      mlir::emitError(test.loc) << "cannot create test directory `" << testDir
-                                << "`: " << error.message();
-      return;
-    }
-
-    // Assemble a path for the test runner log file and truncate it.
-    SmallString<128> logPath(testDir);
-    llvm::sys::path::append(logPath, "run.log");
-    {
-      std::error_code ec;
-      raw_fd_ostream trunc(logPath, ec);
-    }
-
-    // Assemble the runner arguments.
-    SmallVector<StringRef> args;
-    args.push_back(runner->binary);
-    if (runner->readsMLIR)
-      args.push_back(opts.inputFilename);
-    else
-      args.push_back(verilogPath);
-    args.push_back("-t");
-    args.push_back(test.name.getValue());
-    args.push_back("-d");
-    args.push_back(testDir);
-
-    if (auto mode = test.attrs.get("mode")) {
-      args.push_back("-m");
-      auto modeStr = dyn_cast<StringAttr>(mode);
-      if (!modeStr) {
-        mlir::emitError(test.loc) << "invalid mode for test " << test.name;
+  if (opts.contractMode) {
+    mlir::parallelForEach(context, btorPaths, [&](auto &test) {
+      // Pick a runner for this test. In the future we'll want to filter this
+      // based on the test's and runner's metadata, and potentially use a
+      // prioritized list of runners.
+      Runner *runner = nullptr;
+      for (auto &candidate : runnerSuite.runners) {
+        if (candidate.readsBtor) {
+          runner = &candidate;
+          break;
+        }
+      }
+      if (!runner) {
+        ++numUnsupported;
         return;
       }
-      args.push_back(cast<StringAttr>(mode).getValue());
-    }
 
-    if (auto depth = test.attrs.get("depth")) {
-      args.push_back("-k");
-      auto depthInt = dyn_cast<IntegerAttr>(depth);
-      if (!depthInt) {
-        mlir::emitError(test.loc) << "invalid depth for test " << test.name;
+      // Create the directory in which we are going to run the test.
+      SmallString<128> testDir(opts.resultDir);
+      // llvm::sys::path::append(testDir, test);
+      if (auto error = llvm::sys::fs::create_directory(testDir)) {
+        llvm::errs() << "cannot create test directory `" << testDir
+                     << "`: " << error.message();
         return;
       }
-      SmallVector<char> str;
-      depthInt.getValue().toStringUnsigned(str);
-      args.push_back(std::string(str.begin(), str.end()));
-    }
 
-    // Execute the test runner.
-    std::string errorMessage;
-    auto result = llvm::sys::ExecuteAndWait(
-        runner->binaryPath, args, /*Env=*/std::nullopt,
-        /*Redirects=*/{"", logPath, logPath},
-        /*SecondsToWait=*/0,
-        /*MemoryLimit=*/0, &errorMessage);
-    if (result < 0) {
-      mlir::emitError(test.loc) << "cannot execute runner: " << errorMessage;
-    } else if (result > 0) {
-      auto d = mlir::emitError(test.loc)
-               << "test " << test.name.getValue() << " failed";
-      d.attachNote() << "see `" << logPath << "`";
-      d.attachNote() << "executed with " << runner->name.getValue();
-    } else {
-      ++numPassed;
-    }
-  });
+      // Assemble a path for the test runner log file and truncate it.
+      SmallString<128> logPath(testDir);
+      llvm::sys::path::append(logPath, "run.log");
+      {
+        std::error_code ec;
+        raw_fd_ostream trunc(logPath, ec);
+      }
+
+      // Assemble the runner arguments.
+      SmallVector<StringRef> args;
+      args.push_back(runner->binary);
+      if (runner->readsMLIR)
+        args.push_back(opts.inputFilename);
+      else
+        args.push_back(verilogPath);
+      args.push_back("-t");
+      args.push_back(test);
+      args.push_back("-d");
+      args.push_back(testDir);
+
+      // if (auto depth = test.attrs.get("depth")) {
+      //   args.push_back("-k");
+      //   auto depthInt = dyn_cast<IntegerAttr>(depth);
+      //   if (!depthInt) {
+      //     llvm::errs() << "invalid depth for test " << test;
+      //     return;
+      //   }
+      //   SmallVector<char> str;
+      //   depthInt.getValue().toStringUnsigned(str);
+      //   args.push_back(std::string(str.begin(), str.end()));
+      // }
+
+      // Execute the test runner.
+      std::string errorMessage;
+      auto result = llvm::sys::ExecuteAndWait(
+          runner->binaryPath, args, /*Env=*/std::nullopt,
+          /*Redirects=*/{"", logPath, logPath},
+          /*SecondsToWait=*/0,
+          /*MemoryLimit=*/0, &errorMessage);
+      if (result < 0) {
+        llvm::errs() << "cannot execute runner: " << errorMessage << "\n";
+      } else if (result > 0) {
+        llvm::errs() << "test " << test << " failed\n";
+      } else {
+        ++numPassed;
+      }
+    });
+
+  } else
+    mlir::parallelForEach(context, suite.tests, [&](auto &test) {
+      if (test.ignore) {
+        ++numIgnored;
+        return;
+      }
+
+      // Pick a runner for this test. In the future we'll want to filter this
+      // based on the test's and runner's metadata, and potentially use a
+      // prioritized list of runners.
+      Runner *runner = nullptr;
+      for (auto &candidate : runnerSuite.runners) {
+        if (candidate.ignore || !candidate.available)
+          continue;
+        if (!test.requiredRunners.empty() &&
+            !test.requiredRunners.contains(candidate.name))
+          continue;
+        if (test.excludedRunners.contains(candidate.name))
+          continue;
+        runner = &candidate;
+        break;
+      }
+      if (!runner) {
+        ++numUnsupported;
+        return;
+      }
+
+      // Create the directory in which we are going to run the test.
+      SmallString<128> testDir(opts.resultDir);
+      llvm::sys::path::append(testDir, test.name.getValue());
+      if (auto error = llvm::sys::fs::create_directory(testDir)) {
+        mlir::emitError(test.loc) << "cannot create test directory `" << testDir
+                                  << "`: " << error.message();
+        return;
+      }
+
+      // Assemble a path for the test runner log file and truncate it.
+      SmallString<128> logPath(testDir);
+      llvm::sys::path::append(logPath, "run.log");
+      {
+        std::error_code ec;
+        raw_fd_ostream trunc(logPath, ec);
+      }
+
+      // Assemble the runner arguments.
+      SmallVector<StringRef> args;
+      args.push_back(runner->binary);
+      if (runner->readsMLIR)
+        args.push_back(opts.inputFilename);
+      else
+        args.push_back(verilogPath);
+      args.push_back("-t");
+      args.push_back(test.name.getValue());
+      args.push_back("-d");
+      args.push_back(testDir);
+
+      if (auto mode = test.attrs.get("mode")) {
+        args.push_back("-m");
+        auto modeStr = dyn_cast<StringAttr>(mode);
+        if (!modeStr) {
+          mlir::emitError(test.loc) << "invalid mode for test " << test.name;
+          return;
+        }
+        args.push_back(cast<StringAttr>(mode).getValue());
+      }
+
+      if (auto depth = test.attrs.get("depth")) {
+        args.push_back("-k");
+        auto depthInt = dyn_cast<IntegerAttr>(depth);
+        if (!depthInt) {
+          mlir::emitError(test.loc) << "invalid depth for test " << test.name;
+          return;
+        }
+        SmallVector<char> str;
+        depthInt.getValue().toStringUnsigned(str);
+        args.push_back(std::string(str.begin(), str.end()));
+      }
+
+      // Execute the test runner.
+      std::string errorMessage;
+      auto result = llvm::sys::ExecuteAndWait(
+          runner->binaryPath, args, /*Env=*/std::nullopt,
+          /*Redirects=*/{"", logPath, logPath},
+          /*SecondsToWait=*/0,
+          /*MemoryLimit=*/0, &errorMessage);
+      if (result < 0) {
+        mlir::emitError(test.loc) << "cannot execute runner: " << errorMessage;
+      } else if (result > 0) {
+        auto d = mlir::emitError(test.loc)
+                 << "test " << test.name.getValue() << " failed";
+        d.attachNote() << "see `" << logPath << "`";
+        d.attachNote() << "executed with " << runner->name.getValue();
+      } else {
+        ++numPassed;
+      }
+    });
 
   // Print statistics about how many tests passed and failed.
   unsigned numNonFailed = numPassed + numIgnored + numUnsupported;
-  assert(numNonFailed <= suite.tests.size());
-  unsigned numFailed = suite.tests.size() - numNonFailed;
+  // assert(numNonFailed <= suite.tests.size());
+  unsigned numFailed;
+  if (opts.contractMode)
+    numFailed = btorPaths.size() - numNonFailed;
+  else
+    numFailed = suite.tests.size() - numNonFailed;
   if (numFailed > 0) {
     WithColor(llvm::errs(), raw_ostream::SAVEDCOLOR, true).get()
         << numFailed << " tests ";

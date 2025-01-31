@@ -10,6 +10,7 @@ set(libs
   CIRCTVerif
   CIRCTVerifToSV
   CIRCTVerifTransforms
+  CIRCTHWToBTOR2
 
   MLIRLLVMDialect
   MLIRArithDialect
@@ -30,7 +31,7 @@ llvm_update_compile_flags(circt-test)
 mlir_check_all_link_libraries(circt-test)
 
 set(all_runner_paths "")
-foreach(runner sby circt-bmc)
+foreach(runner sby circt-bmc btormc)
   set(src_path ${CMAKE_CURRENT_SOURCE_DIR}/circt-test-runner-${runner}.py)
   set(dst_path ${CIRCT_TOOLS_DIR}/circt-test-runner-${runner}.py)
   add_custom_command(
