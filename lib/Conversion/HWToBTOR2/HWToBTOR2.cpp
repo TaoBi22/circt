@@ -843,6 +843,18 @@ public:
   void visitVerif(verif::AssumeOp op) { visitAssumeLike(op); }
   void visitVerif(verif::ClockedAssumeOp op) { visitAssumeLike(op); }
 
+  /// Lower symbolic value to an input
+  void visitVerif(verif::SymbolicValueOp op) {
+    // Guarantees that a sort will exist for the generation of this port's
+    // translation into btor2
+    int64_t w = requireSort(op->getResult(0).getType());
+    std::string name = "symbolic_val_" + std::to_string(lid);
+
+    size_t inlid = setOpLID(op);
+
+    genInput(inlid, w, name);
+  }
+
   // Cover is not supported in btor2
   void visitVerif(verif::CoverOp op) {
     op->emitError("Cover is not supported in btor2!");
