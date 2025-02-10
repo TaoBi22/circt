@@ -4,9 +4,11 @@ import sys, re, os
 
 FSMTRoot = "../../paper-evals/fsm-mc-benchmarking/fsm-circt/"
 
-fsmFile = sys.argv[1]
 if len(sys.argv) < 2:
     print("Usage: ./run_tv.py <FSM mlir file>")
+    sys.exit(-1)
+
+fsmFile = sys.argv[1]
 
 moduleName = ""
 inputWidths = []
