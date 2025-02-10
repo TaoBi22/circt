@@ -62,8 +62,6 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
     with open(f"{builddir}/rtl.mlir", "w+") as newFile:
         newFile.writelines(text)
 
-# get rid of reset values - they're bodged in in this version of the tool
-os.system(f"sed -i -E \"s/reset %.+, %.+ :/:/g\" {builddir}/rtl.mlir")
 os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound=10\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
 
 # FSM files
@@ -106,6 +104,6 @@ for i, invariant in enumerate(invariants):
     signatureStr += "!smt.bv<32>) !smt.bool>"
     propertyStr += f"%apply = smt.apply_func {invariant}({applicationStr}) : {signatureStr}"
     # TODO handle input equivalence
-    propertyStr += "}"
+    propertyStr += "}\n"
     propertyStr += f"smt.assert %tvclause_{i}"
     print(propertyStr)
