@@ -366,17 +366,8 @@ struct VerifBoundedModelCheckingOpConversion
           // it only accounts for the one clock case.
           if (clockIndexes.size() == 1) {
             auto clockIndex = clockIndexes[0];
-            auto oldClock = iterArgs[clockIndex];
             // The clock is necessarily the first value returned by the loop
             // region
-            auto newClock = loopVals[0];
-            auto oldClockLow = builder.create<smt::BVNotOp>(loc, oldClock);
-            auto isPosedgeBV =
-                builder.create<smt::BVAndOp>(loc, oldClockLow, newClock);
-            // Convert posedge bv<1> to bool
-            auto trueBV = builder.create<smt::BVConstantOp>(loc, 1, 1);
-            auto isPosedge =
-                builder.create<smt::EqOp>(loc, isPosedgeBV, trueBV);
             auto regStates =
                 iterArgs.take_front(circuitFuncOp.getNumArguments())
                     .take_back(numRegs);
@@ -386,8 +377,7 @@ struct VerifBoundedModelCheckingOpConversion
               // Create an ITE to calculate the next reg state
               // TODO: we create a lot of ITEs here that will slow things down -
               // these could be avoided by making init/loop regions concrete
-              nextRegStates.push_back(builder.create<smt::IteOp>(
-                  loc, isPosedge, regInput, regState));
+              nextRegStates.push_back(regInput);
             }
             newDecls.append(nextRegStates);
           }
