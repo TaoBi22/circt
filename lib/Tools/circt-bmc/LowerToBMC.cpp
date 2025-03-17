@@ -95,8 +95,8 @@ void LowerToBMCPass::runOnOperation() {
     terminator->erase();
   }
 
-  // Double the bound given to the BMC op, as a clock cycle takes 2 BMC
-  // iterations
+  // Double the bound given to the BMC op unless in rising clocks only mode, as
+  // a clock cycle takes 2 BMC iterations
   verif::BoundedModelCheckingOp bmcOp;
   auto numRegs = hwModule->getAttrOfType<IntegerAttr>("num_regs");
   auto initialValues = hwModule->getAttrOfType<ArrayAttr>("initial_values");
@@ -109,8 +109,8 @@ void LowerToBMCPass::runOnOperation() {
       }
     }
     bmcOp = builder.create<verif::BoundedModelCheckingOp>(
-        loc, 2 * bound, cast<IntegerAttr>(numRegs).getValue().getZExtValue(),
-        initialValues);
+        loc, risingClocksOnly ? bound : bound,
+        cast<IntegerAttr>(numRegs).getValue().getZExtValue(), initialValues);
   } else {
     hwModule->emitOpError("no num_regs or initial_values attribute found - "
                           "please run externalize "

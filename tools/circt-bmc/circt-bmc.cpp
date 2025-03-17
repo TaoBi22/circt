@@ -102,6 +102,11 @@ static cl::opt<bool>
                           cl::desc("Log executions of toplevel module passes"),
                           cl::init(false), cl::cat(mainCategory));
 
+static cl::opt<bool> risingClocksOnly(
+    "rising-clocks-only",
+    cl::desc("Only consider the circuit and property on rising clock edges"),
+    cl::init(false), cl::cat(mainCategory));
+
 #ifdef CIRCT_BMC_ENABLE_JIT
 
 enum OutputFormat { OutputMLIR, OutputLLVM, OutputSMTLIB, OutputRunJIT };
