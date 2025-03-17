@@ -176,9 +176,10 @@ struct VerifBoundedModelCheckingOpConversion
   using OpConversionPattern<verif::BoundedModelCheckingOp>::OpConversionPattern;
 
   VerifBoundedModelCheckingOpConversion(TypeConverter &converter,
-                                        MLIRContext *context, Namespace &names)
-      : OpConversionPattern(converter, context), names(names) {}
-
+                                        MLIRContext *context, Namespace &names,
+                                        ConvertVerifToSMTOptions options)
+      : OpConversionPattern(converter, context), names(names),
+        options(options) {}
   LogicalResult
   matchAndRewrite(verif::BoundedModelCheckingOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -361,7 +362,8 @@ struct VerifBoundedModelCheckingOpConversion
               newDecls.push_back(builder.create<smt::DeclareFunOp>(loc, newTy));
           }
 
-          // Only update the registers on a clock posedge
+          // Only update the registers on a clock posedge unless in rising
+          // clocks only mode
           // TODO: this will also need changing with multiple clocks - currently
           // it only accounts for the one clock case.
           if (clockIndexes.size() == 1) {
@@ -386,8 +388,11 @@ struct VerifBoundedModelCheckingOpConversion
               // Create an ITE to calculate the next reg state
               // TODO: we create a lot of ITEs here that will slow things down -
               // these could be avoided by making init/loop regions concrete
-              nextRegStates.push_back(builder.create<smt::IteOp>(
-                  loc, isPosedge, regInput, regState));
+              nextRegStates.push_back(
+                  options.risingClocksOnly
+                      ? regInput
+                      : builder.create<smt::IteOp>(loc, isPosedge, regInput,
+                                                   regState));
             }
             newDecls.append(nextRegStates);
           }
@@ -409,6 +414,7 @@ struct VerifBoundedModelCheckingOpConversion
   }
 
   Namespace &names;
+  ConvertVerifToSMTOptions options;
 };
 
 } // namespace
@@ -420,21 +426,23 @@ struct VerifBoundedModelCheckingOpConversion
 namespace {
 struct ConvertVerifToSMTPass
     : public circt::impl::ConvertVerifToSMTBase<ConvertVerifToSMTPass> {
+  using Base::Base;
   void runOnOperation() override;
 };
 } // namespace
 
-void circt::populateVerifToSMTConversionPatterns(TypeConverter &converter,
-                                                 RewritePatternSet &patterns,
-                                                 Namespace &names) {
+void circt::populateVerifToSMTConversionPatterns(
+    TypeConverter &converter, RewritePatternSet &patterns, Namespace &names,
+    const ConvertVerifToSMTOptions &options) {
   patterns.add<VerifAssertOpConversion, VerifAssumeOpConversion,
                LogicEquivalenceCheckingOpConversion>(converter,
                                                      patterns.getContext());
   patterns.add<VerifBoundedModelCheckingOpConversion>(
-      converter, patterns.getContext(), names);
+      converter, patterns.getContext(), names, options);
 }
 
 void ConvertVerifToSMTPass::runOnOperation() {
+  ConvertVerifToSMTOptions options;
   ConversionTarget target(getContext());
   target.addIllegalDialect<verif::VerifDialect>();
   target.addLegalDialect<smt::SMTDialect, arith::ArithDialect, scf::SCFDialect,
@@ -515,7 +523,7 @@ void ConvertVerifToSMTPass::runOnOperation() {
   Namespace names;
   names.add(symCache);
 
-  populateVerifToSMTConversionPatterns(converter, patterns, names);
+  populateVerifToSMTConversionPatterns(converter, patterns, names, options);
 
   if (failed(mlir::applyPartialConversion(getOperation(), target,
                                           std::move(patterns))))

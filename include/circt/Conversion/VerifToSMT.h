@@ -19,9 +19,9 @@ class Namespace;
 #include "circt/Conversion/Passes.h.inc"
 
 /// Get the Verif to SMT conversion patterns.
-void populateVerifToSMTConversionPatterns(TypeConverter &converter,
-                                          RewritePatternSet &patterns,
-                                          Namespace &names);
+void populateVerifToSMTConversionPatterns(
+    TypeConverter &converter, RewritePatternSet &patterns, Namespace &names,
+    const ConvertVerifToSMTOptions &options);
 
 } // namespace circt
 
