@@ -157,6 +157,7 @@ void LowerToBMCPass::runOnOperation() {
       builder.create<verif::YieldOp>(loc, ValueRange{});
     }
 
+    // TODO: don't toggle the clock!
     // Toggle clock in loop region if it exists, otherwise just yield nothing
     auto *loopBlock = builder.createBlock(&bmcOp.getLoop());
     builder.setInsertionPointToStart(loopBlock);
@@ -167,8 +168,10 @@ void LowerToBMCPass::runOnOperation() {
       auto cNeg1 = builder.create<hw::ConstantOp>(loc, builder.getI1Type(), -1);
       auto nClk = builder.create<comb::XorOp>(loc, fromClk, cNeg1);
       auto toClk = builder.create<seq::ToClockOp>(loc, nClk);
-      // Only yield clock value
-      builder.create<verif::YieldOp>(loc, ValueRange{toClk});
+      // Only yield clock value - don't change it if in rising clocks only mode
+      builder.create<verif::YieldOp>(
+          loc, risingClocksOnly ? ValueRange{loopBlock->getArgument(0)}
+                                : ValueRange{toClk});
     } else {
       builder.create<verif::YieldOp>(loc, ValueRange{});
     }

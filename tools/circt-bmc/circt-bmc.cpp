@@ -183,10 +183,13 @@ static LogicalResult executeBMC(MLIRContext &context) {
   LowerToBMCOptions lowerToBMCOptions;
   lowerToBMCOptions.bound = clockBound;
   lowerToBMCOptions.topModule = moduleName;
+  lowerToBMCOptions.risingClocksOnly = risingClocksOnly;
   pm.addPass(createLowerToBMC(lowerToBMCOptions));
   pm.addPass(createConvertHWToSMT());
   pm.addPass(createConvertCombToSMT());
-  pm.addPass(createConvertVerifToSMT());
+  ConvertVerifToSMTOptions convertVerifToSMTOptions;
+  convertVerifToSMTOptions.risingClocksOnly = risingClocksOnly;
+  pm.addPass(createConvertVerifToSMT(convertVerifToSMTOptions));
   pm.addPass(createSimpleCanonicalizerPass());
 
   if (outputFormat != OutputMLIR && outputFormat != OutputSMTLIB) {
