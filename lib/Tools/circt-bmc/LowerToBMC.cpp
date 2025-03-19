@@ -109,7 +109,7 @@ void LowerToBMCPass::runOnOperation() {
       }
     }
     bmcOp = builder.create<verif::BoundedModelCheckingOp>(
-        loc, risingClocksOnly ? bound : bound,
+        loc, risingClocksOnly ? bound : 2 * bound,
         cast<IntegerAttr>(numRegs).getValue().getZExtValue(), initialValues);
   } else {
     hwModule->emitOpError("no num_regs or initial_values attribute found - "
