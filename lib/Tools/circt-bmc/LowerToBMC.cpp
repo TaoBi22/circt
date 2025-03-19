@@ -146,11 +146,12 @@ void LowerToBMCPass::runOnOperation() {
   {
     OpBuilder::InsertionGuard guard(builder);
     // Initialize clock to 0 if it exists, otherwise just yield nothing
+    // We initialize to 1 if we're in rising clocks only mode
     auto *initBlock = builder.createBlock(&bmcOp.getInit());
     builder.setInsertionPointToStart(initBlock);
     if (hasClk) {
-      auto initVal =
-          builder.create<hw::ConstantOp>(loc, builder.getI1Type(), 0);
+      auto initVal = builder.create<hw::ConstantOp>(loc, builder.getI1Type(),
+                                                    risingClocksOnly ? 1 : 0);
       auto toClk = builder.create<seq::ToClockOp>(loc, initVal);
       builder.create<verif::YieldOp>(loc, ValueRange{toClk});
     } else {
