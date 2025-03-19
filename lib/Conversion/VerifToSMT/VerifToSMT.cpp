@@ -177,9 +177,9 @@ struct VerifBoundedModelCheckingOpConversion
 
   VerifBoundedModelCheckingOpConversion(TypeConverter &converter,
                                         MLIRContext *context, Namespace &names,
-                                        ConvertVerifToSMTOptions options)
+                                        bool risingClocksOnly)
       : OpConversionPattern(converter, context), names(names),
-        options(options) {}
+        risingClocksOnly(risingClocksOnly) {}
   LogicalResult
   matchAndRewrite(verif::BoundedModelCheckingOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -389,10 +389,9 @@ struct VerifBoundedModelCheckingOpConversion
               // TODO: we create a lot of ITEs here that will slow things down -
               // these could be avoided by making init/loop regions concrete
               nextRegStates.push_back(
-                  options.risingClocksOnly
-                      ? regInput
-                      : builder.create<smt::IteOp>(loc, isPosedge, regInput,
-                                                   regState));
+                  risingClocksOnly ? regInput
+                                   : builder.create<smt::IteOp>(
+                                         loc, isPosedge, regInput, regState));
             }
             newDecls.append(nextRegStates);
           }
@@ -414,7 +413,7 @@ struct VerifBoundedModelCheckingOpConversion
   }
 
   Namespace &names;
-  ConvertVerifToSMTOptions options;
+  bool risingClocksOnly;
 };
 
 } // namespace
@@ -431,18 +430,18 @@ struct ConvertVerifToSMTPass
 };
 } // namespace
 
-void circt::populateVerifToSMTConversionPatterns(
-    TypeConverter &converter, RewritePatternSet &patterns, Namespace &names,
-    const ConvertVerifToSMTOptions &options) {
+void circt::populateVerifToSMTConversionPatterns(TypeConverter &converter,
+                                                 RewritePatternSet &patterns,
+                                                 Namespace &names,
+                                                 bool risingClocksOnly) {
   patterns.add<VerifAssertOpConversion, VerifAssumeOpConversion,
                LogicEquivalenceCheckingOpConversion>(converter,
                                                      patterns.getContext());
   patterns.add<VerifBoundedModelCheckingOpConversion>(
-      converter, patterns.getContext(), names, options);
+      converter, patterns.getContext(), names, risingClocksOnly);
 }
 
 void ConvertVerifToSMTPass::runOnOperation() {
-  ConvertVerifToSMTOptions options;
   ConversionTarget target(getContext());
   target.addIllegalDialect<verif::VerifDialect>();
   target.addLegalDialect<smt::SMTDialect, arith::ArithDialect, scf::SCFDialect,
@@ -523,7 +522,8 @@ void ConvertVerifToSMTPass::runOnOperation() {
   Namespace names;
   names.add(symCache);
 
-  populateVerifToSMTConversionPatterns(converter, patterns, names, options);
+  populateVerifToSMTConversionPatterns(converter, patterns, names,
+                                       risingClocksOnly);
 
   if (failed(mlir::applyPartialConversion(getOperation(), target,
                                           std::move(patterns))))
