@@ -79,9 +79,7 @@ def PrintCostModel : Pass<"arc-print-cost-model", "mlir::ModuleOp"> {
 def PerformEssentMerges : Pass<"perform-essent-merges", "mlir::ModuleOp"> {
   let summary = "Merges arcs in the style of ESSENT";
   let constructor = "createPerformEssentMergesPass()";
-  let dependentDialects = ["hw::HWDialect",
-                           "comb::CombDialect",
-                           "arc::ArcDialect"];
+  let dependentDialects = ["arc::ArcDialect"];
   let options = [
     Option<"optimalPartitionSize", "optimal-partition-size", "unsigned", "32",
            "Threshold to use when merging arcs (see ESSENT paper)">,

@@ -18,6 +18,7 @@ add_circt_dialect_library(CIRCTArcTransforms
   MakeTables.cpp
   MergeIfs.cpp
   MuxToControlFlow.cpp
+  PerformEssentMerges.cpp
   PrintCostModel.cpp
   SimplifyVariadicOps.cpp
   SplitFuncs.cpp
