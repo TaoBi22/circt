@@ -84,8 +84,9 @@ bool PerformEssentMergesAnalysis::canMergeArcs(CallOpInterface firstArc,
   auto secondArcName =
       cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
           .getLeafReference();
-  return arcCalls[firstArcName].size() > 1 ||
-         arcCalls[secondArcName].size() > 1;
+  llvm::outs() << arcCalls[firstArcName].size();
+  return arcCalls[firstArcName].size() <= 1 ||
+         arcCalls[secondArcName].size() <= 1;
 }
 
 llvm::LogicalResult
@@ -143,13 +144,15 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
   b.setInsertionPointToEnd(&firstArcDefine->getBodyBlock());
   b.create<OutputOp>(firstArcDefine->getLoc(), ValueRange(newOutputs));
   // Update inputs of call to first arc
-  SmallVector<Type> newInputTypes, newOutputTypes;
-  newInputTypes = firstArcDefine->getArgumentTypes();
   // Update output signature of call to first arc
   // Replace the second call's outputs with the first call's
   for (auto [index, res] : llvm::enumerate(secondArc->getResults())) {
     res.replaceAllUsesWith(firstArc->getResult(index + firstArcOutputs.size()));
   }
+  // Combine latencies
+  // Delete old second arc
+  secondArc->erase();
+  secondArcDefine->erase();
   return success();
 }
 
@@ -160,7 +163,19 @@ struct PerformEssentMergesPass
   void runOnOperation() override;
 };
 
-void PerformEssentMergesPass::runOnOperation() {}
+void PerformEssentMergesPass::runOnOperation() {
+  OpBuilder b(getOperation());
+  auto analysis =
+      PerformEssentMergesAnalysis(getOperation(), b, optimalPartitionSize);
+  auto ops = getOperation().getOps<hw::HWModuleOp>();
+  auto modOp = *ops.begin();
+  auto callOps = modOp.getOps<CallOp>();
+  auto x = callOps.begin();
+  x++;
+  auto firstOp = *callOps.begin();
+  auto secondOp = *x;
+  analysis.mergeArcs(firstOp, secondOp);
+}
 
 std::unique_ptr<Pass> arc::createPerformEssentMergesPass() {
   return std::make_unique<PerformEssentMergesPass>();
