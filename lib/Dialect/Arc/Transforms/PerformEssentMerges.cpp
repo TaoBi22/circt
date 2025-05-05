@@ -18,6 +18,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -26,6 +27,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "arc-perform-essent-merges"
 
@@ -105,6 +107,7 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
 
   auto firstArcResults = firstArc->getResults();
   auto secondArcArgs = secondArc->getOperands();
+  auto secondArcResults = secondArc->getResults();
 
   // Generate mapping from second arc's values to first arc's
   IRMapping mapping;
@@ -113,45 +116,85 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
   // Check which arguments to the second arc need corresponding arguments added,
   // and which are just inputs from the first arc anyway, so we can just map
   // them to the corresponding values the first arc outputs
+  SmallVector<Value> argReplacements;
+  // The arguments to the second arc which are staying as arguments (so need to
+  // be fed to the new call)
+  SmallVector<Value> additionalCallOperands;
   for (auto [argi, arg] : llvm::enumerate(secondArcArgs)) {
     bool needToAddArg = true;
     for (auto [resi, res] : llvm::enumerate(firstArcResults)) {
       if (arg == res) {
         // Values are passed between arcs so can just map directly
-        mapping.map(secondArcDefine.getArgument(argi), firstArcOutputs[resi]);
+        argReplacements.push_back(firstArcOutputs[resi]);
+        // mapping.map(secondArcDefine.getArgument(argi),
+        // firstArcOutputs[resi]);
         needToAddArg = false;
       }
     }
     if (needToAddArg) {
-      auto newArg = firstArcDefine.getBodyBlock().addArgument(arg.getType(),
-                                                              arg.getLoc());
-      mapping.map(secondArcDefine.getArgument(argi), newArg);
+      // auto newArg = firstArcDefine.getBodyBlock().addArgument(arg.getType(),
+      //                                                         arg.getLoc());
+      firstArcDefine.insertArgument(firstArcDefine.getNumArguments(),
+                                    arg.getType(), {}, arg.getLoc());
+
+      argReplacements.push_back(firstArcDefine.getArguments().back());
+      additionalCallOperands.push_back(arg);
+      // mapping.map(secondArcDefine.getArgument(argi), newArg);
     }
   }
   // TODO: get rid of firstArc outputs which were only consumed by the second
   // arc
 
   // Prepare operands for new terminator and delete existing terminators
-  auto secondArcOutputs =
-      secondArcDefine.getBodyBlock().getTerminator()->getOperands();
   SmallVector<Value> newOutputs;
   newOutputs.append(firstArcOutputs.begin(), firstArcOutputs.end());
-  newOutputs.append(secondArcOutputs.begin(), secondArcOutputs.end());
-  secondArcDefine.getBodyBlock().getTerminator()->erase();
   // TODO: this needs a value range, not a mapping - need to figure that one out
   r.inlineBlockBefore(&secondArcDefine.getBodyBlock(),
-                      firstArcDefine.getBodyBlock().getTerminator());
+                      firstArcDefine.getBodyBlock().getTerminator(),
+                      argReplacements);
+  // inlineBlockBefore deletes original values so we need to fetch the new
+  // values from the second block's terminator (which is now the penultimate op
+  // in the block)
+  auto *newSecondArcTerminator =
+      firstArcDefine.getBodyBlock().getTerminator()->getPrevNode();
+  auto secondArcOutputs = newSecondArcTerminator->getOperands();
+  newOutputs.append(secondArcOutputs.begin(), secondArcOutputs.end());
+  newSecondArcTerminator->erase();
   // Now create a new terminator
   firstArcDefine.getBodyBlock().getTerminator()->erase();
   r.setInsertionPointToEnd(&firstArcDefine.getBodyBlock());
   r.create<OutputOp>(firstArcDefine->getLoc(), ValueRange(newOutputs));
+  // Update firstArc results
+  for (auto [index, res] : llvm::enumerate(additionalCallOperands)) {
+    firstArcDefine.insertResult(index + firstArc->getNumResults(),
+                                res.getType(), {});
+  }
   // Update inputs of call to first arc
   // Update output signature of call to first arc
   // Replace the second call's outputs with the first call's
-  for (auto [index, res] : llvm::enumerate(secondArc->getResults())) {
-    res.replaceAllUsesWith(firstArc->getResult(index + firstArcOutputs.size()));
+  // Make a smallvec with all the inputs to our new call op
+  SmallVector<Value> newCallOperands;
+  newCallOperands.append(firstArc->getOperands().begin(),
+                         firstArc->getOperands().end());
+  newCallOperands.append(additionalCallOperands.begin(),
+                         additionalCallOperands.end());
+  r.setInsertionPointAfter(firstArc);
+  auto newCall = r.create<CallOp>(firstArc->getLoc(), firstArcDefine,
+                                  ValueRange(newCallOperands));
+
+  // firstArc.getCalleeAttr(), secondArcArgs,
+  // ValueRange(firstArc->getResults().begin(),
+  //            firstArc->getResults().end()));
+  for (auto [index, res] : llvm::enumerate(firstArcResults))
+    res.replaceAllUsesWith(newCall->getResult(index));
+  for (auto [index, res] : llvm::enumerate(secondArcResults)) {
+    res.replaceAllUsesWith(
+        newCall->getResult(index + firstArc->getNumResults()));
   }
+
   // Combine latencies
+  // Delete redundant call op
+  firstArc.erase();
   // Delete old second arc
   secondArc->erase();
   secondArcDefine->erase();
