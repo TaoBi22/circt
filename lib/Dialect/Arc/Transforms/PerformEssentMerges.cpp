@@ -15,6 +15,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/ValueRange.h"
@@ -41,11 +42,11 @@ using namespace arc;
 
 class PerformEssentMergesAnalysis {
 public:
-  PerformEssentMergesAnalysis(ModuleOp module, OpBuilder b, int threshold)
-      : threshold(threshold), b(b) {
+  PerformEssentMergesAnalysis(ModuleOp module, IRRewriter &r, int threshold)
+      : threshold(threshold), r(r) {
     module->walk([&](Operation *op) {
       if (auto defOp = dyn_cast<DefineOp>(op)) {
-        arcDefs[defOp.getNameAttr()] = &defOp;
+        arcDefs[defOp.getNameAttr()] = defOp;
       } else if (auto callOp = dyn_cast<CallOpInterface>(op)) {
         auto arcName = cast<mlir::SymbolRefAttr>(callOp.getCallableForCallee())
                            .getLeafReference();
@@ -60,10 +61,10 @@ public:
                                 CallOpInterface secondArc);
 
 private:
-  DenseMap<StringAttr, DefineOp *> arcDefs;
+  DenseMap<StringAttr, DefineOp> arcDefs;
   DenseMap<StringAttr, SmallVector<CallOpInterface>> arcCalls;
   int threshold;
-  OpBuilder b;
+  IRRewriter &r;
 };
 
 bool PerformEssentMergesAnalysis::canMergeArcs(CallOpInterface firstArc,
@@ -84,7 +85,6 @@ bool PerformEssentMergesAnalysis::canMergeArcs(CallOpInterface firstArc,
   auto secondArcName =
       cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
           .getLeafReference();
-  llvm::outs() << arcCalls[firstArcName].size();
   return arcCalls[firstArcName].size() <= 1 ||
          arcCalls[secondArcName].size() <= 1;
 }
@@ -100,8 +100,8 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
   auto secondArcName =
       cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
           .getLeafReference();
-  auto *firstArcDefine = arcDefs[firstArcName];
-  auto *secondArcDefine = arcDefs[secondArcName];
+  auto firstArcDefine = arcDefs[firstArcName];
+  auto secondArcDefine = arcDefs[secondArcName];
 
   auto firstArcResults = firstArc->getResults();
   auto secondArcArgs = secondArc->getOperands();
@@ -109,7 +109,7 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
   // Generate mapping from second arc's values to first arc's
   IRMapping mapping;
   auto firstArcOutputs =
-      firstArcDefine->getBodyBlock().getTerminator()->getOperands();
+      firstArcDefine.getBodyBlock().getTerminator()->getOperands();
   // Check which arguments to the second arc need corresponding arguments added,
   // and which are just inputs from the first arc anyway, so we can just map
   // them to the corresponding values the first arc outputs
@@ -118,14 +118,14 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
     for (auto [resi, res] : llvm::enumerate(firstArcResults)) {
       if (arg == res) {
         // Values are passed between arcs so can just map directly
-        mapping.map(secondArcDefine->getArgument(argi), firstArcOutputs[resi]);
+        mapping.map(secondArcDefine.getArgument(argi), firstArcOutputs[resi]);
         needToAddArg = false;
       }
     }
     if (needToAddArg) {
-      auto newArg = firstArcDefine->getBodyBlock().addArgument(arg.getType(),
-                                                               arg.getLoc());
-      mapping.map(secondArcDefine->getArgument(argi), newArg);
+      auto newArg = firstArcDefine.getBodyBlock().addArgument(arg.getType(),
+                                                              arg.getLoc());
+      mapping.map(secondArcDefine.getArgument(argi), newArg);
     }
   }
   // TODO: get rid of firstArc outputs which were only consumed by the second
@@ -133,16 +133,18 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
 
   // Prepare operands for new terminator and delete existing terminators
   auto secondArcOutputs =
-      secondArcDefine->getBodyBlock().getTerminator()->getOperands();
+      secondArcDefine.getBodyBlock().getTerminator()->getOperands();
   SmallVector<Value> newOutputs;
   newOutputs.append(firstArcOutputs.begin(), firstArcOutputs.end());
   newOutputs.append(secondArcOutputs.begin(), secondArcOutputs.end());
-  firstArcDefine->getBodyBlock().getTerminator()->erase();
-  secondArcDefine->getBodyBlock().getTerminator()->erase();
-  secondArcDefine->getBody().cloneInto(&firstArcDefine->getBody(), mapping);
+  secondArcDefine.getBodyBlock().getTerminator()->erase();
+  // TODO: this needs a value range, not a mapping - need to figure that one out
+  r.inlineBlockBefore(&secondArcDefine.getBodyBlock(),
+                      firstArcDefine.getBodyBlock().getTerminator());
   // Now create a new terminator
-  b.setInsertionPointToEnd(&firstArcDefine->getBodyBlock());
-  b.create<OutputOp>(firstArcDefine->getLoc(), ValueRange(newOutputs));
+  firstArcDefine.getBodyBlock().getTerminator()->erase();
+  r.setInsertionPointToEnd(&firstArcDefine.getBodyBlock());
+  r.create<OutputOp>(firstArcDefine->getLoc(), ValueRange(newOutputs));
   // Update inputs of call to first arc
   // Update output signature of call to first arc
   // Replace the second call's outputs with the first call's
@@ -164,9 +166,9 @@ struct PerformEssentMergesPass
 };
 
 void PerformEssentMergesPass::runOnOperation() {
-  OpBuilder b(getOperation());
+  IRRewriter r(getOperation()->getContext());
   auto analysis =
-      PerformEssentMergesAnalysis(getOperation(), b, optimalPartitionSize);
+      PerformEssentMergesAnalysis(getOperation(), r, optimalPartitionSize);
   auto ops = getOperation().getOps<hw::HWModuleOp>();
   auto modOp = *ops.begin();
   auto callOps = modOp.getOps<CallOp>();
