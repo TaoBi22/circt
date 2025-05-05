@@ -1,5 +1,6 @@
-// RUN: circt-opt %s --arc-perform-essent-merges --verify-diagnostics | FileCheck %s
+// RUN: circt-opt %s --perform-essent-merges --verify-diagnostics | FileCheck %s
 
+// CHECK-LABEL: arc.define
 arc.define @EmptyArc1() {
   arc.output
 }
