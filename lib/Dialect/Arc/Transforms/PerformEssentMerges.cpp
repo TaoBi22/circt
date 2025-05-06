@@ -166,7 +166,7 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
   r.create<OutputOp>(firstArcDefine->getLoc(), ValueRange(newOutputs));
   // Update firstArc results
   // TODO: this shouldn't be operands
-  for (auto [index, res] : llvm::enumerate(additionalCallOperands)) {
+  for (auto [index, res] : llvm::enumerate(secondArcOutputs)) {
     firstArcDefine.insertResult(index + firstArc->getNumResults(),
                                 res.getType(), {});
   }
