@@ -20,10 +20,13 @@
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
@@ -46,7 +49,7 @@ using namespace arc;
 class ArcEssentMerger {
 public:
   ArcEssentMerger(ModuleOp module, IRRewriter &r, int threshold)
-      : threshold(threshold), r(r) {
+      : threshold(threshold), r(r), module(module) {
     module->walk([&](Operation *op) {
       if (auto defOp = dyn_cast<DefineOp>(op)) {
         arcDefs[defOp.getNameAttr()] = defOp;
@@ -62,12 +65,14 @@ public:
   bool canMergeArcs(CallOpInterface firstArc, CallOpInterface secondArc);
   llvm::LogicalResult mergeArcs(CallOpInterface firstArc,
                                 CallOpInterface secondArc);
+  llvm::LogicalResult applySingleParentMerges();
 
 private:
   DenseMap<StringAttr, DefineOp> arcDefs;
   DenseMap<StringAttr, SmallVector<CallOpInterface>> arcCalls;
   int threshold;
   IRRewriter &r;
+  ModuleOp module;
 };
 
 bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
@@ -103,8 +108,10 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
 llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
                                                CallOpInterface secondArc) {
   // Check we're actually able to merge the arcs
+  // llvm::outs() << "step1\n";
   if (!canMergeArcs(firstArc, secondArc))
     return llvm::failure();
+  // llvm::outs() << "step2\n";
   auto firstArcName = cast<mlir::SymbolRefAttr>(firstArc.getCallableForCallee())
                           .getLeafReference();
   auto secondArcName =
@@ -214,6 +221,66 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   return success();
 }
 
+llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
+  // First, gather the list of merges:
+  bool changed = true;
+  int iterationsRemaining = 10000;
+  while (changed) {
+    if (--iterationsRemaining < 0) {
+      return failure();
+    }
+    // TODO: this should probably be a greedy pattern rewriter of some sort for
+    // upstreaming
+    changed = false;
+    DenseMap<CallOpInterface, CallOpInterface> arcsToMerge;
+    module->walk<WalkOrder::PreOrder>([&](CallOpInterface callOp) {
+      // llvm::outs() << "starting\n";
+      if (!isa<StateOp, CallOp>(callOp.getOperation()))
+        return;
+      // llvm::outs() << "dumping\n";
+      callOp.getOperation()->dump();
+      // Check if op has single parent
+      llvm::DenseSet<Operation *> parents;
+      // llvm::outs() << "going\n";
+      for (auto operand : callOp->getOperands()) {
+        // llvm::outs() << "thisfar1\n";
+        if (isa<BlockArgument>(operand))
+          return;
+        // llvm::outs() << "thisfar1.5\n";
+        parents.insert(operand.getDefiningOp());
+        // llvm::outs() << "thisfar2\n";
+      }
+      // llvm::outs() << "thisfar3.2\n";
+      // We're only interested if this op has one parent and it's an arc call
+      if (parents.empty() || parents.size() > 1 ||
+          !isa<StateOp, CallOp>(*parents.begin())) {
+        // llvm::outs() << "thisfar3.5\n";
+        return;
+      }
+      // llvm::outs() << "thisfar3\n";
+      // For now we'll just always merge these, but I need to check in the
+      // ESSENT code whether this should be restricted to just small partitions
+      arcsToMerge.insert(
+          std::pair(cast<CallOpInterface>(*parents.begin()), callOp));
+      // mergeArcs(cast<CallOpInterface>(*parents.begin()), callOp);
+      // llvm::outs() << "thisfar4\n";
+    });
+
+    // Now perform all the merges we can
+    for (auto [firstArc, secondArc] : arcsToMerge) {
+      // remove any merges into the second arc
+      for (auto [firstArc2, secondArc2] : arcsToMerge) {
+        if (secondArc == firstArc2) {
+          arcsToMerge.erase(firstArc2);
+          break;
+        }
+      }
+      changed |= llvm::succeeded(mergeArcs(firstArc, secondArc));
+    }
+  }
+  return llvm::success();
+}
+
 struct PerformEssentMergesPass
     : public arc::impl::PerformEssentMergesBase<PerformEssentMergesPass> {
   using PerformEssentMergesBase::PerformEssentMergesBase;
@@ -223,15 +290,9 @@ struct PerformEssentMergesPass
 
 void PerformEssentMergesPass::runOnOperation() {
   IRRewriter r(getOperation()->getContext());
-  auto analysis = ArcEssentMerger(getOperation(), r, optimalPartitionSize);
-  auto ops = getOperation().getOps<hw::HWModuleOp>();
-  auto modOp = *ops.begin();
-  auto callOps = modOp.getOps<CallOp>();
-  auto x = callOps.begin();
-  x++;
-  auto firstOp = *callOps.begin();
-  auto secondOp = *x;
-  analysis.mergeArcs(firstOp, secondOp);
+  auto merger = ArcEssentMerger(getOperation(), r, optimalPartitionSize);
+  if (failed(merger.applySingleParentMerges()))
+    return signalPassFailure();
 }
 
 std::unique_ptr<Pass> arc::createPerformEssentMergesPass() {
