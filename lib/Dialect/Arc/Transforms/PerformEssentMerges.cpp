@@ -43,9 +43,9 @@ using namespace mlir;
 using namespace circt;
 using namespace arc;
 
-class PerformEssentMergesAnalysis {
+class ArcEssentMerger {
 public:
-  PerformEssentMergesAnalysis(ModuleOp module, IRRewriter &r, int threshold)
+  ArcEssentMerger(ModuleOp module, IRRewriter &r, int threshold)
       : threshold(threshold), r(r) {
     module->walk([&](Operation *op) {
       if (auto defOp = dyn_cast<DefineOp>(op)) {
@@ -70,8 +70,8 @@ private:
   IRRewriter &r;
 };
 
-bool PerformEssentMergesAnalysis::canMergeArcs(CallOpInterface firstArc,
-                                               CallOpInterface secondArc) {
+bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
+                                   CallOpInterface secondArc) {
   // Make sure first arc doesn't use second arc (probably a FIXME, could make
   // direction dynamic)
   auto secondArcUsers = secondArc->getUsers();
@@ -100,9 +100,8 @@ bool PerformEssentMergesAnalysis::canMergeArcs(CallOpInterface firstArc,
          arcCalls[secondArcName].size() <= 1;
 }
 
-llvm::LogicalResult
-PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
-                                       CallOpInterface secondArc) {
+llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
+                                               CallOpInterface secondArc) {
   // Check we're actually able to merge the arcs
   if (!canMergeArcs(firstArc, secondArc))
     return llvm::failure();
@@ -224,8 +223,7 @@ struct PerformEssentMergesPass
 
 void PerformEssentMergesPass::runOnOperation() {
   IRRewriter r(getOperation()->getContext());
-  auto analysis =
-      PerformEssentMergesAnalysis(getOperation(), r, optimalPartitionSize);
+  auto analysis = ArcEssentMerger(getOperation(), r, optimalPartitionSize);
   auto ops = getOperation().getOps<hw::HWModuleOp>();
   auto modOp = *ops.begin();
   auto callOps = modOp.getOps<CallOp>();
