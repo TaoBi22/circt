@@ -28,6 +28,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
+#include <algorithm>
 
 #define DEBUG_TYPE "arc-perform-essent-merges"
 
@@ -71,7 +72,15 @@ private:
 
 bool PerformEssentMergesAnalysis::canMergeArcs(CallOpInterface firstArc,
                                                CallOpInterface secondArc) {
-  // Make sure ops either have same latency or entirely consume each other.
+  // Make sure first arc doesn't use second arc (probably a FIXME, could make
+  // direction dynamic)
+  auto secondArcUsers = secondArc->getUsers();
+  if (std::find(secondArcUsers.begin(), secondArcUsers.end(), firstArc) !=
+      secondArcUsers.end()) {
+    return false;
+  }
+  // Make sure ops either have same latency or entirely
+  // consume each other.
   if (isa<StateOp>(firstArc) || isa<StateOp>(secondArc)) {
     for (auto res : firstArc->getResults()) {
       for (auto *user : res.getUsers()) {
@@ -132,8 +141,6 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
       }
     }
     if (needToAddArg) {
-      // auto newArg = firstArcDefine.getBodyBlock().addArgument(arg.getType(),
-      //                                                         arg.getLoc());
       firstArcDefine.insertArgument(firstArcDefine.getNumArguments(),
                                     arg.getType(), {}, arg.getLoc());
 
@@ -142,7 +149,7 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
       // mapping.map(secondArcDefine.getArgument(argi), newArg);
     }
   }
-  // TODO: get rid of firstArc outputs which were only consumed by the second
+  // FIXME: get rid of firstArc outputs which were only consumed by the second
   // arc
 
   // Prepare operands for new terminator and delete existing terminators
@@ -159,6 +166,16 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
       firstArcDefine.getBodyBlock().getTerminator()->getPrevNode();
   auto secondArcOutputs = newSecondArcTerminator->getOperands();
   newOutputs.append(secondArcOutputs.begin(), secondArcOutputs.end());
+  // // before we delete the new terminator we also need to check whether the
+  // first
+  // // arc consumes any values from the second
+  // for (auto [operandIndex, operand] :
+  // llvm::enumerate(firstArc->getOperands()))
+  //   for (auto [resultIndex, res] : llvm::enumerate(secondArc->getResults()))
+  //     if (res == operand)
+  //       r.replaceAllUsesWith(firstArcDefine.getArgument(operandIndex),
+  //                            newSecondArcTerminator->getOperand(resultIndex));
+
   newSecondArcTerminator->erase();
   // Now create a new terminator
   firstArcDefine.getBodyBlock().getTerminator()->erase();
@@ -182,9 +199,6 @@ PerformEssentMergesAnalysis::mergeArcs(CallOpInterface firstArc,
   auto newCall = r.create<CallOp>(firstArc->getLoc(), firstArcDefine,
                                   ValueRange(newCallOperands));
 
-  // firstArc.getCalleeAttr(), secondArcArgs,
-  // ValueRange(firstArc->getResults().begin(),
-  //            firstArc->getResults().end()));
   for (auto [index, res] : llvm::enumerate(firstArcResults))
     res.replaceAllUsesWith(newCall->getResult(index));
   for (auto [index, res] : llvm::enumerate(secondArcResults)) {
