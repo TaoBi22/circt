@@ -66,6 +66,7 @@ public:
   llvm::LogicalResult mergeArcs(CallOpInterface firstArc,
                                 CallOpInterface secondArc);
   llvm::LogicalResult applySingleParentMerges();
+  llvm::LogicalResult applySmallSiblingMerges();
 
 private:
   DenseMap<StringAttr, DefineOp> arcDefs;
@@ -73,6 +74,7 @@ private:
   int threshold;
   IRRewriter &r;
   ModuleOp module;
+  bool isSmall(CallOpInterface arc);
 };
 
 bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
@@ -103,6 +105,16 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
           .getLeafReference();
   return arcCalls[firstArcName].size() <= 1 ||
          arcCalls[secondArcName].size() <= 1;
+}
+
+bool ArcEssentMerger::isSmall(CallOpInterface arc) {
+  // Check if the arc is small enough to be merged
+  auto arcName =
+      cast<mlir::SymbolRefAttr>(arc.getCallableForCallee()).getLeafReference();
+  auto arcDef = arcDefs[arcName];
+  int numOps = 0;
+  arcDef->walk([&](Operation *op) { numOps++; });
+  return numOps < threshold;
 }
 
 llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
@@ -237,8 +249,6 @@ llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
       // llvm::outs() << "starting\n";
       if (!isa<StateOp, CallOp>(callOp.getOperation()))
         return;
-      // llvm::outs() << "dumping\n";
-      callOp.getOperation()->dump();
       // Check if op has single parent
       llvm::DenseSet<Operation *> parents;
       // llvm::outs() << "going\n";
@@ -276,6 +286,80 @@ llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
         }
       }
       changed |= llvm::succeeded(mergeArcs(firstArc, secondArc));
+    }
+  }
+  return llvm::success();
+}
+
+llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
+  // iterate to fixed point
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    // First, gather sets of small siblings
+    // Just do this with a nested for loop - could do this with a bitmap but
+    // that would involve some massive APInts so very memory hungry
+    // Vector of pairs - first element is a list of parents, second is a list of
+    // siblings. We need to store the parents so we can invalidate merges that
+    // we've tampered with the parents of (actually do we??? they'll still be
+    // siblings after a merge???)
+    SmallVector<
+        std::pair<DenseSet<CallOpInterface>, SmallVector<CallOpInterface>>>
+        smallSiblingSets;
+    SmallVector<CallOpInterface> alreadyGrouped;
+    module->walk([&](CallOpInterface callOp) {
+      // We only care if the arc is small
+      if (!isSmall(callOp))
+        return;
+      // Check it's not already in a grouping
+      if (std::find(alreadyGrouped.begin(), alreadyGrouped.end(), callOp) !=
+          alreadyGrouped.end())
+        return;
+      // Collect the set of parents
+      DenseSet<CallOpInterface> parents;
+      for (auto operand : callOp->getOperands()) {
+        // We only care about ops with only arc parents
+        if (isa<BlockArgument>(operand) ||
+            isa<CallOp, StateOp>(operand.getDefiningOp()))
+          parents.insert(cast<CallOpInterface>(operand.getDefiningOp()));
+      }
+      // Look for small siblings
+      SmallVector<CallOpInterface> siblings;
+      module->walk([&](CallOpInterface secondCallOp) {
+        // We only care if the arc is small
+        if (!isSmall(secondCallOp))
+          return;
+        // No need to check if it's grouped as the first arc would be too
+        // Check if the two arcs are siblings
+        DenseSet<CallOpInterface> secondParents;
+        for (auto operand : secondCallOp->getOperands()) {
+          // We only care about ops with only arc parents
+          if (isa<BlockArgument>(operand) ||
+              isa<CallOp, StateOp>(operand.getDefiningOp()))
+            secondParents.insert(
+                cast<CallOpInterface>(operand.getDefiningOp()));
+        }
+        if (parents != secondParents)
+          return;
+        siblings.push_back(secondCallOp);
+      });
+      if (siblings.empty())
+        return;
+      // Otherwise we have a set of siblings! Yay!
+      siblings.push_back(callOp);
+      smallSiblingSets.push_back(std::pair(parents, siblings));
+      alreadyGrouped.append(siblings.begin(), siblings.end());
+    });
+    // Now we have a set of small siblings, we can merge them
+    // TODO: work out how ESSENT does this exactly
+    // For now we'll just merge them all into the first one
+    for (auto [parents, siblings] : smallSiblingSets) {
+      // Merge all the siblings into the first one
+      for (auto sibling : siblings) {
+        if (sibling == siblings[0])
+          continue;
+        changed |= llvm::succeeded(mergeArcs(siblings[0], sibling));
+      }
     }
   }
   return llvm::success();
