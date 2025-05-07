@@ -67,6 +67,7 @@ public:
                                 CallOpInterface secondArc);
   llvm::LogicalResult applySingleParentMerges();
   llvm::LogicalResult applySmallSiblingMerges();
+  llvm::LogicalResult applySmallIntoBigSiblingMerges();
 
 private:
   DenseMap<StringAttr, DefineOp> arcDefs;
@@ -365,6 +366,86 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
   return llvm::success();
 }
 
+llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
+  // iterate to fixed point
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    // First pair is small siblings, second is big siblings
+    SmallVector<
+        std::pair<SmallVector<CallOpInterface>, SmallVector<CallOpInterface>>>
+        splitSiblingSets;
+
+    SmallVector<CallOpInterface> alreadyGrouped;
+    module->walk([&](CallOpInterface callOp) {
+      // We only care if the starting arc is small (so we avoid fully big
+      // partitioning levels)
+      if (!isSmall(callOp))
+        return;
+      // Check it's not already in a grouping
+      if (std::find(alreadyGrouped.begin(), alreadyGrouped.end(), callOp) !=
+          alreadyGrouped.end())
+        return;
+      // Collect the set of parents
+      DenseSet<CallOpInterface> parents;
+      for (auto operand : callOp->getOperands()) {
+        // We only care about ops with only arc parents
+        if (isa<BlockArgument>(operand) ||
+            isa<CallOp, StateOp>(operand.getDefiningOp()))
+          parents.insert(cast<CallOpInterface>(operand.getDefiningOp()));
+      }
+      // Look for small siblings
+      SmallVector<CallOpInterface> smallSiblings;
+      SmallVector<CallOpInterface> bigSiblings;
+      module->walk([&](CallOpInterface secondCallOp) {
+        // No need to check if it's grouped as the first arc would be too
+        // Check if the two arcs are siblings
+        DenseSet<CallOpInterface> secondParents;
+        for (auto operand : secondCallOp->getOperands()) {
+          // We only care about ops with only arc parents
+          if (isa<BlockArgument>(operand) ||
+              isa<CallOp, StateOp>(operand.getDefiningOp()))
+            secondParents.insert(
+                cast<CallOpInterface>(operand.getDefiningOp()));
+        }
+        if (parents != secondParents)
+          return;
+        if (isSmall(secondCallOp))
+          smallSiblings.push_back(secondCallOp);
+        else
+          bigSiblings.push_back(secondCallOp);
+      });
+      if (smallSiblings.empty() && bigSiblings.empty())
+        return;
+      // Otherwise we have a set of siblings! Yay!
+      smallSiblings.push_back(callOp);
+      splitSiblingSets.push_back(std::pair(smallSiblings, bigSiblings));
+      alreadyGrouped.append(smallSiblings.begin(), smallSiblings.end());
+      alreadyGrouped.append(bigSiblings.begin(), bigSiblings.end());
+    });
+    // Now we have a set of small siblings, we can merge them
+    // TODO: work out how ESSENT does this exactly
+    // For now we'll just merge them all into the first one
+    for (auto [smallSiblings, bigSiblings] : splitSiblingSets) {
+      SmallVector<CallOpInterface> mergedBigSiblings;
+      for (auto smallSibling : smallSiblings) {
+        // Merge all the siblings into the first one
+        for (auto bigSibling : bigSiblings) {
+          if (std::find(mergedBigSiblings.begin(), mergedBigSiblings.end(),
+                        bigSibling) != mergedBigSiblings.end()) {
+            // TODO: this might cause segfaults if the bigsibling is being
+            // messed with during iteration - maybe need to precompute this
+            changed |= llvm::succeeded(mergeArcs(bigSibling, smallSibling));
+            mergedBigSiblings.push_back(bigSibling);
+          }
+        }
+        mergedBigSiblings.push_back(smallSibling);
+      }
+    }
+  }
+  return llvm::success();
+}
+
 struct PerformEssentMergesPass
     : public arc::impl::PerformEssentMergesBase<PerformEssentMergesPass> {
   using PerformEssentMergesBase::PerformEssentMergesBase;
@@ -376,6 +457,10 @@ void PerformEssentMergesPass::runOnOperation() {
   IRRewriter r(getOperation()->getContext());
   auto merger = ArcEssentMerger(getOperation(), r, optimalPartitionSize);
   if (failed(merger.applySingleParentMerges()))
+    return signalPassFailure();
+  if (failed(merger.applySmallSiblingMerges()))
+    return signalPassFailure();
+  if (failed(merger.applySmallIntoBigSiblingMerges()))
     return signalPassFailure();
 }
 
