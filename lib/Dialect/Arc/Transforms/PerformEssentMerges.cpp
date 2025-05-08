@@ -115,7 +115,8 @@ bool ArcEssentMerger::isSmall(CallOpInterface arc) {
   auto arcDef = arcDefs[arcName];
   int numOps = 0;
   arcDef->walk([&](Operation *op) { numOps++; });
-  return numOps < threshold;
+  // Decrement by one before comparison to account for the operation itself
+  return --numOps < threshold;
 }
 
 llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
@@ -324,6 +325,9 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
             isa<CallOp, StateOp>(operand.getDefiningOp()))
           parents.insert(cast<CallOpInterface>(operand.getDefiningOp()));
       }
+      // TODO: should we ignore parentless arcs here? Are they siblings?
+      if (parents.empty())
+        return;
       // Look for small siblings
       SmallVector<CallOpInterface> siblings;
       module->walk([&](CallOpInterface secondCallOp) {
@@ -340,8 +344,10 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
             secondParents.insert(
                 cast<CallOpInterface>(operand.getDefiningOp()));
         }
-        if (parents != secondParents)
+        if (parents != secondParents) {
+          llvm::outs() << "not siblings\n";
           return;
+        }
         siblings.push_back(secondCallOp);
       });
       if (siblings.empty())
@@ -390,10 +396,13 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
       DenseSet<CallOpInterface> parents;
       for (auto operand : callOp->getOperands()) {
         // We only care about ops with only arc parents
-        if (isa<BlockArgument>(operand) ||
+        if (!isa<BlockArgument>(operand) &&
             isa<CallOp, StateOp>(operand.getDefiningOp()))
           parents.insert(cast<CallOpInterface>(operand.getDefiningOp()));
       }
+      // TODO: should we ignore parentless arcs here? Are they siblings?
+      if (parents.empty())
+        return;
       // Look for small siblings
       SmallVector<CallOpInterface> smallSiblings;
       SmallVector<CallOpInterface> bigSiblings;
@@ -403,7 +412,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
         DenseSet<CallOpInterface> secondParents;
         for (auto operand : secondCallOp->getOperands()) {
           // We only care about ops with only arc parents
-          if (isa<BlockArgument>(operand) ||
+          if (!isa<BlockArgument>(operand) &&
               isa<CallOp, StateOp>(operand.getDefiningOp()))
             secondParents.insert(
                 cast<CallOpInterface>(operand.getDefiningOp()));
