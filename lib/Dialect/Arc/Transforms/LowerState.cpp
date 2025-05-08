@@ -157,6 +157,8 @@ struct ModuleLowering {
   DenseMap<Value, Value> allocatedInitials;
   /// The allocated storage for taps.
   DenseMap<Operation *, Value> allocatedTaps;
+  /// A map from arcs to their corresponding activation states.
+  DenseMap<Operation *, Value> arcActivations;
 
   /// A mapping from unlowered clocks to a value indicating a posedge. This is
   /// used to not create an excessive number of posedge detectors.
@@ -197,6 +199,15 @@ LogicalResult ModuleLowering::run() {
   storageArg = modelBlock.addArgument(
       StorageType::get(builder.getContext(), {}), modelOp.getLoc());
   builder.setInsertionPointToStart(&modelBlock);
+
+  // Create an activation condition for every arc
+  moduleOp.walk([&](Operation *op) {
+    op->dump();
+    if (isa<StateOp, CallOp>(op)) {
+      arcActivations[op] = builder.create<arc::AllocStateOp>(
+          moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
+    }
+  });
 
   // Create the `arc.initial` op to contain the ops for the initialization
   // phase.
@@ -498,8 +509,18 @@ LogicalResult OpLowering::lower(StateOp op) {
       return op.emitOpError("latencies > 1 not supported yet");
   }
 
-  return lowerStateful(op.getClock(), op.getEnable(), op.getReset(),
-                       op.getInputs(), op.getResults(), [&](ValueRange inputs) {
+  // Add activation to the enable
+  auto activationCondition = module.builder.create<StateReadOp>(
+      op.getLoc(), module.arcActivations[op]);
+  Value newEnable;
+  if (op.getEnable())
+    newEnable = module.builder.create<comb::AndOp>(op.getLoc(), op.getEnable(),
+                                                   activationCondition);
+  else
+    newEnable = activationCondition;
+
+  return lowerStateful(op.getClock(), newEnable, op.getReset(), op.getInputs(),
+                       op.getResults(), [&](ValueRange inputs) {
                          return module.builder
                              .create<CallOp>(op.getLoc(), op.getResultTypes(),
                                              op.getArc(), inputs)
@@ -556,8 +577,9 @@ LogicalResult OpLowering::lowerStateful(
     llvm::function_ref<ValueRange(ValueRange)> createMapping) {
   // Ensure all operands are lowered before we lower the op itself. State ops
   // are special in that they require the "old" value of their inputs and
-  // enable, in order to compute the updated "new" value. The clock needs to be
-  // the "new" value though, such that other states can act as a clock source.
+  // enable, in order to compute the updated "new" value. The clock needs to
+  // be the "new" value though, such that other states can act as a clock
+  // source.
   if (initial) {
     lowerValue(clock, Phase::New);
     if (enable)
@@ -569,8 +591,8 @@ LogicalResult OpLowering::lowerStateful(
     return success();
   }
 
-  // Check if we're inserting right after an `if` op for the same clock edge, in
-  // which case we can reuse that op. Otherwise, create the new `if` op.
+  // Check if we're inserting right after an `if` op for the same clock edge,
+  // in which case we can reuse that op. Otherwise, create the new `if` op.
   auto ifClockOp = createIfClockOp(clock);
   if (!ifClockOp)
     return failure();
@@ -646,7 +668,8 @@ LogicalResult OpLowering::lowerStateful(
     loweredInputs.push_back(lowered);
   }
 
-  // Compute the transfer function and write its results to the state's storage.
+  // Compute the transfer function and write its results to the state's
+  // storage.
   auto loweredResults = createMapping(loweredInputs);
   for (auto [state, value] : llvm::zip(states, loweredResults))
     module.builder.create<StateWriteOp>(value.getLoc(), state, value, Value{});
@@ -658,6 +681,29 @@ LogicalResult OpLowering::lowerStateful(
   for (auto [state, result] : llvm::zip(states, results)) {
     auto oldValue = module.builder.create<StateReadOp>(result.getLoc(), state);
     module.loweredValues[{result, Phase::Old}] = oldValue;
+  }
+
+  // Activate children if value has changed (iff op is an arc state or call)
+  // TODO: Add in activating child conditions.
+  for (auto result : results) {
+    // Read then write activation condition
+    for (auto [i, user] : llvm::enumerate(result.getUsers())) {
+      if (isa<StateOp, CallOp>(user)) {
+        auto oldValue = module.loweredValues[{result, Phase::Old}];
+        auto newValue = loweredResults[i];
+        auto userActivation = module.arcActivations[user];
+        auto activated =
+            module.builder.create<StateReadOp>(op->getLoc(), userActivation);
+        // TODO:
+        //   need to check if the value changes here....
+        auto hasChanged = module.builder.create<comb::ICmpOp>(
+            op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
+        auto newActivated = module.builder.create<comb::OrOp>(
+            op->getLoc(), activated, hasChanged);
+        module.builder.create<StateWriteOp>(op->getLoc(), userActivation,
+                                            newActivated, Value{});
+      }
+    }
   }
 
   return success();
@@ -809,8 +855,8 @@ LogicalResult OpLowering::lower(InstanceOp op) {
   if (llvm::is_contained(values, Value{}))
     return failure();
 
-  // Then allocate storage for each instance input and assign the corresponding
-  // value.
+  // Then allocate storage for each instance input and assign the
+  // corresponding value.
   for (auto [value, name] : llvm::zip(values, op.getArgNames())) {
     auto state = module.allocBuilder.create<AllocStateOp>(
         value.getLoc(), StateType::get(value.getType()), module.storageArg);
@@ -821,9 +867,9 @@ LogicalResult OpLowering::lower(InstanceOp op) {
   }
 
   // HACK: Also ensure that storage has been allocated for all outputs.
-  // Otherwise only the actually used instance outputs would be allocated, which
-  // would make the optimization user-visible. Remove this once we use the debug
-  // dialect.
+  // Otherwise only the actually used instance outputs would be allocated,
+  // which would make the optimization user-visible. Remove this once we use
+  // the debug dialect.
   for (auto result : op.getResults())
     module.getAllocatedState(result);
 
@@ -937,16 +983,16 @@ LogicalResult OpLowering::lower(llhd::FinalOp op) {
   if (initial)
     return success();
 
-  // Handle the simple case where the final op contains only one block, which we
-  // can inline directly.
+  // Handle the simple case where the final op contains only one block, which
+  // we can inline directly.
   if (op.getBody().hasOneBlock()) {
     for (auto &bodyOp : op.getBody().front().without_terminator())
       module.finalBuilder.clone(bodyOp, mapping);
     return success();
   }
 
-  // Create a new `scf.execute_region` op and clone the entire `llhd.final` body
-  // region into it. Replace `llhd.halt` ops with `scf.yield`.
+  // Create a new `scf.execute_region` op and clone the entire `llhd.final`
+  // body region into it. Replace `llhd.halt` ops with `scf.yield`.
   auto executeOp = module.finalBuilder.create<scf::ExecuteRegionOp>(
       op.getLoc(), TypeRange{});
   module.finalBuilder.cloneRegionBefore(op.getBody(), executeOp.getRegion(),
@@ -1014,9 +1060,9 @@ Value OpLowering::lowerValue(Value value, Phase phase) {
   if (auto castOp = dyn_cast<seq::FromImmutableOp>(op))
     return lowerValue(castOp, result, phase);
 
-  // Otherwise we mark the defining operation as to be lowered first. This will
-  // cause the lookup in `loweredValues` above to return a value the next time
-  // (i.e. when initial is false).
+  // Otherwise we mark the defining operation as to be lowered first. This
+  // will cause the lookup in `loweredValues` above to return a value the next
+  // time (i.e. when initial is false).
   if (initial) {
     addPending(op, phase);
     return {};
@@ -1040,8 +1086,8 @@ Value OpLowering::lowerValue(InstanceOp op, OpResult result, Phase phase) {
 /// value is requested, asserts that no new values have been written.
 Value OpLowering::lowerValue(StateOp op, OpResult result, Phase phase) {
   if (initial) {
-    // Ensure that the new or initial value has been written by the lowering of
-    // the state op before we attempt to read it.
+    // Ensure that the new or initial value has been written by the lowering
+    // of the state op before we attempt to read it.
     if (phase == Phase::New || phase == Phase::Initial)
       addPending(op, phase);
     return {};
@@ -1062,8 +1108,8 @@ Value OpLowering::lowerValue(StateOp op, OpResult result, Phase phase) {
 /// value is requested, asserts that no new values have been written.
 Value OpLowering::lowerValue(sim::DPICallOp op, OpResult result, Phase phase) {
   if (initial) {
-    // Ensure that the new or initial value has been written by the lowering of
-    // the state op before we attempt to read it.
+    // Ensure that the new or initial value has been written by the lowering
+    // of the state op before we attempt to read it.
     if (phase == Phase::New || phase == Phase::Initial)
       addPending(op, phase);
     return {};
