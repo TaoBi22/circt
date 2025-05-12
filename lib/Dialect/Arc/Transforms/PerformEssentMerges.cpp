@@ -28,6 +28,7 @@
 #include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
@@ -216,8 +217,39 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   newCallOperands.append(additionalCallOperands.begin(),
                          additionalCallOperands.end());
   r.setInsertionPointAfter(firstArc);
-  auto newCall = r.create<CallOp>(firstArc->getLoc(), firstArcDefine,
-                                  ValueRange(newCallOperands));
+
+  // We need to figure out if we are creating a state arc or a call arc
+  auto firstArcLat =
+      isa<CallOp>(firstArc) ? 0 : cast<StateOp>(firstArc).getLatency();
+  auto secondArcLat =
+      isa<CallOp>(secondArc) ? 0 : cast<StateOp>(secondArc).getLatency();
+  auto combinedLatency = firstArcLat + secondArcLat;
+
+  int totalLatency = 0;
+  Value clock;
+  bool mustBeState = false;
+  // TODO: these clock checks are only safe if we check clock equivalence in our
+  // canMergeArcs function
+  if (auto firstState = dyn_cast<StateOp>(firstArc.getOperation())) {
+    mustBeState = true;
+    totalLatency += firstState.getLatency();
+    clock = firstState.getClock();
+  }
+  if (auto secondState = dyn_cast<StateOp>(secondArc.getOperation())) {
+    mustBeState = true;
+    totalLatency += secondState.getLatency();
+    clock = secondState.getClock();
+  }
+
+  Operation *newCall;
+  if (mustBeState) {
+    newCall = r.create<StateOp>(firstArc->getLoc(), firstArcDefine, clock,
+                                Value(), combinedLatency,
+                                ValueRange(newCallOperands), ValueRange());
+  } else {
+    newCall = r.create<CallOp>(firstArc->getLoc(), firstArcDefine,
+                               ValueRange(newCallOperands));
+  }
 
   for (auto [index, res] : llvm::enumerate(firstArcResults))
     res.replaceAllUsesWith(newCall->getResult(index));
