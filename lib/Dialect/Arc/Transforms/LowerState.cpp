@@ -27,6 +27,7 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "arc-lower-state"
 
@@ -202,7 +203,6 @@ LogicalResult ModuleLowering::run() {
 
   // Create an activation condition for every arc
   moduleOp.walk([&](Operation *op) {
-    op->dump();
     if (isa<StateOp, CallOp>(op)) {
       arcActivations[op] = builder.create<arc::AllocStateOp>(
           moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
@@ -509,18 +509,8 @@ LogicalResult OpLowering::lower(StateOp op) {
       return op.emitOpError("latencies > 1 not supported yet");
   }
 
-  // Add activation to the enable
-  auto activationCondition = module.builder.create<StateReadOp>(
-      op.getLoc(), module.arcActivations[op]);
-  Value newEnable;
-  if (op.getEnable())
-    newEnable = module.builder.create<comb::AndOp>(op.getLoc(), op.getEnable(),
-                                                   activationCondition);
-  else
-    newEnable = activationCondition;
-
-  return lowerStateful(op.getClock(), newEnable, op.getReset(), op.getInputs(),
-                       op.getResults(), [&](ValueRange inputs) {
+  return lowerStateful(op.getClock(), op.getEnable(), op.getReset(),
+                       op.getInputs(), op.getResults(), [&](ValueRange inputs) {
                          return module.builder
                              .create<CallOp>(op.getLoc(), op.getResultTypes(),
                                              op.getArc(), inputs)
@@ -582,15 +572,15 @@ LogicalResult OpLowering::lowerStateful(
   // source.
   if (initial) {
     lowerValue(clock, Phase::New);
-    if (enable)
+    if (enable) {
       lowerValue(enable, Phase::Old);
+    }
     if (reset)
       lowerValue(reset, Phase::Old);
     for (auto input : inputs)
       lowerValue(input, Phase::Old);
     return success();
   }
-
   // Check if we're inserting right after an `if` op for the same clock edge,
   // in which case we can reuse that op. Otherwise, create the new `if` op.
   auto ifClockOp = createIfClockOp(clock);
@@ -642,6 +632,14 @@ LogicalResult OpLowering::lowerStateful(
   }
 
   // Handle the enable.
+
+  auto originalOp = results[0].getDefiningOp();
+
+  // Add activation to the enable
+  auto activationCondition = module.builder.create<StateReadOp>(
+      originalOp->getLoc(), module.arcActivations[op]);
+
+  Value expandedEnable;
   if (enable) {
     // Check if we can reuse a previous enable value.
     auto &[unloweredEnable, loweredEnable] = module.prevEnable;
@@ -649,15 +647,23 @@ LogicalResult OpLowering::lowerStateful(
         loweredEnable.getParentBlock() != module.builder.getBlock()) {
       unloweredEnable = enable;
       loweredEnable = lowerValue(enable, Phase::Old);
-      if (!loweredEnable)
-        return failure();
-    }
 
-    // Check if we're inserting right after an if op for the same enable, in
-    // which case we can reuse that op. Otherwise create the new if op.
-    auto ifEnableOp = createOrReuseIf(module.builder, loweredEnable, false);
-    module.builder.setInsertionPoint(ifEnableOp.thenYield());
+      // if (!loweredEnable)
+      //   return failure();
+    }
+    expandedEnable = module.builder.create<comb::AndOp>(
+        originalOp->getLoc(), loweredEnable, activationCondition);
+
+  } else {
+    expandedEnable = activationCondition;
   }
+
+  // We'll always have an enable now that we have partition activations
+
+  // Check if we're inserting right after an if op for the same enable, in
+  // which case we can reuse that op. Otherwise create the new if op.
+  auto ifEnableOp = createOrReuseIf(module.builder, expandedEnable, false);
+  module.builder.setInsertionPoint(ifEnableOp.thenYield());
 
   // Get the transfer function inputs. This potentially inserts read ops.
   SmallVector<Value> loweredInputs;
@@ -683,13 +689,14 @@ LogicalResult OpLowering::lowerStateful(
     module.loweredValues[{result, Phase::Old}] = oldValue;
   }
 
+  module.builder.setInsertionPoint(ifEnableOp.thenYield());
   // Activate children if value has changed (iff op is an arc state or call)
   // TODO: Add in activating child conditions.
   for (auto [resIndex, result] : llvm::enumerate(results)) {
     // Check if this result has changed.
     auto oldValue = module.loweredValues[{result, Phase::Old}];
     auto newValue = loweredResults[resIndex];
-
+    // TODO: this causes nondom
     // Read then write activation condition
     for (auto *user : result.getUsers()) {
       if (isa<StateOp, CallOp>(user)) {
@@ -1067,7 +1074,7 @@ Value OpLowering::lowerValue(Value value, Phase phase) {
     addPending(op, phase);
     return {};
   }
-  emitError(result.getLoc()) << "value has not been lowered";
+  emitError(result.getLoc()) << "value has not been lowered?";
   return {};
 }
 
