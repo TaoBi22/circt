@@ -685,17 +685,17 @@ LogicalResult OpLowering::lowerStateful(
 
   // Activate children if value has changed (iff op is an arc state or call)
   // TODO: Add in activating child conditions.
-  for (auto result : results) {
+  for (auto [resIndex, result] : llvm::enumerate(results)) {
+    // Check if this result has changed.
+    auto oldValue = module.loweredValues[{result, Phase::Old}];
+    auto newValue = loweredResults[resIndex];
+
     // Read then write activation condition
-    for (auto [i, user] : llvm::enumerate(result.getUsers())) {
+    for (auto *user : result.getUsers()) {
       if (isa<StateOp, CallOp>(user)) {
-        auto oldValue = module.loweredValues[{result, Phase::Old}];
-        auto newValue = loweredResults[i];
         auto userActivation = module.arcActivations[user];
         auto activated =
             module.builder.create<StateReadOp>(op->getLoc(), userActivation);
-        // TODO:
-        //   need to check if the value changes here....
         auto hasChanged = module.builder.create<comb::ICmpOp>(
             op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
         auto newActivated = module.builder.create<comb::OrOp>(
