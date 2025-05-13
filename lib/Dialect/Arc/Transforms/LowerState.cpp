@@ -13,6 +13,7 @@
 #include "circt/Dialect/HW/HWOps.h"
 #include "circt/Dialect/LLHD/IR/LLHDOps.h"
 #include "circt/Dialect/Seq/SeqOps.h"
+#include "circt/Dialect/Seq/SeqTypes.h"
 #include "circt/Dialect/Sim/SimOps.h"
 #include "circt/Support/BackedgeBuilder.h"
 #include "mlir/Analysis/TopologicalSortUtils.h"
@@ -632,39 +633,59 @@ LogicalResult OpLowering::lowerStateful(
   }
 
   // Handle the enable.
-
+  scf::IfOp ifEnableOp;
   auto originalOp = results[0].getDefiningOp();
+  assert(originalOp && "result must have a defining op");
+  if (isa<sim::DPICallOp>(originalOp)) {
+    // Copy pasted from original file
+    if (enable) {
+      // Check if we can reuse a previous enable value.
+      auto &[unloweredEnable, loweredEnable] = module.prevEnable;
+      if (unloweredEnable != enable ||
+          loweredEnable.getParentBlock() != module.builder.getBlock()) {
+        unloweredEnable = enable;
+        loweredEnable = lowerValue(enable, Phase::Old);
+        if (!loweredEnable)
+          return failure();
+      }
 
-  // Add activation to the enable
-  auto activationCondition = module.builder.create<StateReadOp>(
-      originalOp->getLoc(), module.arcActivations[op]);
-
-  Value expandedEnable;
-  if (enable) {
-    // Check if we can reuse a previous enable value.
-    auto &[unloweredEnable, loweredEnable] = module.prevEnable;
-    if (unloweredEnable != enable ||
-        loweredEnable.getParentBlock() != module.builder.getBlock()) {
-      unloweredEnable = enable;
-      loweredEnable = lowerValue(enable, Phase::Old);
-
-      // if (!loweredEnable)
-      //   return failure();
+      // Check if we're inserting right after an if op for the same enable, in
+      // which case we can reuse that op. Otherwise create the new if op.
+      ifEnableOp = createOrReuseIf(module.builder, loweredEnable, false);
+      module.builder.setInsertionPoint(ifEnableOp.thenYield());
     }
-    expandedEnable = module.builder.create<comb::AndOp>(
-        originalOp->getLoc(), loweredEnable, activationCondition);
 
   } else {
-    expandedEnable = activationCondition;
+    // Add activation to the enable
+    auto activationCondition = module.builder.create<StateReadOp>(
+        originalOp->getLoc(), module.arcActivations[op]);
+
+    Value expandedEnable;
+    if (enable) {
+      // Check if we can reuse a previous enable value.
+      auto &[unloweredEnable, loweredEnable] = module.prevEnable;
+      if (unloweredEnable != enable ||
+          loweredEnable.getParentBlock() != module.builder.getBlock()) {
+        unloweredEnable = enable;
+        loweredEnable = lowerValue(enable, Phase::Old);
+
+        // if (!loweredEnable)
+        //   return failure();
+      }
+      expandedEnable = module.builder.create<comb::AndOp>(
+          originalOp->getLoc(), loweredEnable, activationCondition);
+
+    } else {
+      expandedEnable = activationCondition;
+    }
+
+    // We'll always have an enable now that we have partition activations
+
+    // Check if we're inserting right after an if op for the same enable, in
+    // which case we can reuse that op. Otherwise create the new if op.
+    ifEnableOp = createOrReuseIf(module.builder, expandedEnable, false);
+    module.builder.setInsertionPoint(ifEnableOp.thenYield());
   }
-
-  // We'll always have an enable now that we have partition activations
-
-  // Check if we're inserting right after an if op for the same enable, in
-  // which case we can reuse that op. Otherwise create the new if op.
-  auto ifEnableOp = createOrReuseIf(module.builder, expandedEnable, false);
-  module.builder.setInsertionPoint(ifEnableOp.thenYield());
-
   // Get the transfer function inputs. This potentially inserts read ops.
   SmallVector<Value> loweredInputs;
   for (auto input : inputs) {
@@ -689,26 +710,36 @@ LogicalResult OpLowering::lowerStateful(
     module.loweredValues[{result, Phase::Old}] = oldValue;
   }
 
-  module.builder.setInsertionPoint(ifEnableOp.thenYield());
-  // Activate children if value has changed (iff op is an arc state or call)
-  // TODO: Add in activating child conditions.
-  for (auto [resIndex, result] : llvm::enumerate(results)) {
-    // Check if this result has changed.
-    auto oldValue = module.loweredValues[{result, Phase::Old}];
-    auto newValue = loweredResults[resIndex];
-    // TODO: this causes nondom
-    // Read then write activation condition
-    for (auto *user : result.getUsers()) {
-      if (isa<StateOp, CallOp>(user)) {
-        auto userActivation = module.arcActivations[user];
-        auto activated =
-            module.builder.create<StateReadOp>(op->getLoc(), userActivation);
-        auto hasChanged = module.builder.create<comb::ICmpOp>(
-            op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
-        auto newActivated = module.builder.create<comb::OrOp>(
-            op->getLoc(), activated, hasChanged);
-        module.builder.create<StateWriteOp>(op->getLoc(), userActivation,
-                                            newActivated, Value{});
+  if (!isa<sim::DPICallOp>(originalOp)) {
+    module.builder.setInsertionPoint(ifEnableOp.thenYield());
+    // Activate children if value has changed (iff op is an arc state or call)
+    // TODO: Add in activating child conditions.
+    for (auto [resIndex, result] : llvm::enumerate(results)) {
+      // Check if this result has changed.
+      auto oldValue = module.loweredValues[{result, Phase::Old}];
+      auto newValue = loweredResults[resIndex];
+      // TODO: this causes nondom
+      // Read then write activation condition
+      for (auto *user : result.getUsers()) {
+        if (isa<StateOp, CallOp>(user)) {
+          if (isa<seq::ClockType>(newValue.getType())) {
+            newValue = module.builder.create<seq::FromClockOp>(result.getLoc(),
+                                                               newValue);
+          }
+          if (isa<seq::ClockType>(oldValue.getType())) {
+            oldValue = module.builder.create<seq::FromClockOp>(result.getLoc(),
+                                                               oldValue);
+          }
+          auto userActivation = module.arcActivations[user];
+          auto activated =
+              module.builder.create<StateReadOp>(op->getLoc(), userActivation);
+          auto hasChanged = module.builder.create<comb::ICmpOp>(
+              op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
+          auto newActivated = module.builder.create<comb::OrOp>(
+              op->getLoc(), activated, hasChanged);
+          module.builder.create<StateWriteOp>(op->getLoc(), userActivation,
+                                              newActivated, Value{});
+        }
       }
     }
   }
