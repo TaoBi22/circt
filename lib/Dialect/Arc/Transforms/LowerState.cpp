@@ -21,9 +21,11 @@
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeRange.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -150,6 +152,8 @@ struct ModuleLowering {
 
   /// The allocated input ports.
   SmallVector<Value> allocatedInputs;
+  /// The allocated cached values for input ports.
+  SmallVector<Value> allocatedOldInputs;
   /// The allocated states as a mapping from op results to `arc.alloc_state`
   /// results.
   DenseMap<Value, Value> allocatedStates;
@@ -229,6 +233,44 @@ LogicalResult ModuleLowering::run() {
     auto state = allocBuilder.create<RootInputOp>(
         arg.getLoc(), StateType::get(arg.getType()), name, storageArg);
     allocatedInputs.push_back(state);
+  }
+
+  // Allocate old storage for the inputs.
+  for (auto arg : moduleOp.getBodyBlock()->getArguments()) {
+    auto state = builder.create<arc::AllocStateOp>(
+        moduleOp.getLoc(), StateType::get(arg.getType()), storageArg);
+    allocatedOldInputs.push_back(state);
+  }
+
+  // Add an activity check for every arc.
+  Value quickTrue = builder.create<hw::ConstantOp>(moduleOp.getLoc(),
+                                                   builder.getI1Type(), true);
+  for (auto [i, arg] :
+       llvm::enumerate(moduleOp.getBodyBlock()->getArguments())) {
+    Value newValue =
+        builder.create<arc::StateReadOp>(arg.getLoc(), allocatedInputs[i]);
+    Value oldValue =
+        builder.create<arc::StateReadOp>(arg.getLoc(), allocatedOldInputs[i]);
+    if (isa<seq::ClockType>(arg.getType())) {
+      // If the value is a clock, we need to check for a posedge.
+      newValue = builder.create<seq::FromClockOp>(arg.getLoc(), newValue);
+      oldValue = builder.create<seq::FromClockOp>(arg.getLoc(), oldValue);
+    }
+    auto hasInputChanged = builder.create<comb::ICmpOp>(
+        arg.getLoc(), comb::ICmpPredicate::ne, newValue, oldValue);
+    auto ifInputChanged = builder.create<scf::IfOp>(arg.getLoc(), TypeRange{},
+                                                    hasInputChanged, false);
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&ifInputChanged.getThenRegion().front());
+    for (auto *user : arg.getUsers()) {
+      if (isa<CallOp, StateOp>(user)) {
+        auto activation = arcActivations[user];
+        builder.create<StateWriteOp>(arg.getLoc(), activation, quickTrue,
+                                     Value{});
+      }
+    }
+
+    builder.setInsertionPointAfter(ifInputChanged);
   }
 
   // Lower the ops.
