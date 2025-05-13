@@ -9,6 +9,7 @@
 #include "circt/Dialect/Arc/ArcOps.h"
 #include "circt/Dialect/Arc/ArcPasses.h"
 #include "circt/Dialect/HW/HWOps.h"
+#include "mlir/Bytecode/Encoding.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -51,16 +52,7 @@ class ArcEssentMerger {
 public:
   ArcEssentMerger(ModuleOp module, IRRewriter &r, int threshold)
       : threshold(threshold), r(r), module(module) {
-    module->walk([&](Operation *op) {
-      if (auto defOp = dyn_cast<DefineOp>(op)) {
-        arcDefs[defOp.getNameAttr()] = defOp;
-      } else if (auto callOp = dyn_cast<CallOpInterface>(op)) {
-        auto arcName = cast<mlir::SymbolRefAttr>(callOp.getCallableForCallee())
-                           .getLeafReference();
-        if (arcName)
-          arcCalls[arcName].push_back(callOp);
-      }
-    });
+    regenerateArcMapping();
   }
 
   bool canMergeArcs(CallOpInterface firstArc, CallOpInterface secondArc);
@@ -77,17 +69,39 @@ private:
   IRRewriter &r;
   ModuleOp module;
   bool isSmall(CallOpInterface arc);
+  void regenerateArcMapping();
 };
+
+void ArcEssentMerger::regenerateArcMapping() {
+  module->walk([&](Operation *op) {
+    if (auto defOp = dyn_cast<DefineOp>(op)) {
+      arcDefs[defOp.getNameAttr()] = defOp;
+    } else if (auto callOp = dyn_cast<CallOpInterface>(op)) {
+      auto arcName = cast<mlir::SymbolRefAttr>(callOp.getCallableForCallee())
+                         .getLeafReference();
+      if (arcName)
+        arcCalls[arcName].push_back(callOp);
+    }
+  });
+}
 
 bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
                                    CallOpInterface secondArc) {
   // Make sure first arc doesn't use second arc (probably a FIXME, could make
   // direction dynamic)
+  llvm::outs() << "firstcheck\n";
+  firstArc->dump();
+  secondArc->dump();
   auto secondArcUsers = secondArc->getUsers();
+  llvm::outs() << "managed to get users\n";
+  for (auto user : secondArcUsers) {
+    user->dump();
+  }
   if (std::find(secondArcUsers.begin(), secondArcUsers.end(), firstArc) !=
       secondArcUsers.end()) {
     return false;
   }
+  llvm::outs() << "secondcheck\n";
   // Make sure ops either have same latency or entirely
   // consume each other.
   if (isa<StateOp>(firstArc) || isa<StateOp>(secondArc)) {
@@ -99,13 +113,14 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
       }
     }
   }
+  llvm::outs() << "thirdcheck\n";
   // Make sure arcs do not have other, conflicting uses.
   auto firstArcName = cast<mlir::SymbolRefAttr>(firstArc.getCallableForCallee())
                           .getLeafReference();
   auto secondArcName =
       cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
           .getLeafReference();
-  return arcCalls[firstArcName].size() <= 1 ||
+  return arcCalls[firstArcName].size() <= 1 &&
          arcCalls[secondArcName].size() <= 1;
 }
 
@@ -123,10 +138,10 @@ bool ArcEssentMerger::isSmall(CallOpInterface arc) {
 llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
                                                CallOpInterface secondArc) {
   // Check we're actually able to merge the arcs
-  // llvm::outs() << "step1\n";
+  llvm::outs() << "step1\n";
   if (!canMergeArcs(firstArc, secondArc))
     return llvm::failure();
-  // llvm::outs() << "step2\n";
+  llvm::outs() << "step1.5\n";
   auto firstArcName = cast<mlir::SymbolRefAttr>(firstArc.getCallableForCallee())
                           .getLeafReference();
   auto secondArcName =
@@ -134,10 +149,15 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
           .getLeafReference();
   auto firstArcDefine = arcDefs[firstArcName];
   auto secondArcDefine = arcDefs[secondArcName];
+  firstArc->dump();
+  firstArcDefine->dump();
+  secondArc->dump();
+  secondArcDefine->dump();
 
   auto firstArcResults = firstArc->getResults();
   auto secondArcArgs = secondArc->getOperands();
   auto secondArcResults = secondArc->getResults();
+  llvm::outs() << "step2\n";
 
   // Generate mapping from second arc's values to first arc's
   IRMapping mapping;
@@ -172,10 +192,13 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   }
   // FIXME: get rid of firstArc outputs which were only consumed by the second
   // arc
+  llvm::outs() << "step3\n";
 
   // Prepare operands for new terminator and delete existing terminators
   SmallVector<Value> newOutputs;
+  llvm::outs() << "step3.1\n";
   newOutputs.append(firstArcOutputs.begin(), firstArcOutputs.end());
+  llvm::outs() << "step3.2\n";
   // TODO: this needs a value range, not a mapping - need to figure that one out
   r.inlineBlockBefore(&secondArcDefine.getBodyBlock(),
                       firstArcDefine.getBodyBlock().getTerminator(),
@@ -183,6 +206,7 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   // inlineBlockBefore deletes original values so we need to fetch the new
   // values from the second block's terminator (which is now the penultimate op
   // in the block)
+  llvm::outs() << "step3.5\n";
   auto *newSecondArcTerminator =
       firstArcDefine.getBodyBlock().getTerminator()->getPrevNode();
   auto secondArcOutputs = newSecondArcTerminator->getOperands();
@@ -196,6 +220,7 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   //     if (res == operand)
   //       r.replaceAllUsesWith(firstArcDefine.getArgument(operandIndex),
   //                            newSecondArcTerminator->getOperand(resultIndex));
+  llvm::outs() << "step4\n";
 
   newSecondArcTerminator->erase();
   // Now create a new terminator
@@ -207,6 +232,8 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
     firstArcDefine.insertResult(index + firstArc->getNumResults(),
                                 res.getType(), {});
   }
+  llvm::outs() << "step5\n";
+
   // Update inputs of call to first arc
   // Update output signature of call to first arc
   // Replace the second call's outputs with the first call's
@@ -224,6 +251,7 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   auto secondArcLat =
       isa<CallOp>(secondArc) ? 0 : cast<StateOp>(secondArc).getLatency();
   auto combinedLatency = firstArcLat + secondArcLat;
+  llvm::outs() << "step6\n";
 
   int totalLatency = 0;
   Value clock;
@@ -240,6 +268,7 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
     totalLatency += secondState.getLatency();
     clock = secondState.getClock();
   }
+  llvm::outs() << "step7\n";
 
   Operation *newCall;
   if (mustBeState) {
@@ -257,6 +286,7 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
     res.replaceAllUsesWith(
         newCall->getResult(index + firstArc->getNumResults()));
   }
+  llvm::outs() << "step8\n";
 
   // Combine latencies
   // Delete redundant call op
@@ -278,7 +308,7 @@ llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
     // TODO: this should probably be a greedy pattern rewriter of some sort for
     // upstreaming
     changed = false;
-    DenseMap<CallOpInterface, CallOpInterface> arcsToMerge;
+    SmallVector<std::pair<CallOpInterface, CallOpInterface>> arcsToMerge;
     module->walk<WalkOrder::PreOrder>([&](CallOpInterface callOp) {
       // llvm::outs() << "starting\n";
       if (!isa<StateOp, CallOp>(callOp.getOperation()))
@@ -304,7 +334,7 @@ llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
       // llvm::outs() << "thisfar3\n";
       // For now we'll just always merge these, but I need to check in the
       // ESSENT code whether this should be restricted to just small partitions
-      arcsToMerge.insert(
+      arcsToMerge.push_back(
           std::pair(cast<CallOpInterface>(*parents.begin()), callOp));
       // mergeArcs(cast<CallOpInterface>(*parents.begin()), callOp);
       // llvm::outs() << "thisfar4\n";
@@ -313,15 +343,16 @@ llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
     // Now perform all the merges we can
     for (auto [firstArc, secondArc] : arcsToMerge) {
       // remove any merges into the second arc
-      for (auto [firstArc2, secondArc2] : arcsToMerge) {
-        if (secondArc == firstArc2) {
-          arcsToMerge.erase(firstArc2);
+      for (auto [x, pair] : llvm::enumerate(arcsToMerge)) {
+        if (secondArc == pair.first) {
+          arcsToMerge.erase(arcsToMerge.begin() + x);
           break;
         }
       }
       changed |= llvm::succeeded(mergeArcs(firstArc, secondArc));
     }
   }
+  regenerateArcMapping();
   return llvm::success();
 }
 
@@ -353,9 +384,11 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
       DenseSet<CallOpInterface> parents;
       for (auto operand : callOp->getOperands()) {
         // We only care about ops with only arc parents
-        if (isa<BlockArgument>(operand) ||
-            isa<CallOp, StateOp>(operand.getDefiningOp()))
+        if (!isa<BlockArgument>(operand) &&
+            isa<CallOp, StateOp>(operand.getDefiningOp())) {
+
           parents.insert(cast<CallOpInterface>(operand.getDefiningOp()));
+        }
       }
       // TODO: should we ignore parentless arcs here? Are they siblings?
       if (parents.empty())
@@ -371,13 +404,12 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
         DenseSet<CallOpInterface> secondParents;
         for (auto operand : secondCallOp->getOperands()) {
           // We only care about ops with only arc parents
-          if (isa<BlockArgument>(operand) ||
+          if (!isa<BlockArgument>(operand) &&
               isa<CallOp, StateOp>(operand.getDefiningOp()))
             secondParents.insert(
                 cast<CallOpInterface>(operand.getDefiningOp()));
         }
         if (parents != secondParents) {
-          llvm::outs() << "not siblings\n";
           return;
         }
         siblings.push_back(secondCallOp);
@@ -401,6 +433,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
       }
     }
   }
+  regenerateArcMapping();
   return llvm::success();
 }
 
@@ -484,6 +517,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
       }
     }
   }
+  regenerateArcMapping();
   return llvm::success();
 }
 

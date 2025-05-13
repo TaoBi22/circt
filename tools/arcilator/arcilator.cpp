@@ -295,6 +295,7 @@ static void populateHwModuleToArcPipeline(PassManager &pm) {
   if (untilReached(UntilArcOpt))
     return;
   pm.addPass(arc::createSplitLoopsPass());
+  pm.addPass(arc::createPerformEssentMergesPass());
   if (shouldDedup)
     pm.addPass(arc::createDedupPass());
   {
