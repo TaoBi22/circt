@@ -417,11 +417,61 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
     // TODO: work out how ESSENT does this exactly
     // For now we'll just merge them all into the first one
     for (auto [parents, siblings] : smallSiblingSets) {
-      // Merge all the siblings into the first one
+      // Can't merge if we don't have at least two siblings
+      if (siblings.size() < 2)
+        continue;
+      // WIP better technique
+      // We want to reduce cut edges - each child in common is a cut edge, so we
+      // can maximize common children
+      SmallVector<CallOpInterface> pairedSiblings;
       for (auto sibling : siblings) {
-        if (sibling == siblings[0])
+        // Check if this sibling is already paired
+        if (std::find(pairedSiblings.begin(), pairedSiblings.end(), sibling) !=
+            pairedSiblings.end()) {
           continue;
-        changed |= llvm::succeeded(mergeArcs(siblings[0], sibling));
+        }
+        int bestNumCutEdges = -1;
+        int bestReductionIndex = -1;
+        for (auto [candIndex, candidateSibling] : llvm::enumerate(siblings)) {
+          // Can't pair a sibling with itself, don't be so silly!
+          if (sibling == candidateSibling) {
+            continue;
+          }
+          // Check if this sibling is already paired
+          if (std::find(pairedSiblings.begin(), pairedSiblings.end(),
+                        candidateSibling) != pairedSiblings.end()) {
+            continue;
+          }
+          // Calculate reduction in number of cut edges
+          int numCutEdges = 0;
+          for (auto user : sibling->getUsers()) {
+            if (user == candidateSibling) {
+              numCutEdges++;
+              continue;
+            }
+            for (auto candidateUser : candidateSibling->getUsers()) {
+              if (candidateUser == sibling) {
+                numCutEdges++;
+                continue;
+              }
+              if (user == candidateUser) {
+                numCutEdges++;
+                continue;
+              }
+            }
+          }
+          if (numCutEdges > bestNumCutEdges) {
+            bestNumCutEdges = numCutEdges;
+            bestReductionIndex = candIndex;
+          }
+        }
+        // If there are no possible merging candidates then we know there are no
+        // more merges to do
+        if (bestReductionIndex == -1) {
+          break;
+        }
+        changed |=
+            llvm::succeeded(mergeArcs(sibling, siblings[bestReductionIndex]));
       }
     }
   }
