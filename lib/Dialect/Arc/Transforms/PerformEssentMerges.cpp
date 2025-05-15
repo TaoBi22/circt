@@ -574,22 +574,62 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
       alreadyGrouped.append(bigSiblings.begin(), bigSiblings.end());
     });
     // Now we have a set of small siblings, we can merge them
-    // TODO: work out how ESSENT does this exactly
-    // For now we'll just merge them all into the first one
+    // TODO: I actually think ESSENT has a slightly different definition of
+    // sibling - they define it as sharing at least one parent, not as sharing
+    // all parents, and want to merge each small sibling with the big sibling it
+    // shares the most parent signals with. Maybe that needs fixing later. For
+    // now, just do what we do above, where we optimize for the most outputs in
+    // common.
     for (auto [smallSiblings, bigSiblings] : splitSiblingSets) {
-      SmallVector<CallOpInterface> mergedBigSiblings;
-      for (auto smallSibling : smallSiblings) {
-        // Merge all the siblings into the first one
-        for (auto bigSibling : bigSiblings) {
-          if (std::find(mergedBigSiblings.begin(), mergedBigSiblings.end(),
-                        bigSibling) != mergedBigSiblings.end()) {
-            // TODO: this might cause segfaults if the bigsibling is being
-            // messed with during iteration - maybe need to precompute this
-            changed |= llvm::succeeded(mergeArcs(bigSibling, smallSibling));
-            mergedBigSiblings.push_back(bigSibling);
+      // Make sure we actually have some possible merges
+      if (smallSiblings.empty() || bigSiblings.empty())
+        continue;
+      SmallVector<CallOpInterface> pairedSiblings;
+      for (auto sibling : smallSiblings) {
+        // Check if this sibling is already paired
+        if (std::find(pairedSiblings.begin(), pairedSiblings.end(), sibling) !=
+            pairedSiblings.end()) {
+          continue;
+        }
+        int bestNumCutEdges = -1;
+        int bestReductionIndex = -1;
+        for (auto [candIndex, candidateSibling] :
+             llvm::enumerate(bigSiblings)) {
+          // Check if this sibling is already paired
+          if (std::find(pairedSiblings.begin(), pairedSiblings.end(),
+                        candidateSibling) != pairedSiblings.end()) {
+            continue;
+          }
+          // Calculate reduction in number of cut edges
+          int numCutEdges = 0;
+          for (auto user : sibling->getUsers()) {
+            if (user == candidateSibling) {
+              numCutEdges++;
+              continue;
+            }
+            for (auto candidateUser : candidateSibling->getUsers()) {
+              if (candidateUser == sibling) {
+                numCutEdges++;
+                continue;
+              }
+              if (user == candidateUser) {
+                numCutEdges++;
+                continue;
+              }
+            }
+          }
+          if (numCutEdges > bestNumCutEdges) {
+            bestNumCutEdges = numCutEdges;
+            bestReductionIndex = candIndex;
           }
         }
-        mergedBigSiblings.push_back(smallSibling);
+        // If there are no possible merging candidates then we know there are
+        // no more merges to do
+        if (bestReductionIndex == -1) {
+          break;
+        }
+        changed |= llvm::succeeded(
+            mergeArcs(sibling, bigSiblings[bestReductionIndex]));
       }
     }
     regenerateArcMapping();
