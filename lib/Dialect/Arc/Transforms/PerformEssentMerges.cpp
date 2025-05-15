@@ -73,6 +73,8 @@ private:
 };
 
 void ArcEssentMerger::regenerateArcMapping() {
+  arcCalls.clear();
+  arcDefs.clear();
   module->walk([&](Operation *op) {
     if (auto defOp = dyn_cast<DefineOp>(op)) {
       arcDefs[defOp.getNameAttr()] = defOp;
@@ -94,6 +96,7 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
       secondArcUsers.end()) {
     return false;
   }
+
   // Make sure ops either have same latency or entirely
   // consume each other.
   if (isa<StateOp>(firstArc) || isa<StateOp>(secondArc)) {
@@ -374,7 +377,11 @@ llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
 llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
   // iterate to fixed point
   bool changed = true;
+  int iterationsRemaining = 10000;
   while (changed) {
+    if (--iterationsRemaining < 0) {
+      return failure();
+    }
     changed = false;
     // First, gather sets of small siblings
     // Just do this with a nested for loop - could do this with a bitmap but
@@ -496,8 +503,8 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
         changed |=
             llvm::succeeded(mergeArcs(sibling, siblings[bestReductionIndex]));
       }
+      regenerateArcMapping();
     }
-    regenerateArcMapping();
   }
   return llvm::success();
 }
@@ -505,7 +512,11 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
 llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
   // iterate to fixed point
   bool changed = true;
+  int iterationsRemaining = 10000;
   while (changed) {
+    if (--iterationsRemaining < 0) {
+      return failure();
+    }
     changed = false;
     // First pair is small siblings, second is big siblings
     SmallVector<
