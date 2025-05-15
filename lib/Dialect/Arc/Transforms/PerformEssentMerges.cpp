@@ -497,8 +497,8 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
             llvm::succeeded(mergeArcs(sibling, siblings[bestReductionIndex]));
       }
     }
+    regenerateArcMapping();
   }
-  regenerateArcMapping();
   return llvm::success();
 }
 
@@ -581,8 +581,8 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
         mergedBigSiblings.push_back(smallSibling);
       }
     }
+    regenerateArcMapping();
   }
-  regenerateArcMapping();
   return llvm::success();
 }
 
@@ -598,10 +598,13 @@ void PerformEssentMergesPass::runOnOperation() {
   auto merger = ArcEssentMerger(getOperation(), r, optimalPartitionSize);
   if (failed(merger.applySingleParentMerges()))
     return signalPassFailure();
+  llvm::dbgs() << "Finished single parent merges\n";
   if (failed(merger.applySmallSiblingMerges()))
     return signalPassFailure();
+  llvm::dbgs() << "Finished small sibling merges\n";
   if (failed(merger.applySmallIntoBigSiblingMerges()))
     return signalPassFailure();
+  llvm::dbgs() << "Finished small into big sibling merges\n";
 }
 
 std::unique_ptr<Pass> arc::createPerformEssentMergesPass() {
