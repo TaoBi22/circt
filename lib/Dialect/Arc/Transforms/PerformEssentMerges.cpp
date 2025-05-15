@@ -139,6 +139,8 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   auto secondArcName =
       cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
           .getLeafReference();
+  LLVM_DEBUG(llvm::dbgs() << "Merging arcs " << firstArcName << " and "
+                          << secondArcName << "\n");
   auto firstArcDefine = arcDefs[firstArcName];
   auto secondArcDefine = arcDefs[secondArcName];
 
