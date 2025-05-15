@@ -295,7 +295,6 @@ static void populateHwModuleToArcPipeline(PassManager &pm) {
   if (untilReached(UntilArcOpt))
     return;
   pm.addPass(arc::createSplitLoopsPass());
-  pm.addPass(arc::createPerformEssentMergesPass());
   if (shouldDedup)
     pm.addPass(arc::createDedupPass());
   {
@@ -310,7 +309,7 @@ static void populateHwModuleToArcPipeline(PassManager &pm) {
     pm.addPass(arc::createMakeTablesPass());
   pm.addPass(createCSEPass());
   pm.addPass(arc::createArcCanonicalizerPass());
-
+  // pm.addPass(arc::createPerformEssentMergesPass());
   // Now some arguments may be unused because reset conditions are not passed as
   // inputs anymore pm.addPass(arc::createRemoveUnusedArcArgumentsPass());
   // Because we replace a lot of StateOp inputs with constants in the enable

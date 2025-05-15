@@ -144,8 +144,23 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   auto firstArcDefine = arcDefs[firstArcName];
   auto secondArcDefine = arcDefs[secondArcName];
 
+  SmallVector<Value> firstArcArgs;
+  if (auto firstState = dyn_cast<StateOp>(firstArc.getOperation())) {
+    firstArcArgs.append(firstState.getInputs().begin(),
+                        firstState.getInputs().end());
+  } else {
+    firstArcArgs.append(firstArc->getOperands().begin(),
+                        firstArc->getOperands().end());
+  }
   auto firstArcResults = firstArc->getResults();
-  auto secondArcArgs = secondArc->getOperands();
+  SmallVector<Value> secondArcArgs;
+  if (auto secondState = dyn_cast<StateOp>(secondArc.getOperation())) {
+    secondArcArgs.append(secondState.getInputs().begin(),
+                         secondState.getInputs().end());
+  } else {
+    secondArcArgs.append(secondArc->getOperands().begin(),
+                         secondArc->getOperands().end());
+  }
   auto secondArcResults = secondArc->getResults();
 
   // Generate mapping from second arc's values to first arc's
@@ -179,8 +194,8 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
       // mapping.map(secondArcDefine.getArgument(argi), newArg);
     }
   }
-  // FIXME: get rid of firstArc outputs which were only consumed by the second
-  // arc
+  // FIXME: get rid of firstArc outputs which were only consumed by the
+  // second arc
 
   // Prepare operands for new terminator and delete existing terminators
   SmallVector<Value> newOutputs;
@@ -232,18 +247,10 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   // Replace the second call's outputs with the first call's
   // Make a smallvec with all the inputs to our new call op
   SmallVector<Value> newCallOperands;
-  newCallOperands.append(firstArc->getOperands().begin(),
-                         firstArc->getOperands().end());
+  newCallOperands.append(firstArcArgs.begin(), firstArcArgs.end());
   newCallOperands.append(additionalCallOperands.begin(),
                          additionalCallOperands.end());
   r.setInsertionPointAfter(firstArc);
-
-  // We need to figure out if we are creating a state arc or a call arc
-  auto firstArcLat =
-      isa<CallOp>(firstArc) ? 0 : cast<StateOp>(firstArc).getLatency();
-  auto secondArcLat =
-      isa<CallOp>(secondArc) ? 0 : cast<StateOp>(secondArc).getLatency();
-  auto combinedLatency = firstArcLat + secondArcLat;
 
   int totalLatency = 0;
   Value clock;
@@ -264,7 +271,7 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   Operation *newCall;
   if (mustBeState) {
     newCall = r.create<StateOp>(firstArc->getLoc(), firstArcDefine, clock,
-                                Value(), combinedLatency,
+                                Value(), totalLatency,
                                 ValueRange(newCallOperands), ValueRange());
   } else {
     newCall = r.create<CallOp>(firstArc->getLoc(), firstArcDefine,
