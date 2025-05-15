@@ -189,7 +189,7 @@ static llvm::cl::opt<unsigned> splitFuncsThreshold(
 static llvm::cl::opt<unsigned> essentThreshold(
     "essent-threshold",
     llvm::cl::desc("Optimal partition size for essent merging."),
-    llvm::cl::ValueOptional, llvm::cl::cat(mainCategory));
+    llvm::cl::init(32), llvm::cl::ValueOptional, llvm::cl::cat(mainCategory));
 
 // Options to control early-out from pipeline.
 enum Until {
