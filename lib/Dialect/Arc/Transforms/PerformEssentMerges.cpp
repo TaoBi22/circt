@@ -661,6 +661,7 @@ void PerformEssentMergesPass::runOnOperation() {
   llvm::dbgs() << "Finished small into big sibling merges\n";
 }
 
-std::unique_ptr<Pass> arc::createPerformEssentMergesPass() {
-  return std::make_unique<PerformEssentMergesPass>();
+std::unique_ptr<Pass>
+arc::createPerformEssentMergesPass(const PerformEssentMergesOptions &options) {
+  return std::make_unique<PerformEssentMergesPass>(options);
 }

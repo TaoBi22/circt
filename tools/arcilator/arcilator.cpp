@@ -186,6 +186,11 @@ static llvm::cl::opt<unsigned> splitFuncsThreshold(
         "Split large MLIR functions that occur above the given size threshold"),
     llvm::cl::ValueOptional, llvm::cl::cat(mainCategory));
 
+static llvm::cl::opt<unsigned> essentThreshold(
+    "essent-threshold",
+    llvm::cl::desc("Optimal partition size for essent merging."),
+    llvm::cl::ValueOptional, llvm::cl::cat(mainCategory));
+
 // Options to control early-out from pipeline.
 enum Until {
   UntilPreprocessing,
@@ -303,7 +308,11 @@ static void populateHwModuleToArcPipeline(PassManager &pm) {
     opts.detectResets = shouldDetectResets;
     pm.addPass(arc::createInferStateProperties(opts));
   }
-  pm.addPass(arc::createPerformEssentMergesPass());
+  {
+    arc::PerformEssentMergesOptions opts;
+    opts.optimalPartitionSize = essentThreshold;
+    pm.addPass(arc::createPerformEssentMergesPass(opts));
+  }
   pm.addPass(createCSEPass());
   pm.addPass(arc::createArcCanonicalizerPass());
   if (shouldMakeLUTs)
