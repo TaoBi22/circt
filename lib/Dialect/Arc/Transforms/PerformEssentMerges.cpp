@@ -106,6 +106,17 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
     }
   }
 
+  // Make sure enables, clocks and resets match
+  if (auto firstState = dyn_cast<StateOp>(firstArc.getOperation())) {
+    if (auto secondState = dyn_cast<StateOp>(secondArc.getOperation())) {
+      if (secondState.getClock() != firstState.getClock() ||
+          secondState.getReset() != firstState.getReset() ||
+          secondState.getEnable() != firstState.getEnable()) {
+        return false;
+      }
+    }
+  }
+
   // Make sure arcs do not have other, conflicting uses.
   auto firstArcName = cast<mlir::SymbolRefAttr>(firstArc.getCallableForCallee())
                           .getLeafReference();
@@ -167,12 +178,12 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   IRMapping mapping;
   auto firstArcOutputs =
       firstArcDefine.getBodyBlock().getTerminator()->getOperands();
-  // Check which arguments to the second arc need corresponding arguments added,
-  // and which are just inputs from the first arc anyway, so we can just map
-  // them to the corresponding values the first arc outputs
+  // Check which arguments to the second arc need corresponding arguments
+  // added, and which are just inputs from the first arc anyway, so we can
+  // just map them to the corresponding values the first arc outputs
   SmallVector<Value> argReplacements;
-  // The arguments to the second arc which are staying as arguments (so need to
-  // be fed to the new call)
+  // The arguments to the second arc which are staying as arguments (so need
+  // to be fed to the new call)
   SmallVector<Value> additionalCallOperands;
   for (auto [argi, arg] : llvm::enumerate(secondArcArgs)) {
     bool needToAddArg = true;
@@ -202,13 +213,14 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
 
   newOutputs.append(firstArcOutputs.begin(), firstArcOutputs.end());
 
-  // TODO: this needs a value range, not a mapping - need to figure that one out
+  // TODO: this needs a value range, not a mapping - need to figure that one
+  // out
   r.inlineBlockBefore(&secondArcDefine.getBodyBlock(),
                       firstArcDefine.getBodyBlock().getTerminator(),
                       argReplacements);
   // inlineBlockBefore deletes original values so we need to fetch the new
-  // values from the second block's terminator (which is now the penultimate op
-  // in the block)
+  // values from the second block's terminator (which is now the penultimate
+  // op in the block)
 
   auto *newSecondArcTerminator =
       firstArcDefine.getBodyBlock().getTerminator()->getPrevNode();
@@ -225,7 +237,8 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   // // arc consumes any values from the second
   // for (auto [operandIndex, operand] :
   // llvm::enumerate(firstArc->getOperands()))
-  //   for (auto [resultIndex, res] : llvm::enumerate(secondArc->getResults()))
+  //   for (auto [resultIndex, res] :
+  //   llvm::enumerate(secondArc->getResults()))
   //     if (res == operand)
   //       r.replaceAllUsesWith(firstArcDefine.getArgument(operandIndex),
   //                            newSecondArcTerminator->getOperand(resultIndex));
@@ -255,8 +268,8 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   int totalLatency = 0;
   Value clock;
   bool mustBeState = false;
-  // TODO: these clock checks are only safe if we check clock equivalence in our
-  // canMergeArcs function
+  // TODO: these clock checks are only safe if we check clock equivalence in
+  // our canMergeArcs function
   if (auto firstState = dyn_cast<StateOp>(firstArc.getOperation())) {
     mustBeState = true;
     totalLatency += firstState.getLatency();
@@ -302,8 +315,8 @@ llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
     if (--iterationsRemaining < 0) {
       return failure();
     }
-    // TODO: this should probably be a greedy pattern rewriter of some sort for
-    // upstreaming
+    // TODO: this should probably be a greedy pattern rewriter of some sort
+    // for upstreaming
     changed = false;
     SmallVector<std::pair<CallOpInterface, CallOpInterface>> arcsToMerge;
     module->walk<WalkOrder::PreOrder>([&](CallOpInterface callOp) {
@@ -328,15 +341,16 @@ llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
       }
 
       // For now we'll just always merge these, but I need to check in the
-      // ESSENT code whether this should be restricted to just small partitions
+      // ESSENT code whether this should be restricted to just small
+      // partitions
       arcsToMerge.push_back(
           std::pair(cast<CallOpInterface>(*parents.begin()), callOp));
       // mergeArcs(cast<CallOpInterface>(*parents.begin()), callOp);
     });
 
     // Now perform all the merges we can
-    // We can't merge arcs we've already merged this cycle - save them for next
-    // time
+    // We can't merge arcs we've already merged this cycle - save them for
+    // next time
     SmallVector<CallOpInterface> touchedArcs;
     for (auto [firstArc, secondArc] : arcsToMerge) {
       // ignore any merges involving arcs we've already merged
@@ -365,10 +379,10 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
     // First, gather sets of small siblings
     // Just do this with a nested for loop - could do this with a bitmap but
     // that would involve some massive APInts so very memory hungry
-    // Vector of pairs - first element is a list of parents, second is a list of
-    // siblings. We need to store the parents so we can invalidate merges that
-    // we've tampered with the parents of (actually do we??? they'll still be
-    // siblings after a merge???)
+    // Vector of pairs - first element is a list of parents, second is a list
+    // of siblings. We need to store the parents so we can invalidate merges
+    // that we've tampered with the parents of (actually do we??? they'll
+    // still be siblings after a merge???)
     SmallVector<
         std::pair<DenseSet<CallOpInterface>, SmallVector<CallOpInterface>>>
         smallSiblingSets;
@@ -430,8 +444,8 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
       if (siblings.size() < 2)
         continue;
       // WIP better technique
-      // We want to reduce cut edges - each child in common is a cut edge, so we
-      // can maximize common children
+      // We want to reduce cut edges - each child in common is a cut edge, so
+      // we can maximize common children
       SmallVector<CallOpInterface> pairedSiblings;
       for (auto sibling : siblings) {
         // Check if this sibling is already paired
@@ -474,8 +488,8 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
             bestReductionIndex = candIndex;
           }
         }
-        // If there are no possible merging candidates then we know there are no
-        // more merges to do
+        // If there are no possible merging candidates then we know there are
+        // no more merges to do
         if (bestReductionIndex == -1) {
           break;
         }

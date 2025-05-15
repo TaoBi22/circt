@@ -303,13 +303,13 @@ static void populateHwModuleToArcPipeline(PassManager &pm) {
     opts.detectResets = shouldDetectResets;
     pm.addPass(arc::createInferStateProperties(opts));
   }
+  pm.addPass(arc::createPerformEssentMergesPass());
   pm.addPass(createCSEPass());
   pm.addPass(arc::createArcCanonicalizerPass());
   if (shouldMakeLUTs)
     pm.addPass(arc::createMakeTablesPass());
   pm.addPass(createCSEPass());
   pm.addPass(arc::createArcCanonicalizerPass());
-  // pm.addPass(arc::createPerformEssentMergesPass());
   // Now some arguments may be unused because reset conditions are not passed as
   // inputs anymore pm.addPass(arc::createRemoveUnusedArcArgumentsPass());
   // Because we replace a lot of StateOp inputs with constants in the enable
