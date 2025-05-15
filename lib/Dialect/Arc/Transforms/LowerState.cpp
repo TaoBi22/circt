@@ -702,7 +702,7 @@ LogicalResult OpLowering::lowerStateful(
   if (!isa<sim::DPICallOp>(originalOp)) {
     // Add activation to the enable
     auto activationCondition = module.builder.create<StateReadOp>(
-        originalOp->getLoc(), module.arcActivations[op]);
+        originalOp->getLoc(), module.arcActivations[originalOp]);
     auto ifActivatedOp =
         createOrReuseIf(module.builder, activationCondition, false);
     module.builder.setInsertionPoint(ifActivatedOp.thenYield());
