@@ -675,59 +675,40 @@ LogicalResult OpLowering::lowerStateful(
   }
 
   // Handle the enable.
-  scf::IfOp ifEnableOp;
-  auto originalOp = results[0].getDefiningOp();
-  assert(originalOp && "result must have a defining op");
-  if (isa<sim::DPICallOp>(originalOp)) {
-    // Copy pasted from original file
-    if (enable) {
-      // Check if we can reuse a previous enable value.
-      auto &[unloweredEnable, loweredEnable] = module.prevEnable;
-      if (unloweredEnable != enable ||
-          loweredEnable.getParentBlock() != module.builder.getBlock()) {
-        unloweredEnable = enable;
-        loweredEnable = lowerValue(enable, Phase::Old);
-        if (!loweredEnable)
-          return failure();
-      }
-
-      // Check if we're inserting right after an if op for the same enable, in
-      // which case we can reuse that op. Otherwise create the new if op.
-      ifEnableOp = createOrReuseIf(module.builder, loweredEnable, false);
-      module.builder.setInsertionPoint(ifEnableOp.thenYield());
+  if (enable) {
+    // Check if we can reuse a previous enable value.
+    auto &[unloweredEnable, loweredEnable] = module.prevEnable;
+    if (unloweredEnable != enable ||
+        loweredEnable.getParentBlock() != module.builder.getBlock()) {
+      unloweredEnable = enable;
+      loweredEnable = lowerValue(enable, Phase::Old);
+      if (!loweredEnable)
+        return failure();
     }
-
-  } else {
-    // Add activation to the enable
-    auto activationCondition = module.builder.create<StateReadOp>(
-        originalOp->getLoc(), module.arcActivations[op]);
-
-    Value expandedEnable;
-    if (enable) {
-      // Check if we can reuse a previous enable value.
-      auto &[unloweredEnable, loweredEnable] = module.prevEnable;
-      if (unloweredEnable != enable ||
-          loweredEnable.getParentBlock() != module.builder.getBlock()) {
-        unloweredEnable = enable;
-        loweredEnable = lowerValue(enable, Phase::Old);
-
-        // if (!loweredEnable)
-        //   return failure();
-      }
-      expandedEnable = module.builder.create<comb::AndOp>(
-          originalOp->getLoc(), loweredEnable, activationCondition);
-
-    } else {
-      expandedEnable = activationCondition;
-    }
-
-    // We'll always have an enable now that we have partition activations
 
     // Check if we're inserting right after an if op for the same enable, in
     // which case we can reuse that op. Otherwise create the new if op.
-    ifEnableOp = createOrReuseIf(module.builder, expandedEnable, false);
+    auto ifEnableOp = createOrReuseIf(module.builder, loweredEnable, false);
     module.builder.setInsertionPoint(ifEnableOp.thenYield());
   }
+
+  // We do the activation inside the enable so that mergeIfs can merge as many
+  // matching conditions as possible (an activation condition will never be
+  // mergeable as each arc has its own activation)
+
+  // Slightly hacky to avoid faffing around with func signatures
+  auto *originalOp = results[0].getDefiningOp();
+  scf::YieldOp activatedRegion;
+  if (!isa<sim::DPICallOp>(originalOp)) {
+    // Add activation to the enable
+    auto activationCondition = module.builder.create<StateReadOp>(
+        originalOp->getLoc(), module.arcActivations[op]);
+    auto ifActivatedOp =
+        createOrReuseIf(module.builder, activationCondition, false);
+    module.builder.setInsertionPoint(ifActivatedOp.thenYield());
+    activatedRegion = ifActivatedOp.thenYield();
+  }
+
   // Get the transfer function inputs. This potentially inserts read ops.
   SmallVector<Value> loweredInputs;
   for (auto input : inputs) {
@@ -753,7 +734,7 @@ LogicalResult OpLowering::lowerStateful(
   }
 
   if (!isa<sim::DPICallOp>(originalOp)) {
-    module.builder.setInsertionPoint(ifEnableOp.thenYield());
+    module.builder.setInsertionPoint(activatedRegion);
     // Activate children if value has changed (iff op is an arc state or call)
     // TODO: Add in activating child conditions.
     for (auto [resIndex, result] : llvm::enumerate(results)) {
