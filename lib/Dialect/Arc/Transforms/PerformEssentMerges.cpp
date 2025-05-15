@@ -269,24 +269,25 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
 
   int totalLatency = 0;
   Value clock;
+  Value enable;
   bool mustBeState = false;
-  // TODO: these clock checks are only safe if we check clock equivalence in
-  // our canMergeArcs function
   if (auto firstState = dyn_cast<StateOp>(firstArc.getOperation())) {
     mustBeState = true;
     totalLatency += firstState.getLatency();
     clock = firstState.getClock();
+    enable = firstState.getEnable();
   }
   if (auto secondState = dyn_cast<StateOp>(secondArc.getOperation())) {
     mustBeState = true;
     totalLatency += secondState.getLatency();
     clock = secondState.getClock();
+    enable = secondState.getEnable();
   }
 
   Operation *newCall;
   if (mustBeState) {
     newCall = r.create<StateOp>(firstArc->getLoc(), firstArcDefine, clock,
-                                Value(), totalLatency,
+                                enable, totalLatency,
                                 ValueRange(newCallOperands), ValueRange());
   } else {
     newCall = r.create<CallOp>(firstArc->getLoc(), firstArcDefine,
