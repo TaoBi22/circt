@@ -144,7 +144,6 @@ bool ArcEssentMerger::isSmall(CallOpInterface arc) {
 llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
                                                CallOpInterface secondArc) {
   // Check we're actually able to merge the arcs
-
   if (!canMergeArcs(firstArc, secondArc))
     return llvm::failure();
 
@@ -502,6 +501,8 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
         }
         changed |=
             llvm::succeeded(mergeArcs(sibling, siblings[bestReductionIndex]));
+        pairedSiblings.push_back(sibling);
+        pairedSiblings.push_back(siblings[bestReductionIndex]);
       }
       regenerateArcMapping();
     }
@@ -630,6 +631,8 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
         }
         changed |= llvm::succeeded(
             mergeArcs(sibling, bigSiblings[bestReductionIndex]));
+        pairedSiblings.push_back(sibling);
+        pairedSiblings.push_back(bigSiblings[bestReductionIndex]);
       }
     }
     regenerateArcMapping();
