@@ -501,7 +501,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
         // If there are no possible merging candidates then we know there are
         // no more merges to do
         if (bestReductionIndex == -1) {
-          break;
+          continue;
         }
         changed |=
             llvm::succeeded(mergeArcs(sibling, siblings[bestReductionIndex]));
@@ -634,7 +634,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
         // If there are no possible merging candidates then we know there are
         // no more merges to do
         if (bestReductionIndex == -1) {
-          break;
+          continue;
         }
         changed |= llvm::succeeded(
             mergeArcs(sibling, bigSiblings[bestReductionIndex]));
