@@ -152,8 +152,8 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   auto secondArcName =
       cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
           .getLeafReference();
-  LLVM_DEBUG(llvm::dbgs() << "Merging arcs " << firstArcName << " and "
-                          << secondArcName << "\n");
+  (llvm::dbgs() << "Merging arcs " << firstArcName << " and " << secondArcName
+                << "\n");
   auto firstArcDefine = arcDefs[firstArcName];
   auto secondArcDefine = arcDefs[secondArcName];
 
@@ -326,7 +326,7 @@ llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
       if (!isa<StateOp, CallOp>(callOp.getOperation()))
         return;
       // Check if op has single parent
-      llvm::DenseSet<Operation *> parents;
+      llvm::SetVector<Operation *> parents;
 
       for (auto operand : callOp->getOperands()) {
 
@@ -391,7 +391,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
     // that we've tampered with the parents of (actually do we??? they'll
     // still be siblings after a merge???)
     SmallVector<
-        std::pair<DenseSet<CallOpInterface>, SmallVector<CallOpInterface>>>
+        std::pair<SetVector<CallOpInterface>, SmallVector<CallOpInterface>>>
         smallSiblingSets;
     SmallVector<CallOpInterface> alreadyGrouped;
     module->walk([&](CallOpInterface callOp) {
@@ -403,7 +403,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
           alreadyGrouped.end())
         return;
       // Collect the set of parents
-      DenseSet<CallOpInterface> parents;
+      SetVector<CallOpInterface> parents;
       for (auto operand : callOp->getOperands()) {
         // We only care about ops with only arc parents
         if (!isa<BlockArgument>(operand) &&
@@ -423,7 +423,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
           return;
         // No need to check if it's grouped as the first arc would be too
         // Check if the two arcs are siblings
-        DenseSet<CallOpInterface> secondParents;
+        SetVector<CallOpInterface> secondParents;
         for (auto operand : secondCallOp->getOperands()) {
           // We only care about ops with only arc parents
           if (!isa<BlockArgument>(operand) &&
@@ -536,7 +536,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
           alreadyGrouped.end())
         return;
       // Collect the set of parents
-      DenseSet<CallOpInterface> parents;
+      SetVector<CallOpInterface> parents;
       for (auto operand : callOp->getOperands()) {
         // We only care about ops with only arc parents
         if (!isa<BlockArgument>(operand) &&
@@ -552,7 +552,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
       module->walk([&](CallOpInterface secondCallOp) {
         // No need to check if it's grouped as the first arc would be too
         // Check if the two arcs are siblings
-        DenseSet<CallOpInterface> secondParents;
+        SetVector<CallOpInterface> secondParents;
         for (auto operand : secondCallOp->getOperands()) {
           // We only care about ops with only arc parents
           if (!isa<BlockArgument>(operand) &&
