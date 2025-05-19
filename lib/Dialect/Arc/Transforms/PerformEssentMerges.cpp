@@ -475,6 +475,11 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
                         candidateSibling) != pairedSiblings.end()) {
             continue;
           }
+          // Ignore arcs we can't merge with (makes the code a bit less clean,
+          // but otherwise we miss out on loads of possible matches)
+          // if (!canMergeArcs(sibling, candidateSibling)) {
+          //   continue;
+          // }
           // Calculate reduction in number of cut edges
           int numCutEdges = 0;
           for (auto user : sibling->getUsers()) {
@@ -501,6 +506,13 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
         // If there are no possible merging candidates then we know there are
         // no more merges to do
         if (bestReductionIndex == -1) {
+          for (auto candSibling : siblings) {
+            assert(sibling == candSibling ||
+                   std::find(pairedSiblings.begin(), pairedSiblings.end(),
+                             candSibling) != pairedSiblings.end() ||
+                   !canMergeArcs(sibling, candSibling) &&
+                       "there's a viable match that I've skipped");
+          }
           continue;
         }
         changed |=
