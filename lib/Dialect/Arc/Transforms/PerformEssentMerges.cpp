@@ -215,19 +215,28 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
 
   newOutputs.append(firstArcOutputs.begin(), firstArcOutputs.end());
 
-  // TODO: this needs a value range, not a mapping - need to figure that one
-  // out
-  r.inlineBlockBefore(&secondArcDefine.getBodyBlock(),
-                      firstArcDefine.getBodyBlock().getTerminator(),
-                      argReplacements);
-  // inlineBlockBefore deletes original values so we need to fetch the new
-  // values from the second block's terminator (which is now the penultimate
-  // op in the block)
+  // // TODO: this needs a value range, not a mapping - need to figure that one
+  // // out
+  // r.inlineBlockBefore(&secondArcDefine.getBodyBlock(),
+  //                     firstArcDefine.getBodyBlock().getTerminator(),
+  //                     argReplacements);
+  // // inlineBlockBefore deletes original values so we need to fetch the new
+  // // values from the second block's terminator (which is now the penultimate
+  // // op in the block)
 
-  auto *newSecondArcTerminator =
-      firstArcDefine.getBodyBlock().getTerminator()->getPrevNode();
+  // WIP refactor: change this to build a new call, rather than inlining (so we
+  // can operate on deduped ops too) Sets insertion point right before
+  // terminator of first arc
+  r.setInsertionPoint(firstArcDefine.getBodyBlock().getTerminator());
+  auto secondArcCall =
+      r.create<CallOp>(firstArcDefine.getBodyBlock().getTerminator()->getLoc(),
+                       secondArcDefine, ValueRange(argReplacements));
+  secondArcCall->setAttr("my_creation", r.getBoolAttr(true));
 
-  auto secondArcOutputs = newSecondArcTerminator->getOperands();
+  // auto *newSecondArcTerminator =
+  //     firstArcDefine.getBodyBlock().getTerminator()->getPrevNode();
+
+  auto secondArcOutputs = secondArcCall.getResults();
   SmallVector<Type> secondArcOutputTypes;
 
   for (auto res : secondArcOutputs) {
@@ -245,7 +254,6 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   //       r.replaceAllUsesWith(firstArcDefine.getArgument(operandIndex),
   //                            newSecondArcTerminator->getOperand(resultIndex));
 
-  newSecondArcTerminator->erase();
   // Now create a new terminator
   firstArcDefine.getBodyBlock().getTerminator()->erase();
   r.setInsertionPointToEnd(&firstArcDefine.getBodyBlock());
@@ -306,7 +314,10 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   firstArc.erase();
   // Delete old second arc
   secondArc->erase();
-  secondArcDefine->erase();
+
+  // secondArc->erase();
+  // secondArcDefine->erase();
+
   return success();
 }
 
