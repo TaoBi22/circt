@@ -126,8 +126,9 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
   auto secondArcName =
       cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
           .getLeafReference();
-  return arcCalls[firstArcName].size() <= 1 &&
-         arcCalls[secondArcName].size() <= 1;
+  // Make sure we're not fiddling with an arc that has other uses (it doesn't
+  // matter if the second arc has uses since we just add a call)
+  return arcCalls[firstArcName].size() <= 1;
 }
 
 bool ArcEssentMerger::isSmall(CallOpInterface arc) {
