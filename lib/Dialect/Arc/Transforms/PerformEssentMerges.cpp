@@ -224,9 +224,8 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   // // values from the second block's terminator (which is now the penultimate
   // // op in the block)
 
-  // WIP refactor: change this to build a new call, rather than inlining (so we
-  // can operate on deduped ops too) Sets insertion point right before
-  // terminator of first arc
+  // Sets insertion point right before
+  //  terminator of first arc
   r.setInsertionPoint(firstArcDefine.getBodyBlock().getTerminator());
   auto secondArcCall =
       r.create<CallOp>(firstArcDefine.getBodyBlock().getTerminator()->getLoc(),
