@@ -91,6 +91,7 @@ void ArcEssentMerger::regenerateArcMapping() {
 
 bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
                                    CallOpInterface secondArc) {
+
   // Make sure first arc doesn't use second arc (probably a FIXME, could make
   // direction dynamic)
   auto secondArcUsers = secondArc->getUsers();
@@ -133,10 +134,16 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
   // We are assuming the ops live in the same parent, which I think is safe?
   DominanceInfo dom(firstArc->getParentOp());
   for (auto arg : secondArc->getOperands()) {
-    if (!dom.dominates(arg, firstArc.getOperation())) {
+    if (!dom.dominates(arg, firstArc.getOperation()) ||
+        dom.dominates(secondArc, firstArc)) {
       return false;
     }
   }
+
+  // Some other arc ops have CallOpInterface, ignore them for now (e.g. memory
+  // write)
+  if (!isa<DefineOp, CallOp>(firstArc) || !isa<DefineOp, CallOp>(secondArc))
+    return false;
 
   // Make sure we're not fiddling with an arc that has other uses (it doesn't
   // matter if the second arc has uses since we just add a call)
@@ -167,7 +174,9 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
           .getLeafReference();
   (llvm::dbgs() << "Merging arcs " << firstArcName << " and " << secondArcName
                 << "\n");
+
   auto firstArcDefine = arcDefs[firstArcName];
+
   auto secondArcDefine = arcDefs[secondArcName];
 
   SmallVector<Value> firstArcArgs;
