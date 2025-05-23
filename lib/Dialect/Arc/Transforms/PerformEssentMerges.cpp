@@ -14,6 +14,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -28,6 +29,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
@@ -126,6 +128,16 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
   auto secondArcName =
       cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
           .getLeafReference();
+
+  // Make sure the first arc is dominated by the second arc's arguments
+  // We are assuming the ops live in the same parent, which I think is safe?
+  DominanceInfo dom(firstArc->getParentOp());
+  for (auto arg : secondArc->getOperands()) {
+    if (!dom.dominates(arg, firstArc.getOperation())) {
+      return false;
+    }
+  }
+
   // Make sure we're not fiddling with an arc that has other uses (it doesn't
   // matter if the second arc has uses since we just add a call)
   return arcCalls[firstArcName].size() <= 1;
@@ -260,10 +272,21 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   r.create<OutputOp>(firstArcDefine->getLoc(), ValueRange(newOutputs));
   // Update firstArc results
 
-  auto originalResultCount = firstArc->getNumResults();
-  for (auto [index, resTy] : llvm::enumerate(secondArcOutputTypes)) {
-    firstArcDefine.insertResult(index + originalResultCount, resTy, {});
+  for (int i = firstArcDefine.getNumResults() - 1; i >= 0; i--) {
+    firstArcDefine.eraseResult(i);
   }
+
+  for (auto newOutput : newOutputs) {
+    firstArcDefine.insertResult(firstArcDefine.getNumResults(),
+                                newOutput.getType(), {});
+  }
+  // auto originalResultCount = firstArc->getNumResults();
+  // firstArcDefine.insertResults(::llvm::ArrayRef<unsigned int> resultIndices,
+  // ::mlir::TypeRange resultTypes, ::llvm::ArrayRef< ::mlir::DictionaryAttr>
+  // resultAttrs) for (auto [index, resTy] :
+  // llvm::enumerate(secondArcOutputTypes)) {
+  //   firstArcDefine.insertResult(firstArcDefine->getNumResults(), resTy, {});
+  // }
 
   // Update inputs of call to first arc
   // Update output signature of call to first arc
@@ -317,7 +340,6 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
 
   // secondArc->erase();
   // secondArcDefine->erase();
-
   return success();
 }
 
@@ -444,7 +466,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
               secondParents.insert(
                   cast<CallOpInterface>(operand.getDefiningOp()));
           }
-          if (parents != secondParents) {
+          if (!llvm::set_intersects(parents, secondParents)) {
             return;
           }
           siblings.push_back(secondCallOp);
@@ -460,6 +482,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
     // Now we have a set of small siblings, we can merge them
     // TODO: work out how ESSENT does this exactly
     // For now we'll just merge them all into the first one
+    SmallVector<CallOpInterface> pairedSiblings;
     for (auto [parents, siblings] : smallSiblingSets) {
       // Can't merge if we don't have at least two siblings
       if (siblings.size() < 2)
@@ -467,7 +490,6 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
       // WIP better technique
       // We want to reduce cut edges - each child in common is a cut edge, so
       // we can maximize common children
-      SmallVector<CallOpInterface> pairedSiblings;
       for (auto sibling : siblings) {
         // Check if this sibling is already paired
         if (std::find(pairedSiblings.begin(), pairedSiblings.end(), sibling) !=
@@ -588,7 +610,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
               secondParents.insert(
                   cast<CallOpInterface>(operand.getDefiningOp()));
           }
-          if (parents != secondParents)
+          if (!llvm::set_intersects(parents, secondParents))
             return;
           if (isSmall(secondCallOp))
             smallSiblings.push_back(secondCallOp);
@@ -611,11 +633,11 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
     // shares the most parent signals with. Maybe that needs fixing later. For
     // now, just do what we do above, where we optimize for the most outputs in
     // common.
+    SmallVector<CallOpInterface> pairedSiblings;
     for (auto [smallSiblings, bigSiblings] : splitSiblingSets) {
       // Make sure we actually have some possible merges
       if (smallSiblings.empty() || bigSiblings.empty())
         continue;
-      SmallVector<CallOpInterface> pairedSiblings;
       for (auto sibling : smallSiblings) {
         // Check if this sibling is already paired
         if (std::find(pairedSiblings.begin(), pairedSiblings.end(), sibling) !=
