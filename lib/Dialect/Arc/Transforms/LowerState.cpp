@@ -208,7 +208,7 @@ LogicalResult ModuleLowering::run() {
 
   // Create an activation condition for every arc
   moduleOp.walk([&](Operation *op) {
-    if (isa<StateOp, CallOp>(op)) {
+    if (isa<StateOp, CallOp>(op) && !isa<StateOp, CallOp>(op->getParentOp())) {
       arcActivations[op] = builder.create<arc::AllocStateOp>(
           moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
     }
@@ -263,7 +263,8 @@ LogicalResult ModuleLowering::run() {
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&ifInputChanged.getThenRegion().front());
     for (auto *user : arg.getUsers()) {
-      if (isa<CallOp, StateOp>(user)) {
+      if (isa<CallOp, StateOp>(user) &&
+          !isa<CallOp, StateOp>(user->getParentOp())) {
         auto activation = arcActivations[user];
         builder.create<StateWriteOp>(arg.getLoc(), activation, quickTrue,
                                      Value{});
@@ -699,7 +700,8 @@ LogicalResult OpLowering::lowerStateful(
   // Slightly hacky to avoid faffing around with func signatures
   auto *originalOp = results[0].getDefiningOp();
   scf::YieldOp activatedRegion;
-  if (!isa<sim::DPICallOp>(originalOp)) {
+  if (!isa<sim::DPICallOp>(originalOp) &&
+      !isa<StateOp, CallOp>(originalOp->getParentOp())) {
     // Add activation to the enable
     auto activationCondition = module.builder.create<StateReadOp>(
         originalOp->getLoc(), module.arcActivations[originalOp]);
@@ -733,7 +735,8 @@ LogicalResult OpLowering::lowerStateful(
     module.loweredValues[{result, Phase::Old}] = oldValue;
   }
 
-  if (!isa<sim::DPICallOp>(originalOp)) {
+  if (!isa<sim::DPICallOp>(originalOp) &&
+      !isa<StateOp, CallOp>(originalOp->getParentOp())) {
     module.builder.setInsertionPoint(activatedRegion);
     // Activate children if value has changed (iff op is an arc state or call)
     // TODO: Add in activating child conditions.

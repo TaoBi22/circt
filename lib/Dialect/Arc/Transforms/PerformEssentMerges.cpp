@@ -134,8 +134,7 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
   // We are assuming the ops live in the same parent, which I think is safe?
   DominanceInfo dom(firstArc->getParentOp());
   for (auto arg : secondArc->getOperands()) {
-    if (!dom.dominates(arg, firstArc.getOperation()) ||
-        dom.dominates(secondArc, firstArc)) {
+    if (!dom.dominates(arg, firstArc.getOperation())) {
       return false;
     }
   }
@@ -147,7 +146,30 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
 
   // Make sure we're not fiddling with an arc that has other uses (it doesn't
   // matter if the second arc has uses since we just add a call)
-  return arcCalls[firstArcName].size() <= 1;
+  if (arcCalls[firstArcName].size() > 1)
+    return false;
+
+  // Traverse the use-def chain to make sure we're not creating a comb cycle
+  // (TODO: this might be super slow if we have big arcs, but we need to stop
+  // comb cycles somehow)
+  SmallVector<Operation *> worklist;
+  SmallVector<Operation *> visited;
+  worklist.push_back(firstArc.getOperation());
+  while (!worklist.empty()) {
+    auto *op = worklist.pop_back_val();
+    visited.push_back(op);
+    if (op == secondArc.getOperation())
+      return false;
+    for (auto res : op->getOperands()) {
+      if (!isa<BlockArgument>(res)) {
+        auto *def = res.getDefiningOp();
+        if (llvm::is_contained(visited, def))
+          continue;
+        worklist.push_back(def);
+      }
+    }
+  }
+  return true;
 }
 
 bool ArcEssentMerger::isSmall(CallOpInterface arc) {
@@ -237,13 +259,15 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
 
   newOutputs.append(firstArcOutputs.begin(), firstArcOutputs.end());
 
-  // // TODO: this needs a value range, not a mapping - need to figure that one
+  // // TODO: this needs a value range, not a mapping - need to figure that
+  // one
   // // out
   // r.inlineBlockBefore(&secondArcDefine.getBodyBlock(),
   //                     firstArcDefine.getBodyBlock().getTerminator(),
   //                     argReplacements);
   // // inlineBlockBefore deletes original values so we need to fetch the new
-  // // values from the second block's terminator (which is now the penultimate
+  // // values from the second block's terminator (which is now the
+  // penultimate
   // // op in the block)
 
   // Sets insertion point right before
@@ -290,11 +314,13 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
                                 newOutput.getType(), {});
   }
   // auto originalResultCount = firstArc->getNumResults();
-  // firstArcDefine.insertResults(::llvm::ArrayRef<unsigned int> resultIndices,
+  // firstArcDefine.insertResults(::llvm::ArrayRef<unsigned int>
+  // resultIndices,
   // ::mlir::TypeRange resultTypes, ::llvm::ArrayRef< ::mlir::DictionaryAttr>
   // resultAttrs) for (auto [index, resTy] :
   // llvm::enumerate(secondArcOutputTypes)) {
-  //   firstArcDefine.insertResult(firstArcDefine->getNumResults(), resTy, {});
+  //   firstArcDefine.insertResult(firstArcDefine->getNumResults(), resTy,
+  //   {});
   // }
 
   // Update inputs of call to first arc
@@ -640,10 +666,10 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
     // Now we have a set of small siblings, we can merge them
     // TODO: I actually think ESSENT has a slightly different definition of
     // sibling - they define it as sharing at least one parent, not as sharing
-    // all parents, and want to merge each small sibling with the big sibling it
-    // shares the most parent signals with. Maybe that needs fixing later. For
-    // now, just do what we do above, where we optimize for the most outputs in
-    // common.
+    // all parents, and want to merge each small sibling with the big sibling
+    // it shares the most parent signals with. Maybe that needs fixing later.
+    // For now, just do what we do above, where we optimize for the most
+    // outputs in common.
     SmallVector<CallOpInterface> pairedSiblings;
     for (auto [smallSiblings, bigSiblings] : splitSiblingSets) {
       // Make sure we actually have some possible merges
