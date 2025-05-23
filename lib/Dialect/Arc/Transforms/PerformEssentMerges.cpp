@@ -459,28 +459,29 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
         return;
       // Look for small siblings
       SmallVector<CallOpInterface> siblings;
-      // Any siblings must share the op's first parent
-      for (auto user : parents[0]->getUsers()) {
-        if (auto secondCallOp = dyn_cast<CallOpInterface>(user)) {
-          // We only care if the arc is small
-          if (!isSmall(secondCallOp))
-            return;
-          // No need to check if it's grouped as the first arc would be too
-          // Check if the two arcs are siblings
-          SetVector<CallOpInterface> secondParents;
-          for (auto operand : secondCallOp->getOperands()) {
-            // We only care about ops with only arc parents
-            if (!isa<BlockArgument>(operand) &&
-                isa<CallOp, StateOp>(operand.getDefiningOp()))
-              secondParents.insert(
-                  cast<CallOpInterface>(operand.getDefiningOp()));
+      // Look at any op that shares even one parent
+      for (auto parent : parents)
+        for (auto user : parent->getUsers()) {
+          if (auto secondCallOp = dyn_cast<CallOpInterface>(user)) {
+            // We only care if the arc is small
+            if (!isSmall(secondCallOp))
+              return;
+            // No need to check if it's grouped as the first arc would be too
+            // Check if the two arcs are siblings
+            SetVector<CallOpInterface> secondParents;
+            for (auto operand : secondCallOp->getOperands()) {
+              // We only care about ops with only arc parents
+              if (!isa<BlockArgument>(operand) &&
+                  isa<CallOp, StateOp>(operand.getDefiningOp()))
+                secondParents.insert(
+                    cast<CallOpInterface>(operand.getDefiningOp()));
+            }
+            if (!llvm::set_intersects(parents, secondParents)) {
+              return;
+            }
+            siblings.push_back(secondCallOp);
           }
-          if (!llvm::set_intersects(parents, secondParents)) {
-            return;
-          }
-          siblings.push_back(secondCallOp);
         }
-      }
       if (siblings.empty())
         return;
       // Otherwise we have a set of siblings! Yay!
@@ -606,27 +607,28 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
       // Look for small siblings
       SmallVector<CallOpInterface> smallSiblings;
       SmallVector<CallOpInterface> bigSiblings;
-      // Any siblings must share the op's first parent
-      for (auto user : parents[0]->getUsers()) {
-        if (auto secondCallOp = dyn_cast<CallOpInterface>(user)) {
-          // No need to check if it's grouped as the first arc would be too
-          // Check if the two arcs are siblings
-          SetVector<CallOpInterface> secondParents;
-          for (auto operand : secondCallOp->getOperands()) {
-            // We only care about ops with only arc parents
-            if (!isa<BlockArgument>(operand) &&
-                isa<CallOp, StateOp>(operand.getDefiningOp()))
-              secondParents.insert(
-                  cast<CallOpInterface>(operand.getDefiningOp()));
+      // Look at any op that shares even one parent
+      for (auto parent : parents)
+        for (auto user : parent->getUsers()) {
+          if (auto secondCallOp = dyn_cast<CallOpInterface>(user)) {
+            // No need to check if it's grouped as the first arc would be too
+            // Check if the two arcs are siblings
+            SetVector<CallOpInterface> secondParents;
+            for (auto operand : secondCallOp->getOperands()) {
+              // We only care about ops with only arc parents
+              if (!isa<BlockArgument>(operand) &&
+                  isa<CallOp, StateOp>(operand.getDefiningOp()))
+                secondParents.insert(
+                    cast<CallOpInterface>(operand.getDefiningOp()));
+            }
+            if (!llvm::set_intersects(parents, secondParents))
+              return;
+            if (isSmall(secondCallOp))
+              smallSiblings.push_back(secondCallOp);
+            else
+              bigSiblings.push_back(secondCallOp);
           }
-          if (!llvm::set_intersects(parents, secondParents))
-            return;
-          if (isSmall(secondCallOp))
-            smallSiblings.push_back(secondCallOp);
-          else
-            bigSiblings.push_back(secondCallOp);
         }
-      }
       if (smallSiblings.empty() && bigSiblings.empty())
         return;
       // Otherwise we have a set of siblings! Yay!
