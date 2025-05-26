@@ -160,6 +160,14 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
     visited.push_back(op);
     if (op == secondArc.getOperation())
       return false;
+    // Ops with latency break the cycle
+    SmallVector<Value> valsToTraverse;
+    if (auto so = dyn_cast<StateOp>(op)) {
+      valsToTraverse.push_back(so.getClock());
+      valsToTraverse.push_back(so.getEnable());
+    } else {
+      valsToTraverse.append(op->getOperands().begin(), op->getOperands().end());
+    }
     for (auto res : op->getOperands()) {
       if (!isa<BlockArgument>(res)) {
         auto *def = res.getDefiningOp();
