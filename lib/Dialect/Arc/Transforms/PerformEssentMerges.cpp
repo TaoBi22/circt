@@ -152,31 +152,87 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
   // Traverse the use-def chain to make sure we're not creating a comb cycle
   // (TODO: this might be super slow if we have big arcs, but we need to stop
   // comb cycles somehow)
-  SmallVector<Operation *> worklist;
-  SmallVector<Operation *> visited;
-  worklist.push_back(firstArc.getOperation());
-  while (!worklist.empty()) {
-    auto *op = worklist.pop_back_val();
-    visited.push_back(op);
-    if (op == secondArc.getOperation())
-      return false;
-    // Ops with latency break the cycle
-    SmallVector<Value> valsToTraverse;
-    if (auto so = dyn_cast<StateOp>(op)) {
-      valsToTraverse.push_back(so.getClock());
-      valsToTraverse.push_back(so.getEnable());
-    } else {
-      valsToTraverse.append(op->getOperands().begin(), op->getOperands().end());
-    }
-    for (auto res : op->getOperands()) {
-      if (!isa<BlockArgument>(res)) {
-        auto *def = res.getDefiningOp();
-        if (llvm::is_contained(visited, def))
-          continue;
-        worklist.push_back(def);
+  {
+    SmallVector<Operation *> worklist;
+    SmallVector<Operation *> visited;
+    worklist.push_back(firstArc.getOperation());
+    while (!worklist.empty()) {
+      auto *op = worklist.pop_back_val();
+      visited.push_back(op);
+      if (op == secondArc.getOperation()) {
+        llvm::dbgs() << "Found cycle in arc merge: " << firstArcName << " -> "
+                     << secondArcName << "\n";
+        return false;
+      }
+      // Ops with latency break the cycle
+      SmallVector<Value> valsToTraverse;
+      if (auto so = dyn_cast<StateOp>(op)) {
+        if (so.getClock())
+          valsToTraverse.push_back(so.getClock());
+        if (so.getEnable())
+          valsToTraverse.push_back(so.getEnable());
+        if (so.getReset())
+          valsToTraverse.push_back(so.getReset());
+      } else {
+        for (auto operand : op->getOperands()) {
+          valsToTraverse.push_back(operand);
+        }
+      }
+      for (auto val : valsToTraverse) {
+        if (!isa<BlockArgument>(val)) {
+          auto *def = val.getDefiningOp();
+          if (def == secondArc.getOperation())
+            return false;
+          if (llvm::is_contained(visited, def))
+            continue;
+          worklist.push_back(def);
+        }
       }
     }
   }
+  // Another case to consider: A -> B -> C (where -> is dataflow)
+  // If we merge A and C, we create a comb cycle
+  // Thus, we need to make sure A is not an ancestor of C unless it's directly
+  // C's parent
+
+  {
+    SmallVector<Operation *> worklist;
+    SmallVector<Operation *> visited;
+    // Start with the second arc's parents, since direct parents are fine
+    for (auto arg : secondArc->getOperands()) {
+      if (auto *def = arg.getDefiningOp())
+        worklist.push_back(def);
+    }
+    while (!worklist.empty()) {
+      auto *op = worklist.pop_back_val();
+      visited.push_back(op);
+      // Ops with latency break the cycle
+      SmallVector<Value> valsToTraverse;
+      if (auto so = dyn_cast<StateOp>(op)) {
+        if (so.getClock())
+          valsToTraverse.push_back(so.getClock());
+        if (so.getEnable())
+          valsToTraverse.push_back(so.getEnable());
+        if (so.getReset())
+          valsToTraverse.push_back(so.getReset());
+      } else {
+        for (auto operand : op->getOperands()) {
+          valsToTraverse.push_back(operand);
+        }
+      }
+      for (auto val : valsToTraverse) {
+        if (!isa<BlockArgument>(val)) {
+          auto *def = val.getDefiningOp();
+          if (def == firstArc.getOperation())
+            return false;
+          if (llvm::is_contained(visited, def))
+            continue;
+          worklist.push_back(def);
+        }
+      }
+    }
+  }
+
   return true;
 }
 
@@ -194,6 +250,7 @@ bool ArcEssentMerger::isSmall(CallOpInterface arc) {
 llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
                                                CallOpInterface secondArc) {
   // Check we're actually able to merge the arcs
+
   if (!canMergeArcs(firstArc, secondArc))
     return llvm::failure();
 
@@ -202,6 +259,7 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   auto secondArcName =
       cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
           .getLeafReference();
+
   (llvm::dbgs() << "Merging arcs " << firstArcName << " and " << secondArcName
                 << "\n");
 

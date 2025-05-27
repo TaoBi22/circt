@@ -21,14 +21,18 @@
 #include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -293,6 +297,49 @@ LogicalResult ModuleLowering::run() {
   return success();
 }
 
+void findCycle(SmallVector<Operation *> list, Operation *top, Operation *target,
+               SmallVector<Operation *> seen) {
+  SmallVector<Value> operands;
+  if (auto op = llvm::dyn_cast<StateOp>(top)) {
+    if (op.getClock())
+      operands.push_back(op.getClock());
+    if (op.getEnable())
+      operands.push_back(op.getEnable());
+    if (op.getReset())
+      operands.push_back(op.getReset());
+  } else {
+    for (auto operand : top->getOperands()) {
+      operands.push_back(operand);
+    }
+  }
+  for (auto operand : operands) {
+    if (llvm::isa<BlockArgument>(operand))
+      continue;
+    if (operand.getDefiningOp()) {
+      if (operand.getDefiningOp() == target) {
+        llvm::dbgs() << "Cycle:\n";
+        llvm::dbgs() << "Targeting:\n";
+        target->dump();
+        llvm::dbgs() << "Top:\n";
+        top->dump();
+        for (auto op : list) {
+          llvm::dbgs() << "Then:\n";
+          op->dump();
+        }
+        continue;
+      }
+      if (llvm::is_contained(seen, operand.getDefiningOp())) {
+        // There's a cycle here but it's not the one we care about
+        continue;
+      }
+      auto newList = SmallVector<Operation *>(list);
+      newList.push_back(top);
+      seen.push_back(operand.getDefiningOp());
+      // findCycle(newList, operand.getDefiningOp(), target, seen);
+    }
+  }
+}
+
 /// Lower an op and its entire fan-in cone.
 LogicalResult ModuleLowering::lowerOp(Operation *op) {
   LLVM_DEBUG(llvm::dbgs() << "- Handling " << *op << "\n");
@@ -338,6 +385,9 @@ LogicalResult ModuleLowering::lowerOp(Operation *op) {
       if (loweredOps.contains({defOp, phase}))
         continue;
       if (!opsSeen.insert({defOp, phase}).second) {
+        defOp->dump();
+        findCycle(SmallVector<Operation *>(), defOp, defOp,
+                  SmallVector<Operation *>());
         defOp->emitOpError("is on a combinational loop");
         dumpWorklist();
         return failure();
