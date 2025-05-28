@@ -11,6 +11,7 @@
 #include "circt/Dialect/Comb/CombDialect.h"
 #include "circt/Dialect/Comb/CombOps.h"
 #include "circt/Dialect/HW/HWOps.h"
+#include "circt/Dialect/HW/HWTypes.h"
 #include "circt/Dialect/LLHD/IR/LLHDOps.h"
 #include "circt/Dialect/Seq/SeqOps.h"
 #include "circt/Dialect/Seq/SeqTypes.h"
@@ -210,14 +211,6 @@ LogicalResult ModuleLowering::run() {
       StorageType::get(builder.getContext(), {}), modelOp.getLoc());
   builder.setInsertionPointToStart(&modelBlock);
 
-  // Create an activation condition for every arc
-  moduleOp.walk([&](Operation *op) {
-    if (isa<StateOp, CallOp>(op) && !isa<StateOp, CallOp>(op->getParentOp())) {
-      arcActivations[op] = builder.create<arc::AllocStateOp>(
-          moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
-    }
-  });
-
   // Create the `arc.initial` op to contain the ops for the initialization
   // phase.
   auto initialOp = builder.create<InitialOp>(moduleOp.getLoc());
@@ -237,16 +230,52 @@ LogicalResult ModuleLowering::run() {
     auto state = allocBuilder.create<RootInputOp>(
         arg.getLoc(), StateType::get(arg.getType()), name, storageArg);
     allocatedInputs.push_back(state);
+    Value myInit;
+    if (isa<seq::ClockType>(arg.getType())) {
+      myInit = initialBuilder.create<seq::ConstClockOp>(
+          moduleOp.getLoc(), arg.getType(),
+          seq::ClockConstAttr::get(initialBuilder.getContext(),
+                                   seq::ClockConst::Low));
+    } else
+      myInit = initialBuilder.create<hw::ConstantOp>(moduleOp.getLoc(),
+                                                     arg.getType(), 0);
+    // initialBuilder.create<arc::StateWriteOp>(arg.getLoc(), state, myInit,
+    //                                          Value{});
   }
+
+  // Create an activation condition for every arc
+  auto myQuickTrue = initialBuilder.create<hw::ConstantOp>(
+      moduleOp.getLoc(), builder.getI1Type(), true);
+  moduleOp.walk([&](Operation *op) {
+    if (isa<StateOp, CallOp>(op) && !isa<StateOp, CallOp>(op->getParentOp())) {
+      arcActivations[op] = allocBuilder.create<arc::AllocStateOp>(
+          moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
+      // Ensure the activation is always true at the start.
+      initialBuilder.create<arc::StateWriteOp>(
+          moduleOp.getLoc(), arcActivations[op], myQuickTrue, Value{});
+    }
+  });
 
   // Allocate old storage for the inputs.
   for (auto arg : moduleOp.getBodyBlock()->getArguments()) {
-    auto state = builder.create<arc::AllocStateOp>(
+    auto state = allocBuilder.create<arc::AllocStateOp>(
         moduleOp.getLoc(), StateType::get(arg.getType()), storageArg);
     allocatedOldInputs.push_back(state);
+    // consistent start value for determinism
+    Value myInit;
+    if (isa<seq::ClockType>(arg.getType())) {
+      myInit = initialBuilder.create<seq::ConstClockOp>(
+          moduleOp.getLoc(), arg.getType(),
+          seq::ClockConstAttr::get(initialBuilder.getContext(),
+                                   seq::ClockConst::Low));
+    } else
+      myInit = initialBuilder.create<hw::ConstantOp>(moduleOp.getLoc(),
+                                                     arg.getType(), 0);
+    initialBuilder.create<arc::StateWriteOp>(arg.getLoc(), state, myInit,
+                                             Value{});
   }
 
-  // Add an activity check for every arc.
+  // Activate every child of a changed input.
   Value quickTrue = builder.create<hw::ConstantOp>(moduleOp.getLoc(),
                                                    builder.getI1Type(), true);
   for (auto [i, arg] :
@@ -256,9 +285,9 @@ LogicalResult ModuleLowering::run() {
     Value oldValue =
         builder.create<arc::StateReadOp>(arg.getLoc(), allocatedOldInputs[i]);
     if (isa<seq::ClockType>(arg.getType())) {
-      // If the value is a clock, we need to check for a posedge.
-      newValue = builder.create<seq::FromClockOp>(arg.getLoc(), newValue);
-      oldValue = builder.create<seq::FromClockOp>(arg.getLoc(), oldValue);
+      // If the value is a clock, we skip or we'll always activate every
+      // register
+      continue;
     }
     auto hasInputChanged = builder.create<comb::ICmpOp>(
         arg.getLoc(), comb::ICmpPredicate::ne, newValue, oldValue);
@@ -423,6 +452,20 @@ Value ModuleLowering::getAllocatedState(OpResult result) {
     auto alloc = allocBuilder.create<AllocMemoryOp>(
         memOp.getLoc(), memOp.getType(), storageArg, memOp->getAttrs());
     allocatedStates.insert({result, alloc});
+    if (isa<seq::ClockType>(result.getType())) {
+      auto init = initialBuilder.create<seq::ConstClockOp>(
+          result.getLoc(), result.getType(),
+          seq::ClockConstAttr::get(initialBuilder.getContext(),
+                                   seq::ClockConst::Low));
+      initialBuilder.create<StateWriteOp>(result.getLoc(), alloc, init,
+                                          Value{});
+    } else if (isHWIntegerType(result.getType())) {
+      auto init = initialBuilder.create<hw::ConstantOp>(result.getLoc(),
+                                                        result.getType(), 0);
+      initialBuilder.create<StateWriteOp>(result.getLoc(), alloc, init,
+                                          Value{});
+    }
+
     return alloc;
   }
 
@@ -431,18 +474,32 @@ Value ModuleLowering::getAllocatedState(OpResult result) {
       result.getLoc(), StateType::get(result.getType()), storageArg);
   allocatedStates.insert({result, alloc});
 
+  // Initialize state to avoid UB
+  if (isa<seq::ClockType>(result.getType())) {
+    auto init = initialBuilder.create<seq::ConstClockOp>(
+        result.getLoc(), result.getType(),
+        seq::ClockConstAttr::get(initialBuilder.getContext(),
+                                 seq::ClockConst::Low));
+    initialBuilder.create<StateWriteOp>(result.getLoc(), alloc, init, Value{});
+  } else if (isHWIntegerType(result.getType())) {
+    auto init = initialBuilder.create<hw::ConstantOp>(result.getLoc(),
+                                                      result.getType(), 0);
+    initialBuilder.create<StateWriteOp>(result.getLoc(), alloc, init, Value{});
+  }
+
   // HACK: If the result comes from an instance op, add the instance and port
-  // name as an attribute to the allocation. This will make it show up in the C
-  // headers later. Get rid of this once we have proper debug dialect support.
+  // name as an attribute to the allocation. This will make it show up in the
+  // C headers later. Get rid of this once we have proper debug dialect
+  // support.
   if (auto instOp = dyn_cast<InstanceOp>(result.getOwner()))
     alloc->setAttr(
         "name", builder.getStringAttr(
                     instOp.getInstanceName() + "/" +
                     instOp.getOutputName(result.getResultNumber()).getValue()));
 
-  // HACK: If the result comes from an op that has a "names" attribute, use that
-  // as a name for the allocation. This should no longer be necessary once we
-  // properly support the Debug dialect.
+  // HACK: If the result comes from an op that has a "names" attribute, use
+  // that as a name for the allocation. This should no longer be necessary
+  // once we properly support the Debug dialect.
   if (isa<StateOp, sim::DPICallOp>(result.getOwner()))
     if (auto names = result.getOwner()->getAttrOfType<ArrayAttr>("names"))
       if (result.getResultNumber() < names.size())
@@ -499,8 +556,9 @@ Value ModuleLowering::requireLoweredValue(Value value, Phase phase,
 // Operation Lowering
 //===----------------------------------------------------------------------===//
 
-/// Create a new `scf.if` operation with the given builder, or reuse a previous
-/// `scf.if` if the builder's insertion point is located right after it.
+/// Create a new `scf.if` operation with the given builder, or reuse a
+/// previous `scf.if` if the builder's insertion point is located right after
+/// it.
 static scf::IfOp createOrReuseIf(OpBuilder &builder, Value condition,
                                  bool withElse) {
   if (auto ip = builder.getInsertionPoint(); ip != builder.getBlock()->begin())
@@ -752,7 +810,6 @@ LogicalResult OpLowering::lowerStateful(
   scf::YieldOp activatedRegion;
   if (!isa<sim::DPICallOp>(originalOp) &&
       !isa<StateOp, CallOp>(originalOp->getParentOp())) {
-    // Add activation to the enable
     auto activationCondition = module.builder.create<StateReadOp>(
         originalOp->getLoc(), module.arcActivations[originalOp]);
     auto ifActivatedOp =
@@ -784,6 +841,22 @@ LogicalResult OpLowering::lowerStateful(
     auto oldValue = module.builder.create<StateReadOp>(result.getLoc(), state);
     module.loweredValues[{result, Phase::Old}] = oldValue;
   }
+
+  // Now that this op has been executed, we deactivate it for next cycle
+  // unless it's woken up
+  // auto quickFalse = module.builder.create<hw::ConstantOp>(
+  //     originalOp->getLoc(), module.builder.getI1Type(), false);
+  // if (activatedRegion) {
+  //   // If we have an activation region, write the deactivation condition.
+  //   // However, we should only do this if the op has parents that could
+  //   activate
+  //   // it TODO it would be faster to never check parentless arcs
+  //   if (auto so = dyn_cast<StateOp>(originalOp))
+  //     if (!so.getInputs().empty())
+  //       module.builder.create<StateWriteOp>(originalOp->getLoc(),
+  //                                           module.arcActivations[originalOp],
+  //                                           quickFalse, Value{});
+  // }
 
   if (!isa<sim::DPICallOp>(originalOp) &&
       !isa<StateOp, CallOp>(originalOp->getParentOp())) {
@@ -932,8 +1005,8 @@ LogicalResult OpLowering::lower(MemoryOp op) {
   return success();
 }
 
-/// Lower a tap by allocating state storage for it and writing the current value
-/// observed by the tap to it.
+/// Lower a tap by allocating state storage for it and writing the current
+/// value observed by the tap to it.
 LogicalResult OpLowering::lower(TapOp op) {
   assert(phase == Phase::New);
 
@@ -1074,7 +1147,8 @@ LogicalResult OpLowering::lower(seq::InitialOp op) {
   return success();
 }
 
-/// Lower `llhd.final` ops into `scf.execute_region` ops in the `arc.final` op.
+/// Lower `llhd.final` ops into `scf.execute_region` ops in the `arc.final`
+/// op.
 LogicalResult OpLowering::lower(llhd::FinalOp op) {
   assert(phase == Phase::Final);
 
@@ -1140,8 +1214,9 @@ scf::IfOp OpLowering::createIfClockOp(Value clock) {
 
 /// Lower a value being used by the current operation. This will mark the
 /// defining operation as to be lowered first (through `addPending`) in most
-/// cases. Some operations and values have special handling though. For example,
-/// states and memory reads are immediately materialized as a new read op.
+/// cases. Some operations and values have special handling though. For
+/// example, states and memory reads are immediately materialized as a new
+/// read op.
 Value OpLowering::lowerValue(Value value, Phase phase) {
   // Handle module inputs. They read the same in all phases.
   if (auto arg = dyn_cast<BlockArgument>(value)) {
@@ -1194,10 +1269,10 @@ Value OpLowering::lowerValue(InstanceOp op, OpResult result, Phase phase) {
   return module.getBuilder(phase).create<StateReadOp>(result.getLoc(), state);
 }
 
-/// Handle uses of a state. This creates an `arc.state_read` op to read from the
-/// state's storage. If the new value after all updates is requested, marks the
-/// state as to be lowered first (which will perform the writes). If the old
-/// value is requested, asserts that no new values have been written.
+/// Handle uses of a state. This creates an `arc.state_read` op to read from
+/// the state's storage. If the new value after all updates is requested,
+/// marks the state as to be lowered first (which will perform the writes). If
+/// the old value is requested, asserts that no new values have been written.
 Value OpLowering::lowerValue(StateOp op, OpResult result, Phase phase) {
   if (initial) {
     // Ensure that the new or initial value has been written by the lowering
@@ -1216,10 +1291,10 @@ Value OpLowering::lowerValue(StateOp op, OpResult result, Phase phase) {
   return module.getBuilder(phase).create<StateReadOp>(result.getLoc(), state);
 }
 
-/// Handle uses of a DPI call. This creates an `arc.state_read` op to read from
-/// the state's storage. If the new value after all updates is requested, marks
-/// the state as to be lowered first (which will perform the writes). If the old
-/// value is requested, asserts that no new values have been written.
+/// Handle uses of a DPI call. This creates an `arc.state_read` op to read
+/// from the state's storage. If the new value after all updates is requested,
+/// marks the state as to be lowered first (which will perform the writes). If
+/// the old value is requested, asserts that no new values have been written.
 Value OpLowering::lowerValue(sim::DPICallOp op, OpResult result, Phase phase) {
   if (initial) {
     // Ensure that the new or initial value has been written by the lowering
@@ -1238,8 +1313,8 @@ Value OpLowering::lowerValue(sim::DPICallOp op, OpResult result, Phase phase) {
   return module.getBuilder(phase).create<StateReadOp>(result.getLoc(), state);
 }
 
-/// Handle uses of a memory read operation. This creates an `arc.memory_read` op
-/// to read from the memory's storage. Similar to the `StateOp` handling
+/// Handle uses of a memory read operation. This creates an `arc.memory_read`
+/// op to read from the memory's storage. Similar to the `StateOp` handling
 /// otherwise.
 Value OpLowering::lowerValue(MemoryReadPortOp op, OpResult result,
                              Phase phase) {
@@ -1273,9 +1348,9 @@ Value OpLowering::lowerValue(MemoryReadPortOp op, OpResult result,
                                                        address);
 }
 
-/// Handle uses of `seq.initial` values computed during the initial phase. This
-/// ensures that the interesting value is stored into storage during the initial
-/// phase, and then reads it back using an `arc.state_read` op.
+/// Handle uses of `seq.initial` values computed during the initial phase.
+/// This ensures that the interesting value is stored into storage during the
+/// initial phase, and then reads it back using an `arc.state_read` op.
 Value OpLowering::lowerValue(seq::InitialOp op, OpResult result, Phase phase) {
   // Ensure the op has been lowered first.
   if (initial) {
