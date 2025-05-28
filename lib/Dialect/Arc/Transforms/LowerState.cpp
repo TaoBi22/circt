@@ -808,8 +808,11 @@ LogicalResult OpLowering::lowerStateful(
   // Slightly hacky to avoid faffing around with func signatures
   auto *originalOp = results[0].getDefiningOp();
   scf::YieldOp activatedRegion;
+  // Check it's not a DPICall and also that it's not living within a partition
+  // (TODO: i don't think that can actually be triggered here, this only handles
+  // stateops which can't be in an arc)
   if (!isa<sim::DPICallOp>(originalOp) &&
-      !isa<StateOp, CallOp>(originalOp->getParentOp())) {
+      !originalOp->getParentOfType<DefineOp>()) {
     auto activationCondition = module.builder.create<StateReadOp>(
         originalOp->getLoc(), module.arcActivations[originalOp]);
     auto ifActivatedOp =
@@ -859,7 +862,7 @@ LogicalResult OpLowering::lowerStateful(
   // }
 
   if (!isa<sim::DPICallOp>(originalOp) &&
-      !isa<StateOp, CallOp>(originalOp->getParentOp())) {
+      !originalOp->getParentOfType<DefineOp>()) {
     module.builder.setInsertionPoint(activatedRegion);
     // Activate children if value has changed (iff op is an arc state or call)
     // TODO: Add in activating child conditions.
