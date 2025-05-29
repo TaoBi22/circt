@@ -860,19 +860,33 @@ LogicalResult OpLowering::lowerStateful(
 
   // Now that this op has been executed, we deactivate it for next cycle
   // unless it's woken up
-  // auto quickFalse = module.builder.create<hw::ConstantOp>(
-  //     originalOp->getLoc(), module.builder.getI1Type(), false);
-  // if (activatedRegion) {
-  //   // If we have an activation region, write the deactivation condition.
-  //   // However, we should only do this if the op has parents that could
-  //   activate
-  //   // it TODO it would be faster to never check parentless arcs
-  //   if (auto so = dyn_cast<StateOp>(originalOp))
-  //     if (!so.getInputs().empty())
-  //       module.builder.create<StateWriteOp>(originalOp->getLoc(),
-  //                                           module.arcActivations[originalOp],
-  //                                           quickFalse, Value{});
-  // }
+  auto quickFalse = module.builder.create<hw::ConstantOp>(
+      originalOp->getLoc(), module.builder.getI1Type(), false);
+  if (activatedRegion) {
+    // If we have an activation region, write the deactivation condition.
+    // However, we should only do this if the op has parents that could activate
+    // it TODO it would be faster to never check parentless arcs
+    if (auto so = dyn_cast<StateOp>(originalOp)) {
+      bool hasActivatingParent = false;
+      for (auto parent : so.getOperands()) {
+        if (isa<BlockArgument>(parent)) {
+          hasActivatingParent = true;
+          break;
+        }
+        if (auto parentOp = parent.getDefiningOp()) {
+          if (isa<StateOp, CallOp>(parentOp)) {
+            hasActivatingParent = true;
+            break;
+          }
+        }
+      }
+      if (hasActivatingParent) {
+        module.builder.create<StateWriteOp>(originalOp->getLoc(),
+                                            module.arcActivations[originalOp],
+                                            quickFalse, Value{});
+      }
+    }
+  }
 
   if (!isa<sim::DPICallOp>(originalOp) &&
       !originalOp->getParentOfType<DefineOp>()) {
