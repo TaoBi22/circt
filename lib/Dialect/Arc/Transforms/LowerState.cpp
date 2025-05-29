@@ -30,6 +30,7 @@
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -172,6 +173,8 @@ struct ModuleLowering {
   DenseMap<Operation *, Value> allocatedTaps;
   /// A map from arcs to their corresponding activation states.
   DenseMap<Operation *, Value> arcActivations;
+  /// A map from call ops to their existing output values (essentially cacheing)
+  DenseMap<OpResult, Value> allocatedOldCallValues;
 
   /// A mapping from unlowered clocks to a value indicating a posedge. This is
   /// used to not create an excessive number of posedge detectors.
@@ -255,6 +258,13 @@ LogicalResult ModuleLowering::run() {
       // Ensure the activation is always true at the start.
       initialBuilder.create<arc::StateWriteOp>(
           moduleOp.getLoc(), arcActivations[op], myQuickTrue, Value{});
+    }
+    if (isa<CallOp>(op) && !op->getParentOfType<DefineOp>()) {
+      for (auto res : op->getResults()) {
+        // Allocate storage for the old call value.
+        allocatedOldCallValues[res] = allocBuilder.create<arc::AllocStateOp>(
+            moduleOp.getLoc(), StateType::get(res.getType()), storageArg);
+      }
     }
   });
 
@@ -578,7 +588,8 @@ LogicalResult OpLowering::lower() {
   return TypeSwitch<Operation *, LogicalResult>(op)
       // Operations with special lowering.
       .Case<StateOp, sim::DPICallOp, MemoryOp, TapOp, InstanceOp, hw::OutputOp,
-            seq::InitialOp, llhd::FinalOp>([&](auto op) { return lower(op); })
+            seq::InitialOp, llhd::FinalOp, CallOp>(
+          [&](auto op) { return lower(op); })
 
       // Operations that should be skipped entirely and never land on the
       // worklist to be lowered.
@@ -1217,65 +1228,85 @@ LogicalResult OpLowering::lower(CallOp op) {
   if (anyFailed)
     return failure();
 
+  if (phase != Phase::New) {
+    // If we're not in the New phase, we don't need to do anything special.
+    return lowerDefault();
+  }
+
   // Create an activation if to enclose the call in
 
-  OpBuilder::InsertionGuard guard(module.getBuilder(phase));
-  // Hack: do our special treatment then just call lowerDefault
+  OpBuilder::InsertionGuard guard(module.builder);
+  bool essenting = false;
+  SmallVector<OpResult> conditionalResults;
   if (!op->getParentOfType<DefineOp>())
     if (module.arcActivations[op]) {
-      OpBuilder::InsertionGuard guard(module.builder);
-      module.builder.setInsertionPoint(op);
+      essenting = true;
       // Read the activation condition.
-      auto activationCondition = module.builder.create<StateReadOp>(
+      auto activationCondition = module.getBuilder(phase).create<StateReadOp>(
           op.getLoc(), module.arcActivations[op]);
       // Create an if op for the activation condition.
-      auto ifActivatedOp =
-          createOrReuseIf(module.builder, activationCondition, false);
-      // move the call inside the IfOp
-      op->moveBefore(ifActivatedOp.thenYield());
-      module.builder.setInsertionPoint(ifActivatedOp.thenYield());
-      // Now activate children
-    }
-
-  // Clone the operation.
-  auto *clonedOp = module.getBuilder(phase).clone(*op, mapping);
-
-  if (!op->getParentOfType<DefineOp>())
-    if (module.arcActivations[op]) {
-      // Activate children if value has changed
-      for (auto [resIndex, result] : llvm::enumerate(clonedOp->getResults())) {
-        // Check if this result has changed.
-        auto oldValue =
-            module.loweredValues.lookup({op.getResult(resIndex), Phase::Old});
-        Value newValue = clonedOp->getResult(resIndex);
-        // Read then write activation condition
-        for (auto *user : result.getUsers()) {
-          if (isa<StateOp, CallOp>(user)) {
-            if (isa<seq::ClockType>(newValue.getType())) {
-              newValue = module.builder.create<seq::FromClockOp>(
-                  result.getLoc(), newValue);
-            }
-            if (isa<seq::ClockType>(oldValue.getType())) {
-              oldValue = module.builder.create<seq::FromClockOp>(
-                  result.getLoc(), oldValue);
-            }
-            auto userActivation = module.arcActivations[user];
-            auto activated = module.builder.create<StateReadOp>(op->getLoc(),
-                                                                userActivation);
-            auto hasChanged = module.builder.create<comb::ICmpOp>(
-                op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
-            auto newActivated = module.builder.create<comb::OrOp>(
-                op->getLoc(), activated, hasChanged);
-            module.builder.create<StateWriteOp>(op->getLoc(), userActivation,
-                                                newActivated, Value{});
-          }
-        }
+      auto ifActivatedOp = module.builder.create<scf::IfOp>(
+          op.getLoc(), op->getResultTypes(), activationCondition, true, true);
+      // createOrReuseIf(module.getBuilder(phase), activationCondition, false);
+      // If the arc isn't activated, we just yield what's stored in the cache
+      module.builder.setInsertionPointToEnd(ifActivatedOp.elseBlock());
+      SmallVector<Value> loadedResults;
+      for (auto res : op.getResults()) {
+        auto oldValue = module.builder.create<StateReadOp>(
+            op.getLoc(), module.allocatedOldCallValues[res]);
+        loadedResults.push_back(oldValue);
       }
+      module.builder.create<scf::YieldOp>(op.getLoc(),
+                                          ValueRange(loadedResults));
+      // move the call inside the IfOp
+      module.getBuilder(phase).setInsertionPointToEnd(
+          ifActivatedOp.thenBlock());
+      auto *clonedOp = module.getBuilder(phase).clone(*op, mapping);
+      module.builder.create<scf::YieldOp>(op.getLoc(), clonedOp->getResults());
+      conditionalResults = ifActivatedOp.getResults();
+    } else {
+      auto *clonedOp = module.getBuilder(phase).clone(*op, mapping);
+      conditionalResults = clonedOp->getResults();
     }
+
+  // if (!op->getParentOfType<DefineOp>())
+  //   if (module.arcActivations[op]) {
+  //     // Activate children if value has changed
+  //     for (auto [resIndex, result] : llvm::enumerate(clonedOp->getResults()))
+  //     {
+  //       // Check if this result has changed.
+  //       auto oldValue =
+  //           module.loweredValues.lookup({op.getResult(resIndex),
+  //           Phase::Old});
+  //       Value newValue = clonedOp->getResult(resIndex);
+  //       // Read then write activation condition
+  //       for (auto *user : result.getUsers()) {
+  //         if (isa<StateOp, CallOp>(user)) {
+  //           if (isa<seq::ClockType>(newValue.getType())) {
+  //             newValue = module.builder.create<seq::FromClockOp>(
+  //                 result.getLoc(), newValue);
+  //           }
+  //           if (isa<seq::ClockType>(oldValue.getType())) {
+  //             oldValue = module.builder.create<seq::FromClockOp>(
+  //                 result.getLoc(), oldValue);
+  //           }
+  //           auto userActivation = module.arcActivations[user];
+  //           auto activated = module.builder.create<StateReadOp>(op->getLoc(),
+  //                                                               userActivation);
+  //           auto hasChanged = module.builder.create<comb::ICmpOp>(
+  //               op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
+  //           auto newActivated = module.builder.create<comb::OrOp>(
+  //               op->getLoc(), activated, hasChanged);
+  //           module.builder.create<StateWriteOp>(op->getLoc(), userActivation,
+  //                                               newActivated, Value{});
+  //         }
+  //       }
+  //     }
+  //   }
 
   // Keep track of the results.
   for (auto [oldResult, newResult] :
-       llvm::zip(op->getResults(), clonedOp->getResults()))
+       llvm::zip(op->getResults(), conditionalResults))
     module.loweredValues[{oldResult, phase}] = newResult;
 
   return success();
