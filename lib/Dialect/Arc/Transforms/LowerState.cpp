@@ -1262,47 +1262,49 @@ LogicalResult OpLowering::lower(CallOp op) {
       module.getBuilder(phase).setInsertionPointToEnd(
           ifActivatedOp.thenBlock());
       auto *clonedOp = module.getBuilder(phase).clone(*op, mapping);
-      module.builder.create<scf::YieldOp>(op.getLoc(), clonedOp->getResults());
       conditionalResults = ifActivatedOp.getResults();
+
+      // Now activate children if value has changed
+
+      for (auto [resIndex, result] : llvm::enumerate(op->getResults())) {
+        // Check if this result has changed.
+        Value oldValue = module.builder.create<StateReadOp>(
+            op.getLoc(), module.allocatedOldCallValues[result]);
+        Value newValue = clonedOp->getResult(resIndex);
+        // Read then write activation condition
+        for (auto *user : result.getUsers()) {
+          if (isa<StateOp, CallOp>(user)) {
+            if (isa<seq::ClockType>(newValue.getType())) {
+              newValue = module.builder.create<seq::FromClockOp>(
+                  result.getLoc(), newValue);
+            }
+            if (isa<seq::ClockType>(oldValue.getType())) {
+              oldValue = module.builder.create<seq::FromClockOp>(
+                  result.getLoc(), oldValue);
+            }
+            auto userActivation = module.arcActivations[user];
+            auto activated = module.builder.create<StateReadOp>(op->getLoc(),
+                                                                userActivation);
+            auto hasChanged = module.builder.create<comb::ICmpOp>(
+                op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
+            auto newActivated = module.builder.create<comb::OrOp>(
+                op->getLoc(), activated, hasChanged);
+            module.builder.create<StateWriteOp>(op->getLoc(), userActivation,
+                                                newActivated, Value{});
+          }
+        }
+
+        // We also need to update the old value for the next cycle.
+        module.builder.create<StateWriteOp>(
+            op.getLoc(), module.allocatedOldCallValues[result], newValue,
+            Value{});
+      }
+      module.builder.create<scf::YieldOp>(op.getLoc(), clonedOp->getResults());
+
     } else {
       auto *clonedOp = module.getBuilder(phase).clone(*op, mapping);
       conditionalResults = clonedOp->getResults();
     }
-
-  // if (!op->getParentOfType<DefineOp>())
-  //   if (module.arcActivations[op]) {
-  //     // Activate children if value has changed
-  //     for (auto [resIndex, result] : llvm::enumerate(clonedOp->getResults()))
-  //     {
-  //       // Check if this result has changed.
-  //       auto oldValue =
-  //           module.loweredValues.lookup({op.getResult(resIndex),
-  //           Phase::Old});
-  //       Value newValue = clonedOp->getResult(resIndex);
-  //       // Read then write activation condition
-  //       for (auto *user : result.getUsers()) {
-  //         if (isa<StateOp, CallOp>(user)) {
-  //           if (isa<seq::ClockType>(newValue.getType())) {
-  //             newValue = module.builder.create<seq::FromClockOp>(
-  //                 result.getLoc(), newValue);
-  //           }
-  //           if (isa<seq::ClockType>(oldValue.getType())) {
-  //             oldValue = module.builder.create<seq::FromClockOp>(
-  //                 result.getLoc(), oldValue);
-  //           }
-  //           auto userActivation = module.arcActivations[user];
-  //           auto activated = module.builder.create<StateReadOp>(op->getLoc(),
-  //                                                               userActivation);
-  //           auto hasChanged = module.builder.create<comb::ICmpOp>(
-  //               op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
-  //           auto newActivated = module.builder.create<comb::OrOp>(
-  //               op->getLoc(), activated, hasChanged);
-  //           module.builder.create<StateWriteOp>(op->getLoc(), userActivation,
-  //                                               newActivated, Value{});
-  //         }
-  //       }
-  //     }
-  //   }
 
   // Keep track of the results.
   for (auto [oldResult, newResult] :
