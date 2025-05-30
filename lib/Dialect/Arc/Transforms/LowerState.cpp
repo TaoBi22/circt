@@ -252,9 +252,11 @@ LogicalResult ModuleLowering::run() {
   auto myQuickTrue = initialBuilder.create<hw::ConstantOp>(
       moduleOp.getLoc(), builder.getI1Type(), true);
   moduleOp.walk([&](Operation *op) {
-    if (isa<StateOp, CallOp>(op) && !isa<StateOp, CallOp>(op->getParentOp())) {
+    if (isa<StateOp, CallOp>(op) && !op->getParentOfType<DefineOp>()) {
       arcActivations[op] = allocBuilder.create<arc::AllocStateOp>(
           moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
+      arcActivations[op].getDefiningOp()->setAttr(
+          "arc_activation", builder.getBoolArrayAttr(true));
       // Ensure the activation is always true at the start.
       initialBuilder.create<arc::StateWriteOp>(
           moduleOp.getLoc(), arcActivations[op], myQuickTrue, Value{});
@@ -317,6 +319,16 @@ LogicalResult ModuleLowering::run() {
     }
 
     builder.setInsertionPointAfter(ifInputChanged);
+  }
+
+  // Buffer new inputs into old inputs
+  for (auto [rootInput, oldStorage] :
+       llvm::zip(allocatedInputs, allocatedOldInputs)) {
+    // We buffer the new input into the old input storage.
+    auto newValue =
+        builder.create<arc::StateReadOp>(rootInput.getLoc(), rootInput);
+    builder.create<arc::StateWriteOp>(rootInput.getLoc(), oldStorage, newValue,
+                                      Value{});
   }
 
   // Lower the ops.
@@ -828,6 +840,35 @@ LogicalResult OpLowering::lowerStateful(
       !originalOp->getParentOfType<DefineOp>()) {
     auto activationCondition = module.builder.create<StateReadOp>(
         originalOp->getLoc(), module.arcActivations[originalOp]);
+
+    // We've fetched the activation, so we want to immediately set the arc as
+    // deactivated (since we don't want to overwrite activations done within the
+    // if.)
+
+    // Now that this op has been executed, we deactivate it for next cycle
+    // unless it's woken up
+    auto quickFalse = module.builder.create<hw::ConstantOp>(
+        originalOp->getLoc(), module.builder.getI1Type(), false);
+    // If we have an activation region, write the deactivation condition.
+    // However, we should only do this if the op has parents that could activate
+    // it TODO it would be faster to never check parentless arcs
+    if (auto so = dyn_cast<StateOp>(originalOp)) {
+      bool hasActivatingParent = false;
+      for (auto parent : so.getOperands()) {
+        if (auto parentOp = parent.getDefiningOp()) {
+          if (isa<StateOp, CallOp, RootInputOp>(parentOp)) {
+            hasActivatingParent = true;
+            break;
+          }
+        }
+      }
+      if (hasActivatingParent) {
+        module.builder.create<StateWriteOp>(originalOp->getLoc(),
+                                            module.arcActivations[originalOp],
+                                            quickFalse, Value{});
+      }
+    }
+
     auto ifActivatedOp =
         createOrReuseIf(module.builder, activationCondition, false);
     module.builder.setInsertionPoint(ifActivatedOp.thenYield());
@@ -856,36 +897,6 @@ LogicalResult OpLowering::lowerStateful(
   for (auto [state, result] : llvm::zip(states, results)) {
     auto oldValue = module.builder.create<StateReadOp>(result.getLoc(), state);
     module.loweredValues[{result, Phase::Old}] = oldValue;
-  }
-
-  // Now that this op has been executed, we deactivate it for next cycle
-  // unless it's woken up
-  auto quickFalse = module.builder.create<hw::ConstantOp>(
-      originalOp->getLoc(), module.builder.getI1Type(), false);
-  if (activatedRegion) {
-    // If we have an activation region, write the deactivation condition.
-    // However, we should only do this if the op has parents that could activate
-    // it TODO it would be faster to never check parentless arcs
-    if (auto so = dyn_cast<StateOp>(originalOp)) {
-      bool hasActivatingParent = false;
-      for (auto parent : so.getOperands()) {
-        if (isa<BlockArgument>(parent)) {
-          hasActivatingParent = true;
-          break;
-        }
-        if (auto parentOp = parent.getDefiningOp()) {
-          if (isa<StateOp, CallOp>(parentOp)) {
-            hasActivatingParent = true;
-            break;
-          }
-        }
-      }
-      if (hasActivatingParent) {
-        module.builder.create<StateWriteOp>(originalOp->getLoc(),
-                                            module.arcActivations[originalOp],
-                                            quickFalse, Value{});
-      }
-    }
   }
 
   if (!isa<sim::DPICallOp>(originalOp) &&
