@@ -402,25 +402,30 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
   int totalLatency = 0;
   Value clock;
   Value enable;
+  Value reset;
   bool mustBeState = false;
   if (auto firstState = dyn_cast<StateOp>(firstArc.getOperation())) {
     mustBeState = true;
     totalLatency += firstState.getLatency();
     clock = firstState.getClock();
     enable = firstState.getEnable();
+    reset = firstState.getReset();
   }
   if (auto secondState = dyn_cast<StateOp>(secondArc.getOperation())) {
     mustBeState = true;
     totalLatency += secondState.getLatency();
     clock = secondState.getClock();
     enable = secondState.getEnable();
+    reset = secondState.getReset();
   }
 
   Operation *newCall;
   if (mustBeState) {
-    newCall = r.create<StateOp>(firstArc->getLoc(), firstArcDefine, clock,
+    auto so = r.create<StateOp>(firstArc->getLoc(), firstArcDefine, clock,
                                 enable, totalLatency,
                                 ValueRange(newCallOperands), ValueRange());
+    so.getResetMutable().assign(reset);
+    newCall = so;
   } else {
     newCall = r.create<CallOp>(firstArc->getLoc(), firstArcDefine,
                                ValueRange(newCallOperands));
