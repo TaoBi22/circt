@@ -94,7 +94,7 @@ os.system(f"sed -i \"s/%/%obs/g\" {builddir}/safety.mlir")
 os.system(f"sed -i \"s/%/%obs/g\" {builddir}/liveness.mlir")
 
 # setup safety
-os.system(f"cp {builddir}/bmc.mlir {builddir}/safety-tv.mlir")
+# os.system(f"cp {builddir}/bmc.mlir {builddir}/safety-tv.mlir")
 textToInsert = open(builddir+"/safety.mlir").readlines()[2:-3]
 invariants = []
 for line in textToInsert:
@@ -181,3 +181,22 @@ for i, inputWidth in enumerate(inputWidths):
     properties.append(propertyStr)
 
 # TODO: need to add guards to stay in line with the inputs of the RTL
+
+bmcText = open(builddir+"/bmc.mlir").readlines()
+
+outputText = []
+
+inCircuitFunc = False
+for line in bmcText:
+    if inCircuitFunc and "return" in line:
+        for property in properties:
+            outputText.append(property)
+        inCircuitFunc = False
+
+    outputText.append(line)
+    if "func.func @bmc_circuit" in line:
+        outputText.append(inputFuncDecls)
+        inCircuitFunc = True
+
+with open(f"{builddir}/safety-tv.mlir", "w+") as f:
+    f.writelines(outputText)
