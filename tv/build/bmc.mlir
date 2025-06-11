@@ -4,32 +4,42 @@ module {
     %0 = llvm.mlir.addressof @resultString_1 : !llvm.ptr
     %1 = llvm.mlir.addressof @resultString_0 : !llvm.ptr
     %2 = smt.solver() : () -> i1 {
+      %c-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
       %true = arith.constant true
       %false = arith.constant false
       %c20_i32 = arith.constant 20 : i32
       %c1_i32 = arith.constant 1 : i32
       %c0_i32 = arith.constant 0 : i32
-      %c0_bv32 = smt.bv.constant #smt.bv<0> : !smt.bv<32>
-      %c0_bv16 = smt.bv.constant #smt.bv<0> : !smt.bv<16>
-      %c0_bv4 = smt.bv.constant #smt.bv<0> : !smt.bv<4>
       %4 = func.call @bmc_init() : () -> !smt.bv<1>
+      smt.push 1
       %5 = smt.declare_fun : !smt.bv<1>
-      %6:6 = scf.for %arg0 = %c0_i32 to %c20_i32 step %c1_i32 iter_args(%arg1 = %4, %arg2 = %5, %arg3 = %c0_bv4, %arg4 = %c0_bv16, %arg5 = %c0_bv32, %arg6 = %false) -> (!smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>, i1)  : i32 {
-        %8:3 = func.call @bmc_circuit(%arg1, %arg2, %arg3, %arg4, %arg5) : (!smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>) -> (!smt.bv<4>, !smt.bv<16>, !smt.bv<32>)
-        %9 = smt.check sat {
+      %6 = smt.declare_fun : !smt.bv<4>
+      %7 = smt.declare_fun : !smt.bv<16>
+      %8 = smt.declare_fun : !smt.bv<32>
+      %9:6 = scf.for %arg0 = %c0_i32 to %c20_i32 step %c1_i32 iter_args(%arg1 = %4, %arg2 = %5, %arg3 = %6, %arg4 = %7, %arg5 = %8, %arg6 = %false) -> (!smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>, i1)  : i32 {
+        smt.pop 1
+        smt.push 1
+        %11:3 = func.call @bmc_circuit(%arg1, %arg2, %arg3, %arg4, %arg5) : (!smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>) -> (!smt.bv<4>, !smt.bv<16>, !smt.bv<32>)
+        %12 = smt.check sat {
           smt.yield %true : i1
         } unknown {
           smt.yield %true : i1
         } unsat {
           smt.yield %false : i1
         } -> i1
-        %10 = arith.ori %9, %arg6 : i1
-        %11 = func.call @bmc_loop(%arg1) : (!smt.bv<1>) -> !smt.bv<1>
-        %12 = smt.declare_fun : !smt.bv<1>
-        scf.yield %11, %12, %8#0, %8#1, %8#2, %10 : !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>, i1
+        %13 = arith.ori %12, %arg6 : i1
+        %14 = func.call @bmc_loop(%arg1) : (!smt.bv<1>) -> !smt.bv<1>
+        %15 = smt.declare_fun : !smt.bv<1>
+        %16 = smt.bv.not %arg1 : !smt.bv<1>
+        %17 = smt.bv.and %16, %14 : !smt.bv<1>
+        %18 = smt.eq %17, %c-1_bv1 : !smt.bv<1>
+        %19 = smt.ite %18, %11#0, %arg3 : !smt.bv<4>
+        %20 = smt.ite %18, %11#1, %arg4 : !smt.bv<16>
+        %21 = smt.ite %18, %11#2, %arg5 : !smt.bv<32>
+        scf.yield %14, %15, %19, %20, %21, %13 : !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>, i1
       }
-      %7 = arith.xori %6#5, %true : i1
-      smt.yield %7 : i1
+      %10 = arith.xori %9#5, %true : i1
+      smt.yield %10 : i1
     }
     %3 = llvm.select %2, %1, %0 : i1, !llvm.ptr
     llvm.call @printf(%3) vararg(!llvm.func<void (ptr, ...)>) : (!llvm.ptr) -> ()
