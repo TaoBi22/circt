@@ -187,7 +187,12 @@ bmcText = open(builddir+"/bmc.mlir").readlines()
 outputText = []
 
 inCircuitFunc = False
+checkResult = None
 for line in bmcText:
+
+    if match := re.search(r"%([A-Za-z0-9_]+) = smt\.check", line):
+        checkResult = match.group(1)
+
     if inCircuitFunc and "return" in line:
         for property in properties:
             outputText.append(property)
@@ -198,5 +203,23 @@ for line in bmcText:
         outputText.append(inputFuncDecls)
         inCircuitFunc = True
 
+    if "} -> i1" in line and checkResult:
+        # Insert printing of satisfiability
+        
+        outputText.append(f"%ss = llvm.mlir.addressof @satString : !llvm.ptr\n")
+        outputText.append(f"%us = llvm.mlir.addressof @unsatString : !llvm.ptr\n")
+        outputText.append(f"%string = llvm.select %{checkResult}, %ss, %us : i1, !llvm.ptr\n")
+        outputText.append(f"%printf = llvm.mlir.addressof @printf : !llvm.func<void (ptr, ...)>\n")
+    
+    # Allocate the strings we use to print results
+    if "Assertion can be violated" in line:
+          outputText.append("llvm.mlir.global private constant @satString(\"sat\\0A\\00\") {addr_space = 0 : i32}\n")
+          outputText.append("llvm.mlir.global private constant @unsatString(\"unsat\\0A\\00\") {addr_space = 0 : i32}\n")
+  
+
+
 with open(f"{builddir}/safety-tv.mlir", "w+") as f:
     f.writelines(outputText)
+
+os.system(f"{FSMTRoot}/build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
+os.system(f"{FSMTRoot}/llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/libz3.so -entry-point-result=void")
