@@ -147,6 +147,127 @@ module {
     %72 = smt.eq %71, %c-1_bv1 : !smt.bv<1>
     %73 = smt.ite %72, %c-6_bv4, %69 : !smt.bv<4>
     %74 = smt.bv.add %arg4, %c1_bv32 : !smt.bv<32>
+%tvclause_0 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__0(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_0
+%tvclause_1 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__1(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_1
+%tvclause_2 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__2(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_2
+%tvclause_3 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__3(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_3
+%tvclause_4 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__4(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_4
+%tvclause_5 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__5(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_5
+%tvclause_6 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__6(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_6
+%tvclause_7 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__7(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_7
+%tvclause_8 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__8(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_8
+%tvclause_9 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__9(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_9
+%tvclause_10 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%apply = smt.apply_func %obsF__10(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
+%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime : !smt.bool
+%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
+%consequent = smt.and %var_0_eq : !smt.bool
+%impl = smt.implies %antecedent, %consequent : !smt.bool
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_10
     return %73, %67, %74 : !smt.bv<4>, !smt.bv<16>, !smt.bv<32>
   }
 }
