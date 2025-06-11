@@ -122,10 +122,10 @@ for i, invariant in enumerate(invariants):
     propertyStr += "%rtlTime: !smt.bv<32>):\n"
     applicationStr += "%rtlTime"
     signatureStr += "!smt.bv<32>) !smt.bool>"
-    propertyStr += f"%apply = smt.apply_func {invariant}({applicationStr}) : {signatureStr}"
+    propertyStr += f"%apply = smt.apply_func {invariant}({applicationStr}) : {signatureStr}\n"
     # Make sure that the times match
     propertyStr += f"%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>\n"
-    propertyStr += f"%precondition = smt.and %apply, %rightTime : !smt.bool\n"
+    propertyStr += f"%antecedent = smt.and %apply, %rightTime : !smt.bool\n"
 
     # Check equivalence of variables:
     inputChecks = []
@@ -134,7 +134,19 @@ for i, invariant in enumerate(invariants):
         inputChecks.append(f"%var_{j}_eq")
 
     # Check equivalence of outputs:
-    # First, we need to get the SSA symbols that correspond to the outputs, since this is not something we can extract from the signature
+    for j, outputName in enumerate(outputNames):
+        propertyStr += f"%output_{j}_eq = smt.eq %output_{j}, %{outputName} : !smt.bv<{outputWidths[j]}>\n"
+        inputChecks.append(f"%output_{j}_eq")
+
+    # AND all our checks
+    propertyStr += f"%consequent = smt.and " + ", ".join(inputChecks) + " : !smt.bool\n"
+
+    # Find the implication
+
+    propertyStr += f"%impl = smt.implies %antecedent, %consequent : !smt.bool\n"
+
+    # And yield it
+    propertyStr += f"smt.yield %impl : !smt.bool\n"
 
     # TODO handle input equivalence
     propertyStr += "}\n"
