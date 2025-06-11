@@ -100,6 +100,11 @@ for line in textToInsert:
     if result := re.search(r"(%[a-zA-Z0-9\-_]+) = smt.declare_fun", line):
         invariants.append(result.group(1))
 
+# Declare a function that maps timestep to input
+inputFuncDecls = ""
+for i, inputWidth in enumerate(inputWidths):
+    inputFuncDecls += f"%input_{i}_func = smt.declare_fun !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
+
 # Add properties that check equivalence
 properties = []
 for i, invariant in enumerate(invariants):
@@ -151,4 +156,24 @@ for i, invariant in enumerate(invariants):
     # TODO handle input equivalence
     propertyStr += "}\n"
     propertyStr += f"smt.assert %tvclause_{i}\n"
+    properties.append(propertyStr)
     print(propertyStr)
+
+# We also have some assertions to make sure that the inputs are what our input function says they should be
+# Since inputs are just symbolic vals, this is fine - we just assert equality with the output of our input function
+for i, inputName, inputWidth in llvm::enumerate(zip(inputNames, inputWidths)):
+    print(i)
+
+
+# for i, inputWidth in enumerate(inputWidths):
+#     inputFunc = f"%input_{i}_func"
+#     propertyStr = f"%tvclause_input_{i} = smt.forall" + "{\n"
+#     propertyStr += "^bb0(%time: !smt.bv<32>):\n"
+#     propertyStr += f"%input_val = smt.apply_func {inputFunc}(%time) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
+#     propertyStr += f"%input_eq = smt.eq %input_val, %input_{i} : !smt.bv<{inputWidth}>\n"
+#     propertyStr += "smt.yield %input_eq : !smt.bool\n"
+#     propertyStr += "}\n"
+#     propertyStr += f"smt.assert %tvclause_input_{i}\n"
+#     properties.append(propertyStr)
+
+# TODO: need to add guards to stay in line with the inputs of the RTL
