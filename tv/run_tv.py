@@ -150,5 +150,5 @@ for i, invariant in enumerate(invariants):
 
     # TODO handle input equivalence
     propertyStr += "}\n"
-    propertyStr += f"smt.assert %tvclause_{i}"
+    propertyStr += f"smt.assert %tvclause_{i}\n"
     print(propertyStr)
