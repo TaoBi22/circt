@@ -103,6 +103,9 @@ for i, invariant in enumerate(invariants):
     applicationStr += "%rtlTime"
     signatureStr += "!smt.bv<32>) !smt.bool>"
     propertyStr += f"%apply = smt.apply_func {invariant}({applicationStr}) : {signatureStr}"
+    # Make sure that the times match
+    propertyStr += f"%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>\n"
+    propertyStr += f"%precondition = smt.and %apply, %rightTime : !smt.bool\n"
     # TODO handle input equivalence
     propertyStr += "}\n"
     propertyStr += f"smt.assert %tvclause_{i}"
