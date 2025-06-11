@@ -27,6 +27,10 @@ module {
         } unsat {
           smt.yield %false : i1
         } -> i1
+%ss = llvm.mlir.addressof @satString : !llvm.ptr
+%us = llvm.mlir.addressof @unsatString : !llvm.ptr
+%string = llvm.select %12, %ss, %us : i1, !llvm.ptr
+%printf = llvm.mlir.addressof @printf : !llvm.func<void (ptr, ...)>
         %13 = arith.ori %12, %arg6 : i1
         %14 = func.call @bmc_loop(%arg1) : (!smt.bv<1>) -> !smt.bv<1>
         %15 = smt.declare_fun : !smt.bv<1>
@@ -47,6 +51,8 @@ module {
   }
   llvm.mlir.global private constant @resultString_0("Bound reached with no violations!\0A\00") {addr_space = 0 : i32}
   llvm.mlir.global private constant @resultString_1("Assertion can be violated!\0A\00") {addr_space = 0 : i32}
+llvm.mlir.global private constant @satString("sat\0A\00") {addr_space = 0 : i32}
+llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : i32}
   func.func @bmc_init() -> !smt.bv<1> {
     %c0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
     return %c0_bv1 : !smt.bv<1>
