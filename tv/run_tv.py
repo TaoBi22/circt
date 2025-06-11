@@ -30,7 +30,8 @@ with open(fsmFile, "r") as f:
         if width := re.search(r": i([0-9]+)", input):
             inputWidths.append(int(width.group(1)))
         if name := re.search(r"%([\s\S]*) :", input):
-            inputNames.append(int(width.group(1)))
+            # TODO: HACK!!!!!!!!!
+            inputNames.append(f"%arg{len(inputNames)}")
     outputs = search.group(3)
     for output in outputs.split(","):
         if width := re.search(r"i([0-9]+)", output):
@@ -75,7 +76,7 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
     # Since we have this text knocking around anyway, we might as well grab the output SSA names
     # First check we actually have outputs
     if terminator.strip() != "hw.output":
-        x = re.search("hw.output[\s]?(%[A-Za-z0-9_])?(, %[A-Za-z0-9_])+ :", terminator)
+        x = re.search(r"hw.output[\s]?(%[A-Za-z0-9_])?(, %[A-Za-z0-9_])+ :", terminator)
         outputNames.append(x.group(0))
         if x.group(1):
             outputNames = [x.group(1).split(",")]
@@ -157,23 +158,26 @@ for i, invariant in enumerate(invariants):
     propertyStr += "}\n"
     propertyStr += f"smt.assert %tvclause_{i}\n"
     properties.append(propertyStr)
-    print(propertyStr)
 
 # We also have some assertions to make sure that the inputs are what our input function says they should be
 # Since inputs are just symbolic vals, this is fine - we just assert equality with the output of our input function
-for i, inputName, inputWidth in llvm::enumerate(zip(inputNames, inputWidths)):
-    print(i)
+for i, inputName, inputWidth in zip(inputNames, inputWidths):
+    inputFunc = f"%input_{i}_func"
+    propertyStr = f"%desired_input_{i} = smt.apply_func {inputFunc}(%time_reg) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
+    propertyStr += f"%input_{i}_eq = smt.eq %desired_input_{i}, %{inputNames[i]} : !smt.bv<{inputWidth}>\n"
+    propertyStr += f"smt.assert %input_{i}_eq\n"
+    properties.append(propertyStr)
 
 
-# for i, inputWidth in enumerate(inputWidths):
-#     inputFunc = f"%input_{i}_func"
-#     propertyStr = f"%tvclause_input_{i} = smt.forall" + "{\n"
-#     propertyStr += "^bb0(%time: !smt.bv<32>):\n"
-#     propertyStr += f"%input_val = smt.apply_func {inputFunc}(%time) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
-#     propertyStr += f"%input_eq = smt.eq %input_val, %input_{i} : !smt.bv<{inputWidth}>\n"
-#     propertyStr += "smt.yield %input_eq : !smt.bool\n"
-#     propertyStr += "}\n"
-#     propertyStr += f"smt.assert %tvclause_input_{i}\n"
-#     properties.append(propertyStr)
+for i, inputWidth in enumerate(inputWidths):
+    inputFunc = f"%input_{i}_func"
+    propertyStr = f"%tvclause_input_{i} = smt.forall" + "{\n"
+    propertyStr += "^bb0(%time: !smt.bv<32>):\n"
+    propertyStr += f"%input_val = smt.apply_func {inputFunc}(%time) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
+    propertyStr += f"%input_eq = smt.eq %input_val, %input_{i} : !smt.bv<{inputWidth}>\n"
+    propertyStr += "smt.yield %input_eq : !smt.bool\n"
+    propertyStr += "}\n"
+    propertyStr += f"smt.assert %tvclause_input_{i}\n"
+    properties.append(propertyStr)
 
 # TODO: need to add guards to stay in line with the inputs of the RTL
