@@ -206,6 +206,31 @@ for i, inputWidth in enumerate(inputWidths):
 
 # TODO: need to add guards to stay in line with the inputs of the RTL
 
+# We need to insert some extra guards into the FSM file to make sure we only take transitions if they're consistent with our expected inputs
+fsmTextWithGuards = []
+
+inCHC = False
+for line in textToInsert:
+    if "smt.forall" in line:
+        inCHC = True
+    if inCHC:
+        if match := re.search(r"%([A-Za-z0-9_]+) = smt.implies %([A-Za-z0-9_]+), %([A-Za-z0-9_]+)", line):
+            # This is the implication that we want to add the guard to
+            originalCondition = match.group(1)
+            originalAntecedent = match.group(2)
+            equivalenceChecks = []
+            for i, inputWidth in enumerate(inputWidths):
+                # We should already have our desired inputs further up in the SMTLIB but in scope here
+                equivalenceChecks.append(f"%equivalence_check_{i}")
+                fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}, %desired_input_{i} : !smt.bv<{inputWidth}>\n")
+            fsmTextWithGuards.append(f"%equivalence_check = smt.and %{originalAntecedent}, " + ", ".join(equivalenceChecks) + "\n")
+            fsmTextWithGuards.append(f"%{originalCondition} = smt.implies %equivalence_check, %{match.group(3)}\n")
+            continue
+
+
+    fsmTextWithGuards.append(line)
+
+
 bmcText = open(builddir+"/bmc.mlir").readlines()
 
 outputText = []
