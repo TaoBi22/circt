@@ -29,7 +29,7 @@ with open(fsmFile, "r") as f:
     for input in inputs.split(","):
         if width := re.search(r": i([0-9]+)", input):
             inputWidths.append(int(width.group(1)))
-        if name := re.search(r"%([\s\S]*) :", input):
+        # if name := re.search(r"%([\s\S]*) :", input):
             # TODO: HACK!!!!!!!!!
             inputNames.append(f"%arg{len(inputNames)}")
     outputs = search.group(3)
@@ -114,7 +114,7 @@ for line in textToInsert:
 # Declare a function that maps timestep to input
 inputFuncDecls = ""
 for i, inputWidth in enumerate(inputWidths):
-    inputFuncDecls += f"%input_{i}_func = smt.declare_fun !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
+    inputFuncDecls += f"%input_{i}_func = smt.declare_fun \"input_{i}_func\" : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
 
 # Add properties that check equivalence
 properties = []
@@ -124,11 +124,20 @@ for i, invariant in enumerate(invariants):
     applicationStr = ""
     signatureStr = "!smt.func<("
     bv2Ints = []
+    if 1 in inputWidths:
+        bv2Ints.append(f"%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
+        bv2Ints.append(f"%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
     for j, inputWidth in enumerate(inputWidths):
-        propertyStr += f"%input_{j}: !smt.bv<{inputWidth}>, "
-        applicationStr += f"%input_{j}_int, "
-        signatureStr += f"!smt.int>, "
-        bv2Ints.append(f"%input_{j}_int = smt.bv2int %input_{j} : !smt.bv<{inputWidth}>\n")
+        if inputWidth == 1:
+            propertyStr += f"%input_{j}: !smt.bool, "
+            applicationStr += f"%input_{j}, "
+            signatureStr += f"!smt.bool, "
+            bv2Ints.append(f"%input_{j}_int = smt.ite %input_{j}, %myConst1, %myConst0 : !smt.bv<{inputWidth}>\n")
+        else:
+            propertyStr += f"%input_{j}: !smt.bv<{inputWidth}>, "
+            applicationStr += f"%input_{j}_int, "
+            signatureStr += f"!smt.int, "
+            bv2Ints.append(f"%input_{j}_int = smt.bv2int %input_{j} : !smt.bv<{inputWidth}>\n")
     for j, varWidth in enumerate(varWidths):
         propertyStr += f"%var_{j}: !smt.bv<{varWidth}>, "
         applicationStr += f"%var_{j}_int, "
@@ -185,10 +194,11 @@ for i, invariant in enumerate(invariants):
 
 # We also have some assertions to make sure that the inputs are what our input function says they should be
 # Since inputs are just symbolic vals, this is fine - we just assert equality with the output of our input function
-for i, inputName, inputWidth in zip(inputNames, inputWidths):
+for i, pair in enumerate(zip(inputNames, inputWidths)):
+    inputName, inputWidth = pair
     inputFunc = f"%input_{i}_func"
     propertyStr = f"%desired_input_{i} = smt.apply_func {inputFunc}(%{timeRegName}) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
-    propertyStr += f"%input_{i}_eq = smt.eq %desired_input_{i}, %{inputNames[i]} : !smt.bv<{inputWidth}>\n"
+    propertyStr += f"%input_{i}_eq = smt.eq %desired_input_{i}, {inputNames[i]} : !smt.bv<{inputWidth}>\n"
     propertyStr += f"smt.assert %input_{i}_eq\n"
     properties.append(propertyStr)
 
@@ -198,7 +208,7 @@ for i, inputWidth in enumerate(inputWidths):
     propertyStr = f"%tvclause_input_{i} = smt.forall" + "{\n"
     propertyStr += "^bb0(%time: !smt.bv<32>):\n"
     propertyStr += f"%input_val = smt.apply_func {inputFunc}(%time) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
-    propertyStr += f"%input_eq = smt.eq %input_val, %input_{i} : !smt.bv<{inputWidth}>\n"
+    propertyStr += f"%input_eq = smt.eq %input_val, {inputNames[i]} : !smt.bv<{inputWidth}>\n"
     propertyStr += "smt.yield %input_eq : !smt.bool\n"
     propertyStr += "}\n"
     propertyStr += f"smt.assert %tvclause_input_{i}\n"
