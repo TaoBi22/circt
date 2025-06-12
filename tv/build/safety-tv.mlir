@@ -30,7 +30,7 @@ module {
 %ss = llvm.mlir.addressof @satString : !llvm.ptr
 %us = llvm.mlir.addressof @unsatString : !llvm.ptr
 %string = llvm.select %12, %ss, %us : i1, !llvm.ptr
-%printf = llvm.mlir.addressof @printf : !llvm.func<void (ptr, ...)>
+llvm.call @printf(%string) vararg(!llvm.func<void (ptr, ...)>) : (!llvm.ptr) -> ()
         %13 = arith.ori %12, %arg6 : i1
         %14 = func.call @bmc_loop(%arg1) : (!smt.bv<1>) -> !smt.bv<1>
         %15 = smt.declare_fun : !smt.bv<1>
@@ -153,125 +153,339 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
     %72 = smt.eq %71, %c-1_bv1 : !smt.bv<1>
     %73 = smt.ite %72, %c-6_bv4, %69 : !smt.bv<4>
     %74 = smt.bv.add %arg4, %c1_bv32 : !smt.bv<32>
+    %obsF__0 = smt.declare_fun "F__0" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__1 = smt.declare_fun "F__1" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__2 = smt.declare_fun "F__2" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__3 = smt.declare_fun "F__3" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__4 = smt.declare_fun "F__4" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__5 = smt.declare_fun "F__5" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__6 = smt.declare_fun "F__6" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__7 = smt.declare_fun "F__7" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__8 = smt.declare_fun "F__8" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__9 = smt.declare_fun "F__9" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__10 = smt.declare_fun "F__10" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obs0 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obsc0 = smt.int.constant 0
+      %obsc0_0 = smt.int.constant 0
+      %obs11 = smt.eq %obsarg1, %obsc0_0 : !smt.int
+      %obs12 = smt.apply_func %obsF__0(%obsc0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.implies %obs11, %obs12
+      smt.yield %obs13 : !smt.bool
+    }
+    smt.assert %obs0
+    %obs1 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs11 = smt.apply_func %obsF__0(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs12 = smt.int.add %obsarg0, %obsc1
+      %obsc65536 = smt.int.constant 65536
+      %obs13 = smt.int.mod %obs12, %obsc65536
+      %obsc1_0 = smt.int.constant 1
+      %obs14 = smt.int.add %obsarg1, %obsc1_0
+      %obs15 = smt.apply_func %obsF__1(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs16 = smt.and %obs11, %obstrue
+      %obs17 = smt.implies %obs16, %obs15
+      smt.yield %obs17 : !smt.bool
+    }
+    smt.assert %obs1
+    %obs2 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs11 = smt.apply_func %obsF__1(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs12 = smt.int.add %obsarg0, %obsc1
+      %obsc65536 = smt.int.constant 65536
+      %obs13 = smt.int.mod %obs12, %obsc65536
+      %obsc1_0 = smt.int.constant 1
+      %obs14 = smt.int.add %obsarg1, %obsc1_0
+      %obs15 = smt.apply_func %obsF__2(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs16 = smt.and %obs11, %obstrue
+      %obs17 = smt.implies %obs16, %obs15
+      smt.yield %obs17 : !smt.bool
+    }
+    smt.assert %obs2
+    %obs3 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs11 = smt.apply_func %obsF__2(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs12 = smt.int.add %obsarg0, %obsc1
+      %obsc65536 = smt.int.constant 65536
+      %obs13 = smt.int.mod %obs12, %obsc65536
+      %obsc1_0 = smt.int.constant 1
+      %obs14 = smt.int.add %obsarg1, %obsc1_0
+      %obs15 = smt.apply_func %obsF__3(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs16 = smt.and %obs11, %obstrue
+      %obs17 = smt.implies %obs16, %obs15
+      smt.yield %obs17 : !smt.bool
+    }
+    smt.assert %obs3
+    %obs4 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs11 = smt.apply_func %obsF__3(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs12 = smt.int.add %obsarg0, %obsc1
+      %obsc65536 = smt.int.constant 65536
+      %obs13 = smt.int.mod %obs12, %obsc65536
+      %obsc1_0 = smt.int.constant 1
+      %obs14 = smt.int.add %obsarg1, %obsc1_0
+      %obs15 = smt.apply_func %obsF__4(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs16 = smt.and %obs11, %obstrue
+      %obs17 = smt.implies %obs16, %obs15
+      smt.yield %obs17 : !smt.bool
+    }
+    smt.assert %obs4
+    %obs5 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs11 = smt.apply_func %obsF__4(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs12 = smt.int.add %obsarg0, %obsc1
+      %obsc65536 = smt.int.constant 65536
+      %obs13 = smt.int.mod %obs12, %obsc65536
+      %obsc1_0 = smt.int.constant 1
+      %obs14 = smt.int.add %obsarg1, %obsc1_0
+      %obs15 = smt.apply_func %obsF__5(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs16 = smt.and %obs11, %obstrue
+      %obs17 = smt.implies %obs16, %obs15
+      smt.yield %obs17 : !smt.bool
+    }
+    smt.assert %obs5
+    %obs6 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs11 = smt.apply_func %obsF__5(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs12 = smt.int.add %obsarg0, %obsc1
+      %obsc65536 = smt.int.constant 65536
+      %obs13 = smt.int.mod %obs12, %obsc65536
+      %obsc1_0 = smt.int.constant 1
+      %obs14 = smt.int.add %obsarg1, %obsc1_0
+      %obs15 = smt.apply_func %obsF__6(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs16 = smt.and %obs11, %obstrue
+      %obs17 = smt.implies %obs16, %obs15
+      smt.yield %obs17 : !smt.bool
+    }
+    smt.assert %obs6
+    %obs7 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs11 = smt.apply_func %obsF__6(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs12 = smt.int.add %obsarg0, %obsc1
+      %obsc65536 = smt.int.constant 65536
+      %obs13 = smt.int.mod %obs12, %obsc65536
+      %obsc1_0 = smt.int.constant 1
+      %obs14 = smt.int.add %obsarg1, %obsc1_0
+      %obs15 = smt.apply_func %obsF__7(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs16 = smt.and %obs11, %obstrue
+      %obs17 = smt.implies %obs16, %obs15
+      smt.yield %obs17 : !smt.bool
+    }
+    smt.assert %obs7
+    %obs8 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs11 = smt.apply_func %obsF__7(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs12 = smt.int.add %obsarg0, %obsc1
+      %obsc65536 = smt.int.constant 65536
+      %obs13 = smt.int.mod %obs12, %obsc65536
+      %obsc1_0 = smt.int.constant 1
+      %obs14 = smt.int.add %obsarg1, %obsc1_0
+      %obs15 = smt.apply_func %obsF__8(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs16 = smt.and %obs11, %obstrue
+      %obs17 = smt.implies %obs16, %obs15
+      smt.yield %obs17 : !smt.bool
+    }
+    smt.assert %obs8
+    %obs9 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs11 = smt.apply_func %obsF__8(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs12 = smt.int.add %obsarg0, %obsc1
+      %obsc65536 = smt.int.constant 65536
+      %obs13 = smt.int.mod %obs12, %obsc65536
+      %obsc1_0 = smt.int.constant 1
+      %obs14 = smt.int.add %obsarg1, %obsc1_0
+      %obs15 = smt.apply_func %obsF__9(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs16 = smt.and %obs11, %obstrue
+      %obs17 = smt.implies %obs16, %obs15
+      smt.yield %obs17 : !smt.bool
+    }
+    smt.assert %obs9
+    %obs10 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs11 = smt.apply_func %obsF__9(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs12 = smt.int.add %obsarg0, %obsc1
+      %obsc65536 = smt.int.constant 65536
+      %obs13 = smt.int.mod %obs12, %obsc65536
+      %obsc1_0 = smt.int.constant 1
+      %obs14 = smt.int.add %obsarg1, %obsc1_0
+      %obs15 = smt.apply_func %obsF__10(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs16 = smt.and %obs11, %obstrue
+      %obs17 = smt.implies %obs16, %obs15
+      smt.yield %obs17 : !smt.bool
+    }
+    smt.assert %obs10
 %tvclause_0 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__0(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__0(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_0
 %tvclause_1 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__1(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__1(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_1
 %tvclause_2 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__2(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__2(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_2
 %tvclause_3 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__3(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__3(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_3
 %tvclause_4 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__4(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__4(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_4
 %tvclause_5 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__5(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__5(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_5
 %tvclause_6 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__6(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__6(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_6
 %tvclause_7 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__7(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__7(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_7
 %tvclause_8 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__8(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__8(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_8
 %tvclause_9 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__9(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__9(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_9
 %tvclause_10 = smt.forall{
 ^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
-%apply = smt.apply_func %obsF__10(%var_0, %rtlTime) : !smt.func<(!smt.bv<16>, !smt.bv<32>) !smt.bool>
-%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>
-%antecedent = smt.and %apply, %rightTime : !smt.bool
-%var_0_eq = smt.eq %var_0, %x0 : !smt.bv<16>
-%consequent = smt.and %var_0_eq : !smt.bool
-%impl = smt.implies %antecedent, %consequent : !smt.bool
-smt.yield %impl : !smt.bool
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__10(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%antecedent = smt.and %apply, %rightTime
+%var_0_eq = smt.eq %var_0, %arg3 : !smt.bv<16>
+%impl = smt.implies %antecedent, %var_0_eq
+%negatedProp = smt.not %impl
+smt.yield %negatedProp : !smt.bool
 }
 smt.assert %tvclause_10
     return %73, %67, %74 : !smt.bv<4>, !smt.bv<16>, !smt.bv<32>
