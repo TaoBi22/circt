@@ -41,8 +41,18 @@ with open(fsmFile, "r") as f:
     while not "fsm.state" in x:
         x = f.readline()
         if search := re.search(r"%([\s\S]+) = fsm.variable [\s\S]+ : i([0-9]+)", x):
-            varNames.append(search.group(1))
+            # varNames.append(search.group(1))
             varWidths.append(search.group(2))
+
+# We can do another naughty hack by working out the RTL names of our variables (since they're externalized so just function args)
+
+# The first few args to the circuit function are inputs, then variables, then the time reg, so we can just work out the names
+i = len(inputNames) + 3 # 1 for clock, 1 for reset, 1 for state reg
+while i < len(inputNames) + len(varWidths) + 3:
+    varNames.append(f"arg{i}")
+    i += 1
+
+timeRegName = f"arg{i}"
 
 assert len(inputWidths) == len(inputNames), "Input widths and names do not match"
 assert len(outputWidths) == len(outputNames), "Output widths and names do not match"
@@ -113,25 +123,33 @@ for i, invariant in enumerate(invariants):
     propertyStr += "^bb0("
     applicationStr = ""
     signatureStr = "!smt.func<("
+    bv2Ints = []
     for j, inputWidth in enumerate(inputWidths):
         propertyStr += f"%input_{j}: !smt.bv<{inputWidth}>, "
-        applicationStr += f"%input_{j}, "
-        signatureStr += f"!smt.bv<{inputWidth}>, "
+        applicationStr += f"%input_{j}_int, "
+        signatureStr += f"!smt.int>, "
+        bv2Ints.append(f"%input_{j}_int = smt.bv2int %input_{j} : !smt.bv<{inputWidth}>\n")
     for j, varWidth in enumerate(varWidths):
         propertyStr += f"%var_{j}: !smt.bv<{varWidth}>, "
-        applicationStr += f"%var_{j}, "
-        signatureStr += f"!smt.bv<{varWidth}>, "
+        applicationStr += f"%var_{j}_int, "
+        signatureStr += f"!smt.int, "
+        bv2Ints.append(f"%var_{j}_int = smt.bv2int %var_{j} : !smt.bv<{varWidth}>\n")
     for j, outputWidth in enumerate(outputWidths):
         propertyStr += f"%output_{j}: !smt.bv<{outputWidth}>, "
-        applicationStr += f"%output_{j}, "
-        signatureStr += f"!smt.bv<{outputWidth}>, "
+        applicationStr += f"%output_{j}_int, "
+        signatureStr += f"!smt.int, "
+        bv2Ints.append(f"%output_{j}_int = smt.bv2int %output_{j} : !smt.bv<{outputWidth}>\n")
     propertyStr += "%rtlTime: !smt.bv<32>):\n"
-    applicationStr += "%rtlTime"
-    signatureStr += "!smt.bv<32>) !smt.bool>"
+    applicationStr += "%rtlTime_int"
+    signatureStr += "!smt.int) !smt.bool>"
+    bv2Ints.append(f"%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>\n")
+    propertyStr += "\n".join(bv2Ints)
     propertyStr += f"%apply = smt.apply_func {invariant}({applicationStr}) : {signatureStr}\n"
     # Make sure that the times match
-    propertyStr += f"%rightTime = smt.eq %rtlTime, %time_reg : !smt.bv<32>\n"
-    propertyStr += f"%antecedent = smt.and %apply, %rightTime : !smt.bool\n"
+    propertyStr += f"%rightTime = smt.eq %rtlTime, %{timeRegName} : !smt.bv<32>\n"
+    propertyStr += f"%antecedent = smt.and %apply, %rightTime\n"
+
+    # Our form should be: F(I, V, O, T) and T = timeReg and or(V_n != var_n forall n) => false
 
     # Check equivalence of variables:
     inputChecks = []
@@ -143,16 +161,22 @@ for i, invariant in enumerate(invariants):
     for j, outputName in enumerate(outputNames):
         propertyStr += f"%output_{j}_eq = smt.eq %output_{j}, %{outputName} : !smt.bv<{outputWidths[j]}>\n"
         inputChecks.append(f"%output_{j}_eq")
+    
+    if (len(inputChecks) == 1):
 
-    # AND all our checks
-    propertyStr += f"%consequent = smt.and " + ", ".join(inputChecks) + " : !smt.bool\n"
+        # Find the implication
+        propertyStr += f"%impl = smt.implies %antecedent, {inputChecks[0]}\n"
+    else:
+        # AND all our checks
+        propertyStr += f"%consequent = smt.and " + ", ".join(inputChecks) + "\n"
 
-    # Find the implication
+        # Find the implication
 
-    propertyStr += f"%impl = smt.implies %antecedent, %consequent : !smt.bool\n"
+        propertyStr += f"%impl = smt.implies %antecedent, %consequent\n"
 
+    propertyStr += f"%negatedProp = smt.not %impl\n"
     # And yield it
-    propertyStr += f"smt.yield %impl : !smt.bool\n"
+    propertyStr += f"smt.yield %negatedProp : !smt.bool\n"
 
     # TODO handle input equivalence
     propertyStr += "}\n"
@@ -163,7 +187,7 @@ for i, invariant in enumerate(invariants):
 # Since inputs are just symbolic vals, this is fine - we just assert equality with the output of our input function
 for i, inputName, inputWidth in zip(inputNames, inputWidths):
     inputFunc = f"%input_{i}_func"
-    propertyStr = f"%desired_input_{i} = smt.apply_func {inputFunc}(%time_reg) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
+    propertyStr = f"%desired_input_{i} = smt.apply_func {inputFunc}(%{timeRegName}) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
     propertyStr += f"%input_{i}_eq = smt.eq %desired_input_{i}, %{inputNames[i]} : !smt.bv<{inputWidth}>\n"
     propertyStr += f"smt.assert %input_{i}_eq\n"
     properties.append(propertyStr)
@@ -194,6 +218,7 @@ for line in bmcText:
         checkResult = match.group(1)
 
     if inCircuitFunc and "return" in line:
+        outputText.extend(textToInsert)
         for property in properties:
             outputText.append(property)
         inCircuitFunc = False
@@ -209,7 +234,8 @@ for line in bmcText:
         outputText.append(f"%ss = llvm.mlir.addressof @satString : !llvm.ptr\n")
         outputText.append(f"%us = llvm.mlir.addressof @unsatString : !llvm.ptr\n")
         outputText.append(f"%string = llvm.select %{checkResult}, %ss, %us : i1, !llvm.ptr\n")
-        outputText.append(f"%printf = llvm.mlir.addressof @printf : !llvm.func<void (ptr, ...)>\n")
+        #outputText.append(f"%printf = llvm.mlir.addressof @printf : !llvm.ptr\n")
+        outputText.append(f"llvm.call @printf(%string) vararg(!llvm.func<void (ptr, ...)>) : (!llvm.ptr) -> ()\n")
     
     # Allocate the strings we use to print results
     if "Assertion can be violated" in line:
@@ -221,5 +247,5 @@ for line in bmcText:
 with open(f"{builddir}/safety-tv.mlir", "w+") as f:
     f.writelines(outputText)
 
-os.system(f"{FSMTRoot}/build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
-os.system(f"{FSMTRoot}/llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/libz3.so -entry-point-result=void")
+os.system(f"../build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
+os.system(f"../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
