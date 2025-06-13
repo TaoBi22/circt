@@ -76,8 +76,8 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
     del[text[-1]]
     # Timer circuit has to be last reg in module so we know where it'll appear in circuit signature
     text += [    "    %timer_init = seq.initial() {\n",
-      "%c0_i16_0 = hw.constant 0 : i32\n",
-      "seq.yield %c0_i16_0 : i32\n",
+      "%c0_i16_0_in = hw.constant 0 : i32\n",
+      "seq.yield %c0_i16_0_in : i32\n",
     "} : () -> !seq.immutable<i32>\n",
     "%mySpecialConstant = hw.constant 1 : i32\n",
     "%time_reg = seq.compreg sym @time_reg %added, %clk initial %timer_init : i32\n",
@@ -97,7 +97,7 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
 
 print("Output names:", outputNames)
 
-os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound=10\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
+os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound=30\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
 
 # FSM files
 os.system(f"{FSMTRoot}/build/bin/circt-opt --convert-fsm-to-smt-safety {fsmFile} > {builddir}/safety.mlir")
@@ -205,25 +205,25 @@ for i, invariant in enumerate(invariants):
 
 # We also have some assertions to make sure that the inputs are what our input function says they should be
 # Since inputs are just symbolic vals, this is fine - we just assert equality with the output of our input function
-inputProperties = []
-for i, pair in enumerate(zip(inputNames, inputWidths)):
-    inputName, inputWidth = pair
-    if inputWidth == 1:
-        thisType = "bool"
-    else:
-        thisType = f"bv<{inputWidth}>"
-    inputFunc = f"%input_{i}_func"
-    propertyStr = f"%desired_input_{i} = smt.apply_func {inputFunc}(%{timeRegName}) : !smt.func<(!smt.bv<32>) !smt.{thisType}>\n"
-    if inputWidth == 1:
-        propertyStr += f"%myConstOne_{i} = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n"
-        propertyStr += f"%myConstZero_{i} = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n"
-        propertyStr += f"%input_{i}_bv = smt.ite %desired_input_{i}, %myConstOne_{i}, %myConstZero_{i} : !smt.bv<1>\n"
-        propertyStr += f"%input_{i}_eq = smt.eq %input_{i}_bv, {inputNames[i]} : !smt.bv<1>\n"
+# inputProperties = []
+# for i, pair in enumerate(zip(inputNames, inputWidths)):
+#     inputName, inputWidth = pair
+#     if inputWidth == 1:
+#         thisType = "bool"
+#     else:
+#         thisType = f"bv<{inputWidth}>"
+#     inputFunc = f"%input_{i}_func"
+#     propertyStr = f"%desired_input_{i} = smt.apply_func {inputFunc}(%{timeRegName}) : !smt.func<(!smt.bv<32>) !smt.{thisType}>\n"
+#     if inputWidth == 1:
+#         propertyStr += f"%myConstOne_{i} = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n"
+#         propertyStr += f"%myConstZero_{i} = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n"
+#         propertyStr += f"%input_{i}_bv = smt.ite %desired_input_{i}, %myConstOne_{i}, %myConstZero_{i} : !smt.bv<1>\n"
+#         propertyStr += f"%input_{i}_eq = smt.eq %input_{i}_bv, {inputNames[i]} : !smt.bv<1>\n"
 
-    else:
-        propertyStr += f"%input_{i}_eq = smt.eq %desired_input_{i}, {inputNames[i]} : !smt.{thisType}\n"
-    propertyStr += f"smt.assert %input_{i}_eq\n"
-    inputProperties.append(propertyStr)
+#     else:
+#         propertyStr += f"%input_{i}_eq = smt.eq %desired_input_{i}, {inputNames[i]} : !smt.{thisType}\n"
+#     propertyStr += f"smt.assert %input_{i}_eq\n"
+#     inputProperties.append(propertyStr)
 
 
 # for i, inputWidth in enumerate(inputWidths):
@@ -262,12 +262,17 @@ for line in textToInsert:
             equivalenceChecks = []
             for i, inputWidth in enumerate(inputWidths):
                 if inputWidth == 1:
-                    thisType = "bool"
+                    fsmTextWithGuards.append(f"%myConstOne_{i} = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
+                    fsmTextWithGuards.append(f"%myConstZero_{i} = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
+                    thisType = "bv<1>"
+                    fsmTextWithGuards.append(f"%obsarg{i}_conv = smt.ite %obsarg{i}, %myConstOne_{i}, %myConstZero_{i} : !smt.bv<1>\n")
+                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}_conv, {inputNames[i]} : !smt.{thisType}\n")
+                    equivalenceChecks.append(f"%equivalence_check_{i}")
                 else:
                     thisType = f"bv<{inputWidth}>"
                 # We should already have our desired inputs further up in the SMTLIB but in scope here
-                equivalenceChecks.append(f"%equivalence_check_{i}")
-                fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}, %desired_input_{i} : !smt.{thisType}\n")
+                    equivalenceChecks.append(f"%equivalence_check_{i}")
+                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}, {inputNames[i]} : !smt.{thisType}\n")
             fsmTextWithGuards.append(f"%equivalence_check = smt.and %{originalAntecedent}, " + ", ".join(equivalenceChecks) + "\n")
             fsmTextWithGuards.append(f"%{originalCondition} = smt.implies %equivalence_check, %{match.group(3)}\n")
             continue
@@ -296,7 +301,7 @@ for line in bmcText:
     outputText.append(line)
     if "func.func @bmc_circuit" in line:
         outputText.append(inputFuncDecls)
-        outputText.extend(inputProperties)
+        # outputText.extend(inputProperties)
         inCircuitFunc = True
 
     if "} -> i1" in line and checkResult:
@@ -318,7 +323,7 @@ for line in bmcText:
 with open(f"{builddir}/safety-tv.mlir", "w+") as f:
     f.writelines(outputText)
 
-print(f"../build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
-print(f"../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
+# print(f"../build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
+# print(f"../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
 os.system(f"../build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
-os.system(f"../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
+os.system(f"time ../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
