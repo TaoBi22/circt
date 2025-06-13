@@ -75,8 +75,12 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
     terminator = text[-1]
     del[text[-1]]
     # Timer circuit has to be last reg in module so we know where it'll appear in circuit signature
-    text += [    "%mySpecialConstant = hw.constant 1 : i32\n",
-    "%time_reg = seq.compreg sym @time_reg %added, %clk : i32\n",
+    text += [    "    %timer_init = seq.initial() {\n",
+      "%c0_i16_0 = hw.constant 0 : i32\n",
+      "seq.yield %c0_i16_0 : i32\n",
+    "} : () -> !seq.immutable<i32>\n",
+    "%mySpecialConstant = hw.constant 1 : i32\n",
+    "%time_reg = seq.compreg sym @time_reg %added, %clk initial %timer_init : i32\n",
     "%added = comb.add %time_reg, %mySpecialConstant : i32\n"]
     text.append(terminator)
     text += ["}"]*2
@@ -114,7 +118,11 @@ for line in textToInsert:
 # Declare a function that maps timestep to input
 inputFuncDecls = ""
 for i, inputWidth in enumerate(inputWidths):
-    inputFuncDecls += f"%input_{i}_func = smt.declare_fun \"input_{i}_func\" : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
+    if inputWidth == 1:
+        thisType = "bool"
+    else:
+        thisType = f"bv<{inputWidth}>"
+    inputFuncDecls += f"%input_{i}_func = smt.declare_fun \"input_{i}_func\" : !smt.func<(!smt.bv<32>) !smt.{thisType}>\n"
 
 # Add properties that check equivalence
 properties = []
@@ -156,63 +164,86 @@ for i, invariant in enumerate(invariants):
     propertyStr += f"%apply = smt.apply_func {invariant}({applicationStr}) : {signatureStr}\n"
     # Make sure that the times match
     propertyStr += f"%rightTime = smt.eq %rtlTime, %{timeRegName} : !smt.bv<32>\n"
-    propertyStr += f"%antecedent = smt.and %apply, %rightTime\n"
+    # propertyStr += f"%antecedent = smt.and %apply, %rightTime\n"
 
     # Our form should be: F(I, V, O, T) and T = timeReg and or(V_n != var_n forall n) => false
 
     # Check equivalence of variables:
     inputChecks = []
     for j, varName in enumerate(varNames):
-        propertyStr += f"%var_{j}_eq = smt.eq %var_{j}, %{varName} : !smt.bv<{varWidths[j]}>\n"
+        propertyStr += f"%var_{j}_eq = smt.distinct %var_{j}, %{varName} : !smt.bv<{varWidths[j]}>\n"
         inputChecks.append(f"%var_{j}_eq")
 
     # Check equivalence of outputs:
     for j, outputName in enumerate(outputNames):
-        propertyStr += f"%output_{j}_eq = smt.eq %output_{j}, %{outputName} : !smt.bv<{outputWidths[j]}>\n"
+        propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}, %{outputName} : !smt.bv<{outputWidths[j]}>\n"
         inputChecks.append(f"%output_{j}_eq")
     
+    propertyStr += f"%myFalse = smt.constant false\n"
     if (len(inputChecks) == 1):
-
+        propertyStr += f"%antecedent = smt.and {inputChecks[0]}, %rightTime, %apply\n"
         # Find the implication
-        propertyStr += f"%impl = smt.implies %antecedent, {inputChecks[0]}\n"
+        propertyStr += f"%impl = smt.implies %antecedent, %myFalse\n"
     else:
         # AND all our checks
-        propertyStr += f"%consequent = smt.and " + ", ".join(inputChecks) + "\n"
+        propertyStr += f"%oredChecks = smt.or " + ", ".join(inputChecks) + "\n"
+        propertyStr += f"%antecedent = smt.and %oredChecks, %rightTime, %apply\n"
 
         # Find the implication
 
-        propertyStr += f"%impl = smt.implies %antecedent, %consequent\n"
+        propertyStr += f"%impl = smt.implies %antecedent, %myFalse\n"
 
-    propertyStr += f"%negatedProp = smt.not %impl\n"
+    # propertyStr += f"%negatedProp = smt.not %impl\n"
     # And yield it
-    propertyStr += f"smt.yield %negatedProp : !smt.bool\n"
+    propertyStr += f"smt.yield %impl : !smt.bool\n"
 
     # TODO handle input equivalence
     propertyStr += "}\n"
+    # propertyStr += f"%negated_tvclause_{i} = smt.not %tvclause_{i}\n"
     propertyStr += f"smt.assert %tvclause_{i}\n"
     properties.append(propertyStr)
 
 # We also have some assertions to make sure that the inputs are what our input function says they should be
 # Since inputs are just symbolic vals, this is fine - we just assert equality with the output of our input function
+inputProperties = []
 for i, pair in enumerate(zip(inputNames, inputWidths)):
     inputName, inputWidth = pair
+    if inputWidth == 1:
+        thisType = "bool"
+    else:
+        thisType = f"bv<{inputWidth}>"
     inputFunc = f"%input_{i}_func"
-    propertyStr = f"%desired_input_{i} = smt.apply_func {inputFunc}(%{timeRegName}) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
-    propertyStr += f"%input_{i}_eq = smt.eq %desired_input_{i}, {inputNames[i]} : !smt.bv<{inputWidth}>\n"
+    propertyStr = f"%desired_input_{i} = smt.apply_func {inputFunc}(%{timeRegName}) : !smt.func<(!smt.bv<32>) !smt.{thisType}>\n"
+    if inputWidth == 1:
+        propertyStr += f"%myConstOne_{i} = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n"
+        propertyStr += f"%myConstZero_{i} = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n"
+        propertyStr += f"%input_{i}_bv = smt.ite %desired_input_{i}, %myConstOne_{i}, %myConstZero_{i} : !smt.bv<1>\n"
+        propertyStr += f"%input_{i}_eq = smt.eq %input_{i}_bv, {inputNames[i]} : !smt.bv<1>\n"
+
+    else:
+        propertyStr += f"%input_{i}_eq = smt.eq %desired_input_{i}, {inputNames[i]} : !smt.{thisType}\n"
     propertyStr += f"smt.assert %input_{i}_eq\n"
-    properties.append(propertyStr)
+    inputProperties.append(propertyStr)
 
 
-for i, inputWidth in enumerate(inputWidths):
-    inputFunc = f"%input_{i}_func"
-    propertyStr = f"%tvclause_input_{i} = smt.forall" + "{\n"
-    propertyStr += "^bb0(%time: !smt.bv<32>):\n"
-    propertyStr += f"%input_val = smt.apply_func {inputFunc}(%time) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
-    propertyStr += f"%input_eq = smt.eq %input_val, {inputNames[i]} : !smt.bv<{inputWidth}>\n"
-    propertyStr += "smt.yield %input_eq : !smt.bool\n"
-    propertyStr += "}\n"
-    propertyStr += f"smt.assert %tvclause_input_{i}\n"
-    properties.append(propertyStr)
+# for i, inputWidth in enumerate(inputWidths):
+#     inputFunc = f"%input_{i}_func"
+#     propertyStr = f"%tvclause_input_{i} = smt.forall" + "{\n"
+#     propertyStr += "^bb0(%time: !smt.bv<32>):\n"
+#     if inputWidth == 1:
+#         propertyStr += "%myConstOne = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n"
+#         propertyStr += "%myConstZero = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n"
+#         inputFunc = f"%input_{i}_func"
+#         propertyStr += f"%input_val_{i} = smt.apply_func {inputFunc}(%time) : !smt.func<(!smt.bv<32>) !smt.bool>\n"
+#         propertyStr += f"%input_bv_{i} = smt.ite %input_val_{i}, %myConstOne, %myConstZero : !smt.bv<1>\n"
+#         propertyStr += f"%input_eq_{i} = smt.eq %input_bv_{i}, {inputNames[i]} : !smt.bv<1>\n"
+#     else:
+#         propertyStr += f"%input_val_{i} = smt.apply_func {inputFunc}(%time) : !smt.func<(!smt.bv<32>) !smt.bv<{inputWidth}>>\n"
+#         propertyStr += f"%input_eq_{i} = smt.eq %input_val_{i}, {inputNames[i]} : !smt.bv<{inputWidth}>\n"
+#     propertyStr += f"smt.yield %input_eq_{i} : !smt.bool\n"
+#     propertyStr += "}\n"
+#     propertyStr += f"smt.assert %tvclause_input_{i}\n"
+#     properties.append(propertyStr)
 
 # TODO: need to add guards to stay in line with the inputs of the RTL
 
@@ -223,16 +254,20 @@ inCHC = False
 for line in textToInsert:
     if "smt.forall" in line:
         inCHC = True
-    if inCHC:
+    if inCHC and len(inputWidths) > 0:
         if match := re.search(r"%([A-Za-z0-9_]+) = smt.implies %([A-Za-z0-9_]+), %([A-Za-z0-9_]+)", line):
             # This is the implication that we want to add the guard to
             originalCondition = match.group(1)
             originalAntecedent = match.group(2)
             equivalenceChecks = []
             for i, inputWidth in enumerate(inputWidths):
+                if inputWidth == 1:
+                    thisType = "bool"
+                else:
+                    thisType = f"bv<{inputWidth}>"
                 # We should already have our desired inputs further up in the SMTLIB but in scope here
                 equivalenceChecks.append(f"%equivalence_check_{i}")
-                fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}, %desired_input_{i} : !smt.bv<{inputWidth}>\n")
+                fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}, %desired_input_{i} : !smt.{thisType}\n")
             fsmTextWithGuards.append(f"%equivalence_check = smt.and %{originalAntecedent}, " + ", ".join(equivalenceChecks) + "\n")
             fsmTextWithGuards.append(f"%{originalCondition} = smt.implies %equivalence_check, %{match.group(3)}\n")
             continue
@@ -253,7 +288,7 @@ for line in bmcText:
         checkResult = match.group(1)
 
     if inCircuitFunc and "return" in line:
-        outputText.extend(textToInsert)
+        outputText.extend(fsmTextWithGuards)
         for property in properties:
             outputText.append(property)
         inCircuitFunc = False
@@ -261,6 +296,7 @@ for line in bmcText:
     outputText.append(line)
     if "func.func @bmc_circuit" in line:
         outputText.append(inputFuncDecls)
+        outputText.extend(inputProperties)
         inCircuitFunc = True
 
     if "} -> i1" in line and checkResult:
@@ -282,5 +318,7 @@ for line in bmcText:
 with open(f"{builddir}/safety-tv.mlir", "w+") as f:
     f.writelines(outputText)
 
+print(f"../build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
+print(f"../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
 os.system(f"../build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
 os.system(f"../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")

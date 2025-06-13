@@ -393,9 +393,12 @@ LogicalResult MachineOpConverter::dispatch() {
 
   Backedge nextStateWire = bb.get(stateType);
 
-  // Resets removed for TV so externalize regs will work
-  stateReg = b.create<seq::CompRegOp>(loc, nextStateWire, clock, "state_reg");
-
+  stateReg = b.create<seq::CompRegOp>(
+      loc, nextStateWire, clock, Value{},
+      /*reset value=*/Value{}, "state_reg",
+      /*powerOn value=*/
+      seq::createConstantInitialValue(
+          b, encoding->encode(machineOp.getInitialStateOp()).getDefiningOp()));
   stateMuxChainOut = stateReg;
 
   llvm::DenseMap<VariableOp, Backedge> variableNextStateWires;
@@ -410,9 +413,10 @@ LogicalResult MachineOpConverter::dispatch() {
     backedgeMap.insert(
         std::pair(nextVariableStateWire, "nextVariableStateWire"));
     auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
-    auto variableReg =
-        b.create<seq::CompRegOp>(varLoc, nextVariableStateWire, clock,
-                                 b.getStringAttr(variableOp.getName()));
+    auto variableReg = b.create<seq::CompRegOp>(
+        varLoc, nextVariableStateWire, clock, Value{}, Value{},
+        b.getStringAttr(variableOp.getName()),
+        seq::createConstantInitialValue(b, varResetVal));
     auto varNextState = variableReg;
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = nextVariableStateWire;
