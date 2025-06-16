@@ -125,7 +125,7 @@ protected:
   // The constant can optionally be assigned behind a sv wire - doing so at this
   // point ensures that constants don't end up behind "_GEN#" wires in the
   // module.
-  void setEncoding(StateOp state, Value v, bool wire = false);
+  void setEncoding(StateOp state, Value v);
 
   // A mapping between a StateOp and its corresponding encoded value.
   SmallDenseMap<StateOp, Value> stateToValue;
@@ -166,22 +166,15 @@ StateEncoding::StateEncoding(OpBuilder &b, MachineOp machine,
   else {
     int numOps = std::distance(machine.getBody().getOps<StateOp>().begin(),
                                machine.getBody().getOps<StateOp>().end());
-    // Manual log2
-    int width = 1;
-    int maxVal = 2;
-    while (maxVal < numOps) {
-      width++;
-      maxVal *= 2;
-    }
-    stateType = IntegerType::get(machine.getContext(), width);
+    stateType =
+        IntegerType::get(machine.getContext(), llvm::Log2_64_Ceil(numOps));
   }
   int stateValue = 0;
   // And create values for the states
   b.setInsertionPointToStart(&hwModule.getBody().front());
   for (auto state : machine.getBody().getOps<StateOp>()) {
     auto constantOp = b.create<hw::ConstantOp>(loc, stateType, stateValue++);
-    setEncoding(state, constantOp,
-                /*wire=*/true);
+    setEncoding(state, constantOp);
   }
 }
 
@@ -207,25 +200,12 @@ std::unique_ptr<sv::CasePattern> StateEncoding::getCasePattern(StateOp state) {
   return std::make_unique<sv::CaseEnumPattern>(fieldAttr);
 }
 
-void StateEncoding::setEncoding(StateOp state, Value v, bool wire) {
+void StateEncoding::setEncoding(StateOp state, Value v) {
   assert(stateToValue.find(state) == stateToValue.end() &&
          "state already encoded");
-
-  Value encodedValue;
-  if (wire) {
-    auto loc = machine.getLoc();
-    auto stateType = getStateType();
-    // auto stateEncodingWire = b.create<sv: :RegOp>(
-    //     loc, stateType, b.getStringAttr("to_" + state.getName()),
-    //     hw::InnerSymAttr::get(state.getNameAttr()));
-    encodedValue =
-        v; //= b.create<comb::ReplicateOp>(loc, v.getType(), v)->getResult(0);
-    // encodedValue = b.create<sv: :ReadInOutOp>(loc, stateEncodingWire);
-  } else
-    encodedValue = v;
-  stateToValue[state] = encodedValue;
-  valueToState[encodedValue] = state;
-  valueToSrcValue[encodedValue] = v;
+  stateToValue[state] = v;
+  valueToState[v] = state;
+  valueToSrcValue[v] = v;
 }
 } // namespace
 
@@ -246,7 +226,7 @@ public:
   //  3.3. iterates of the transitions of the state
   //    3.3.1. Moves all `comb` logic in the transition guard/action regions to
   //            the body of the HW module.
-  //    3.3.2. Creates a case pattern for the transition guard
+  //    3.3.2. Creates a case pattern (mux chain) for the transition guard
   //  3.4. Creates a next-state value for the state based on the transition
   //  guards.
   // 4. Assigns next-state values for the states in a case statement on the
@@ -284,36 +264,6 @@ private:
   moveOps(Block *block,
           llvm::function_ref<bool(Operation *)> exclude = nullptr);
 
-  struct CaseMuxItem;
-  using StateCaseMapping =
-      llvm::SmallDenseMap<StateOp,
-                          std::variant<Value, std::shared_ptr<CaseMuxItem>>>;
-  struct CaseMuxItem {
-    // The target wire to be assigned.
-    Backedge wire;
-
-    // The case select signal to be used.
-    Value select;
-
-    // A mapping between a state and an assignment within that state.
-    // An assignment can either be a value or a nested CaseMuxItem. The latter
-    // case will create nested case statements.
-    StateCaseMapping assignmentInState;
-
-    // An optional default value to be assigned before the case statement, if
-    // the case is not fully specified for all states.
-    std::optional<Value> defaultValue = {};
-  };
-
-  // Build an SV-based case mux for the given assignments. Assignments are
-  // merged into the same case statement. Caller is expected to ensure that the
-  // insertion point is within an `always_...` block.
-  void
-  buildStateCaseMux(llvm::MutableArrayRef<CaseMuxItem> assignments,
-                    std::optional<mlir::Value> outerCondition = std::nullopt);
-
-  void printStateCaseMux(CaseMuxItem assignment, int ws);
-
   DenseMap<Value, std::string> backedgeMap;
 
   // A handle to the state encoder for this machine.
@@ -323,11 +273,11 @@ private:
   llvm::SmallVector<StateOp> orderedStates;
 
   // A mapping from a fsm.variable op to its register.
-  llvm::SmallDenseMap<VariableOp, seq::CompRegOp> variableToRegister;
+  llvm::MapVector<VariableOp, seq::CompRegOp> variableToRegister;
 
   // A mapping from a fsm.variable op to the output of the mux chain that
   // calculates its next value.
-  llvm::SmallDenseMap<VariableOp, mlir::Value> variableToMuxChainOut;
+  llvm::MapVector<VariableOp, mlir::Value> variableToMuxChainOut;
 
   // Mapping from a hw port to
   llvm::SmallVector<mlir::Value> outputMuxChainOuts;
@@ -338,7 +288,8 @@ private:
       /*currentState*/ StateOp,
       llvm::SmallDenseMap<
           /*targetState*/ StateOp,
-          llvm::DenseMap</*targetVariable*/ VariableOp, /*targetValue*/ Value>>>
+          llvm::MapVector</*targetVariable*/ VariableOp,
+                          /*targetValue*/ Value>>>
       stateToVariableUpdates;
 
   // A handle to the MachineOp being converted.
@@ -410,14 +361,11 @@ LogicalResult MachineOpConverter::dispatch() {
     Type varType = variableOp.getType();
     auto varLoc = variableOp.getLoc();
     auto nextVariableStateWire = bb.get(varType);
-    backedgeMap.insert(
-        std::pair(nextVariableStateWire, "nextVariableStateWire"));
     auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
     auto variableReg = b.create<seq::CompRegOp>(
         varLoc, nextVariableStateWire, clock, Value{}, Value{},
         b.getStringAttr(variableOp.getName()),
         seq::createConstantInitialValue(b, varResetVal));
-    auto varNextState = variableReg;
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = nextVariableStateWire;
     variableToMuxChainOut[variableOp] = variableReg;
@@ -442,13 +390,12 @@ LogicalResult MachineOpConverter::dispatch() {
     if (!port.isOutput())
       continue;
     auto outputPortType = port.type;
-    auto nextOutputStateWire = bb.get(outputPortType);
+
+    auto nextOutputStateWire = b.create<hw::ConstantOp>(loc, outputPortType, 0);
     outputMuxChainOuts.push_back(nextOutputStateWire);
-    outputBackedges.push_back(nextOutputStateWire);
   }
 
   // 3) Convert states and record their next-state value assignments.
-  StateCaseMapping nextStateFromState;
   StateConversionResults stateConvResults;
   for (auto state : machineOp.getBody().getOps<StateOp>()) {
     auto stateConvRes = convertState(state);
@@ -460,9 +407,6 @@ LogicalResult MachineOpConverter::dispatch() {
   for (auto varPair : variableToMuxChainOut) {
     variableNextStateWires[varPair.first].setValue(varPair.second);
   }
-  for (int i = 0; i < outputBackedges.size(); i++) {
-    outputBackedges[i].setValue(outputMuxChainOuts[i]);
-  }
 
   // Replace variable values with their register counterparts.
   for (auto &[variableOp, variableReg] : variableToRegister)
@@ -470,7 +414,7 @@ LogicalResult MachineOpConverter::dispatch() {
 
   // Cast to values to appease builder
   llvm::SmallVector<Value> outputValues;
-  for (auto backedge : outputBackedges) {
+  for (auto backedge : outputMuxChainOuts) {
     outputValues.push_back(backedge);
   }
   auto *oldOutputOp = hwModuleOp.getBodyBlock()->getTerminator();
@@ -486,7 +430,7 @@ FailureOr<Value>
 MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
     StateOp currentState, ArrayRef<TransitionOp> transitions) {
   Value nextState;
-  DenseMap<fsm::VariableOp, Value> variableUpdates;
+  llvm::MapVector<fsm::VariableOp, Value> variableUpdates;
   auto stateCmp =
       b.create<comb::ICmpOp>(machineOp.getLoc(), comb::ICmpPredicate::eq,
                              stateReg, encoding->encode(currentState));
