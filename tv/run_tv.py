@@ -55,7 +55,6 @@ while i < len(inputNames) + len(varWidths) + 3:
 timeRegName = f"arg{i}"
 
 assert len(inputWidths) == len(inputNames), "Input widths and names do not match"
-assert len(outputWidths) == len(outputNames), "Output widths and names do not match"
 assert len(varWidths) == len(varNames), "Variable widths and names do not match"
 
 print(inputWidths)
@@ -90,14 +89,15 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
     # Since we have this text knocking around anyway, we might as well grab the output SSA names
     # First check we actually have outputs
     if terminator.strip() != "hw.output":
-        x = re.search(r"hw.output[\s]?(%[A-Za-z0-9_])?(, %[A-Za-z0-9_])+ :", terminator)
+        print(terminator)
+        x = re.search(r"hw.output[\s]?(%[A-Za-z0-9_]+)?(, %[A-Za-z0-9_]+)+ :", terminator)
         outputNames.append(x.group(0))
         if x.group(1):
             outputNames = [x.group(1).split(",")]
 
 print("Output names:", outputNames)
 
-os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound=30\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
+os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound=250\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
 
 # FSM files
 os.system(f"{FSMTRoot}/build/bin/circt-opt --convert-fsm-to-smt-safety {fsmFile} > {builddir}/safety.mlir")
@@ -272,7 +272,8 @@ for line in textToInsert:
                     thisType = f"bv<{inputWidth}>"
                 # We should already have our desired inputs further up in the SMTLIB but in scope here
                     equivalenceChecks.append(f"%equivalence_check_{i}")
-                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}, {inputNames[i]} : !smt.{thisType}\n")
+                    fsmTextWithGuards.append(f"%obsarg{i}_conv = smt.int2bv %obsarg{i} : !smt.bv<{inputWidth}>\n")
+                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}_conv, {inputNames[i]} : !smt.{thisType}\n")
             fsmTextWithGuards.append(f"%equivalence_check = smt.and %{originalAntecedent}, " + ", ".join(equivalenceChecks) + "\n")
             fsmTextWithGuards.append(f"%{originalCondition} = smt.implies %equivalence_check, %{match.group(3)}\n")
             continue
