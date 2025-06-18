@@ -31,6 +31,7 @@
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -178,6 +179,8 @@ struct ModuleLowering {
   /// A map from call ops to their existing output values (essentially cacheing)
   DenseMap<OpResult, Value> allocatedOldCallValues;
 
+  int numOfCallOpsLowered = 0;
+
   /// A mapping from unlowered clocks to a value indicating a posedge. This is
   /// used to not create an excessive number of posedge detectors.
   DenseMap<Value, Value> loweredPosedges;
@@ -261,6 +264,9 @@ LogicalResult ModuleLowering::run() {
           moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
       arcActivations[op].getDefiningOp()->setAttr(
           "arc_activation", builder.getBoolArrayAttr(true));
+      arcActivations[op].getDefiningOp()->setAttr(
+          "arcName", cast<mlir::SymbolRefAttr>(
+                         cast<CallOpInterface>(op).getCallableForCallee()));
       // Ensure the activation is always true at the start.
       initialBuilder.create<arc::StateWriteOp>(
           moduleOp.getLoc(), arcActivations[op], myQuickTrue, Value{});
@@ -367,12 +373,21 @@ LogicalResult ModuleLowering::run() {
       op.erase();
 
   // Copy next activations to current activations.
+  auto anotherFalse = builder.create<hw::ConstantOp>(
+      moduleOp.getLoc(), builder.getI1Type(), false);
   for (auto [op, nextActivation] : nextCycleActivations) {
     auto newActive =
         builder.create<StateReadOp>(moduleOp.getLoc(), nextActivation);
     auto activation = arcActivations[op];
-    builder.create<StateWriteOp>(moduleOp.getLoc(), activation, newActive,
-                                 Value{});
+    auto oldActivation =
+        builder.create<StateReadOp>(moduleOp.getLoc(), activation);
+    // Or the values
+    auto ored =
+        builder.create<comb::OrOp>(moduleOp.getLoc(), oldActivation, newActive);
+    builder.create<StateWriteOp>(moduleOp.getLoc(), activation, ored, Value{});
+    // Reset the next activation to false.
+    builder.create<StateWriteOp>(moduleOp.getLoc(), nextActivation,
+                                 anotherFalse, Value{});
   }
   return success();
 }
@@ -821,6 +836,7 @@ LogicalResult OpLowering::lowerStateful(
     // which case we can reuse that op. Otherwise create the new if op.
     auto ifResetOp = createOrReuseIf(module.builder, loweredReset, true);
     module.builder.setInsertionPoint(ifResetOp.thenYield());
+    ifResetOp->setAttr("resetCheck", module.builder.getBoolArrayAttr(true));
 
     // Generate the zero value writes.
     for (auto state : states) {
@@ -831,8 +847,9 @@ LogicalResult OpLowering::lowerStateful(
       if (value.getType() != type)
         value = module.builder.create<BitcastOp>(loweredReset.getLoc(), type,
                                                  value);
-      module.builder.create<StateWriteOp>(loweredReset.getLoc(), state, value,
-                                          Value{});
+      module.builder
+          .create<StateWriteOp>(loweredReset.getLoc(), state, value, Value{})
+          ->setAttr("clockreset", module.builder.getBoolArrayAttr(true));
     }
 
     // A reset counts as a value change so activate the children
@@ -849,8 +866,11 @@ LogicalResult OpLowering::lowerStateful(
             auto userActivation = module.arcActivations[user];
             auto newActivated = module.builder.create<hw::ConstantOp>(
                 originalOp->getLoc(), module.builder.getI1Type(), true);
-            module.builder.create<StateWriteOp>(op->getLoc(), userActivation,
-                                                newActivated, Value{});
+            module.builder
+                .create<StateWriteOp>(op->getLoc(), userActivation,
+                                      newActivated, Value{})
+                ->setAttr("activatingonreset",
+                          module.builder.getBoolArrayAttr(true));
           }
         }
       }
@@ -874,6 +894,7 @@ LogicalResult OpLowering::lowerStateful(
     // Check if we're inserting right after an if op for the same enable, in
     // which case we can reuse that op. Otherwise create the new if op.
     auto ifEnableOp = createOrReuseIf(module.builder, loweredEnable, false);
+    ifEnableOp->setAttr("enableCheck", module.builder.getBoolArrayAttr(true));
     module.builder.setInsertionPoint(ifEnableOp.thenYield());
   }
 
@@ -904,24 +925,37 @@ LogicalResult OpLowering::lowerStateful(
     // it TODO it would be faster to never check parentless arcs
     if (auto so = dyn_cast<StateOp>(originalOp)) {
       bool hasActivatingParent = false;
-      for (auto parent : so.getOperands()) {
+      for (auto parent : so.getInputs()) {
+        if (isa<BlockArgument>(parent))
+          hasActivatingParent = true;
         if (auto parentOp = parent.getDefiningOp()) {
-          if (isa<StateOp, CallOp, RootInputOp>(parentOp)) {
+          if (isa<CallOp, StateOp>(parentOp)) {
             hasActivatingParent = true;
             break;
           }
         }
       }
       if (hasActivatingParent) {
-        module.builder.create<StateWriteOp>(originalOp->getLoc(),
-                                            module.arcActivations[originalOp],
-                                            quickFalse, Value{});
+        module.builder
+            .create<StateWriteOp>(originalOp->getLoc(),
+                                  module.arcActivations[originalOp], quickFalse,
+                                  Value{})
+            ->setAttr("deactivating", module.builder.getBoolArrayAttr(true));
       }
     }
 
     auto ifActivatedOp =
         createOrReuseIf(module.builder, activationCondition, false);
+    ifActivatedOp->setAttr("activationCheck",
+                           module.builder.getBoolArrayAttr(true));
+    ifActivatedOp->setAttr(
+        "arcActivationName",
+        cast<mlir::SymbolRefAttr>(
+            cast<CallOpInterface>(originalOp).getCallableForCallee()));
+
     module.builder.setInsertionPoint(ifActivatedOp.thenYield());
+    // module.builder.create<arc::SimEmitValueOp>(
+    //     originalOp->getLoc(), "state op activated", activationCondition);
     activatedRegion = ifActivatedOp.thenYield();
   }
 
@@ -938,7 +972,8 @@ LogicalResult OpLowering::lowerStateful(
   // storage.
   auto loweredResults = createMapping(loweredInputs);
   for (auto [state, value] : llvm::zip(states, loweredResults))
-    module.builder.create<StateWriteOp>(value.getLoc(), state, value, Value{});
+    module.builder.create<StateWriteOp>(value.getLoc(), state, value, Value{})
+        ->setAttr("writeback", module.builder.getBoolArrayAttr(true));
 
   // Since we just wrote the new state value to storage, insert read ops just
   // before the if op that keep the old value around for any later ops that
@@ -977,8 +1012,11 @@ LogicalResult OpLowering::lowerStateful(
               op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
           auto newActivated = module.builder.create<comb::OrOp>(
               op->getLoc(), activated, hasChanged);
-          module.builder.create<StateWriteOp>(op->getLoc(), userActivation,
-                                              newActivated, Value{});
+          module.builder
+              .create<StateWriteOp>(op->getLoc(), userActivation, newActivated,
+                                    Value{})
+              ->setAttr("activatingonchange",
+                        module.builder.getBoolArrayAttr(true));
         }
       }
     }
@@ -1114,7 +1152,8 @@ LogicalResult OpLowering::lower(TapOp op) {
     alloc->setAttr("name", op.getNameAttr());
     state = alloc;
   }
-  module.builder.create<StateWriteOp>(op.getLoc(), state, value, Value{});
+  module.builder.create<StateWriteOp>(op.getLoc(), state, value, Value{})
+      ->setAttr("tap", module.builder.getBoolArrayAttr(true));
   return success();
 }
 
@@ -1174,7 +1213,8 @@ LogicalResult OpLowering::lower(hw::OutputOp op) {
     auto state = module.allocBuilder.create<RootOutputOp>(
         value.getLoc(), StateType::get(value.getType()), cast<StringAttr>(name),
         module.storageArg);
-    module.builder.create<StateWriteOp>(value.getLoc(), state, value, Value{});
+    module.builder.create<StateWriteOp>(value.getLoc(), state, value, Value{})
+        ->setAttr("output", module.builder.getBoolArrayAttr(true));
   }
   return success();
 }
@@ -1303,18 +1343,24 @@ LogicalResult OpLowering::lower(CallOp op) {
   if (anyFailed)
     return failure();
 
-  if (phase != Phase::New) {
-    // If we're not in the New phase, we don't need to do anything special.
-    return lowerDefault();
-  }
+  // if (phase != Phase::New) {
+  //   // If we're not in the New phase, we don't need to do anything special.
+  //   return lowerDefault();
+  // }
+  // if (module.numOfCallOpsLowered++ > -1) {
+  //   llvm::outs() << "Lowering call op: ";
+  //   op.dump();
+  // }
 
   // Create an activation if to enclose the call in
-
+  // llvm::outs() << "Going in\n";
   OpBuilder::InsertionGuard guard(module.builder);
   bool essenting = false;
   SmallVector<OpResult> conditionalResults;
   if (!op->getParentOfType<DefineOp>())
     if (module.arcActivations[op]) {
+      // llvm::outs() << "Essenting\n";
+
       essenting = true;
       // Read the activation condition.
       auto activationCondition = module.getBuilder(phase).create<StateReadOp>(
@@ -1322,6 +1368,11 @@ LogicalResult OpLowering::lower(CallOp op) {
       // Create an if op for the activation condition.
       auto ifActivatedOp = module.builder.create<scf::IfOp>(
           op.getLoc(), op->getResultTypes(), activationCondition, true, true);
+      ifActivatedOp->setAttr("arcActivationCheck",
+                             module.builder.getBoolAttr(true));
+      ifActivatedOp->setAttr(
+          "arcActivationName",
+          cast<mlir::SymbolRefAttr>(op.getCallableForCallee()));
       // createOrReuseIf(module.getBuilder(phase), activationCondition, false);
       // If the arc isn't activated, we just yield what's stored in the cache
       module.builder.setInsertionPointToEnd(ifActivatedOp.elseBlock());
@@ -1336,6 +1387,9 @@ LogicalResult OpLowering::lower(CallOp op) {
       // move the call inside the IfOp
       module.getBuilder(phase).setInsertionPointToEnd(
           ifActivatedOp.thenBlock());
+      // module.builder.create<arc::SimEmitValueOp>(op.getLoc(), "call
+      // activated",
+      //                                            activationCondition);
       auto *clonedOp = module.getBuilder(phase).clone(*op, mapping);
       conditionalResults = ifActivatedOp.getResults();
 
@@ -1346,6 +1400,7 @@ LogicalResult OpLowering::lower(CallOp op) {
         Value oldValue = module.builder.create<StateReadOp>(
             op.getLoc(), module.allocatedOldCallValues[result]);
         Value newValue = clonedOp->getResult(resIndex);
+        auto unConvNewValue = newValue;
         // Read then write activation condition
         for (auto *user : result.getUsers()) {
           if (isa<StateOp, CallOp>(user)) {
@@ -1360,19 +1415,38 @@ LogicalResult OpLowering::lower(CallOp op) {
             auto userActivation = module.arcActivations[user];
             auto activated = module.builder.create<StateReadOp>(op->getLoc(),
                                                                 userActivation);
-            auto hasChanged = module.builder.create<comb::ICmpOp>(
-                op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
+            Value hasChanged;
+            // If the output isn't an int then just conservatively assume it
+            // changed
+            if (isa<IntegerType>(newValue.getType()) &&
+                isa<IntegerType>(oldValue.getType())) {
+              // If the new value is an integer, we can check if it has changed.
+              hasChanged = module.builder.create<comb::ICmpOp>(
+                  op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
+            } else {
+              // Otherwise, we assume it has changed.
+              hasChanged = module.builder.create<hw::ConstantOp>(
+                  op->getLoc(), module.builder.getI1Type(), true);
+            }
+            // auto hasChanged = module.builder.create<comb::ICmpOp>(
+            //     op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
             auto newActivated = module.builder.create<comb::OrOp>(
                 op->getLoc(), activated, hasChanged);
-            module.builder.create<StateWriteOp>(op->getLoc(), userActivation,
-                                                newActivated, Value{});
+            module.builder
+                .create<StateWriteOp>(op->getLoc(), userActivation,
+                                      newActivated, Value{})
+                ->setAttr("callWritingOnChange",
+                          module.builder.getBoolArrayAttr(true));
           }
         }
 
         // We also need to update the old value for the next cycle.
-        module.builder.create<StateWriteOp>(
-            op.getLoc(), module.allocatedOldCallValues[result], newValue,
-            Value{});
+        module.builder
+            .create<StateWriteOp>(op.getLoc(),
+                                  module.allocatedOldCallValues[result],
+                                  unConvNewValue, Value{})
+            ->setAttr("UpdatingOldValue",
+                      module.builder.getBoolArrayAttr(true));
       }
       module.builder.create<scf::YieldOp>(op.getLoc(), clonedOp->getResults());
 
