@@ -311,7 +311,7 @@ static void populateHwModuleToArcPipeline(PassManager &pm) {
   {
     arc::PerformEssentMergesOptions opts;
     opts.optimalPartitionSize = essentThreshold;
-    pm.addPass(arc::createPerformEssentMergesPass(opts));
+    // pm.addPass(arc::createPerformEssentMergesPass(opts));
   }
 
   pm.addPass(createCSEPass());

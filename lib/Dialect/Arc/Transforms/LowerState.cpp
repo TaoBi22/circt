@@ -327,8 +327,7 @@ LogicalResult ModuleLowering::run() {
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&ifInputChanged.getThenRegion().front());
     for (auto *user : arg.getUsers()) {
-      if (isa<CallOp, StateOp>(user) &&
-          !isa<CallOp, StateOp>(user->getParentOp())) {
+      if (isa<CallOp, StateOp>(user) && !user->getParentOfType<DefineOp>()) {
         // If it's a StateOp then make sure the clock is actually an input, not
         // just the clock value
         if (isClock)
@@ -1365,6 +1364,31 @@ LogicalResult OpLowering::lower(CallOp op) {
       // Read the activation condition.
       auto activationCondition = module.getBuilder(phase).create<StateReadOp>(
           op.getLoc(), module.arcActivations[op]);
+
+      auto quickFalse = module.builder.create<hw::ConstantOp>(
+          op->getLoc(), module.builder.getI1Type(), false);
+      // Deactivation logic copied from lowerStateful
+      bool hasActivatingParent = false;
+      for (auto parent : op.getInputs()) {
+        if (isa<BlockArgument>(parent))
+          hasActivatingParent = true;
+        if (auto parentOp = parent.getDefiningOp()) {
+          // FIXME: for some reason switching on StateOp here throws a late
+          // output difference. This is a big TODO though, StateOps should
+          // definitely also be activating
+          if (isa<CallOp>(parentOp)) {
+            hasActivatingParent = true;
+            break;
+          }
+        }
+      }
+      if (hasActivatingParent) {
+        module.builder
+            .create<StateWriteOp>(op->getLoc(), module.arcActivations[op],
+                                  quickFalse, Value{})
+            ->setAttr("deactivating", module.builder.getBoolArrayAttr(true));
+      }
+
       // Create an if op for the activation condition.
       auto ifActivatedOp = module.builder.create<scf::IfOp>(
           op.getLoc(), op->getResultTypes(), activationCondition, true, true);
