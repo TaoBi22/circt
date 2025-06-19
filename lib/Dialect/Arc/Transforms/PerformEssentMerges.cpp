@@ -238,7 +238,6 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
 }
 
 bool ArcEssentMerger::isSmall(CallOpInterface arc) {
-  arc->dump();
   // Check if the arc is small enough to be merged
   auto arcName =
       cast<mlir::SymbolRefAttr>(arc.getCallableForCallee()).getLeafReference();
