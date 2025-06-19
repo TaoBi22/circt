@@ -36,6 +36,7 @@
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
+#include <cassert>
 
 #define DEBUG_TYPE "arc-perform-essent-merges"
 
@@ -241,6 +242,7 @@ bool ArcEssentMerger::isSmall(CallOpInterface arc) {
   auto arcName =
       cast<mlir::SymbolRefAttr>(arc.getCallableForCallee()).getLeafReference();
   auto arcDef = arcDefs[arcName];
+  assert(arcDef);
   int numOps = 0;
   arcDef->walk([&](Operation *op) { numOps++; });
   // Decrement by one before comparison to account for the operation itself
@@ -534,6 +536,9 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
         smallSiblingSets;
     SmallVector<CallOpInterface> alreadyGrouped;
     module->walk([&](CallOpInterface callOp) {
+      if (!isa<StateOp, CallOp>(callOp.getOperation()))
+        return;
+
       // We only care if the arc is small
       if (!isSmall(callOp))
         return;
@@ -560,6 +565,8 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
       for (auto parent : parents)
         for (auto user : parent->getUsers()) {
           if (auto secondCallOp = dyn_cast<CallOpInterface>(user)) {
+            if (!isa<StateOp, CallOp>(secondCallOp.getOperation()))
+              continue;
             // We only care if the arc is small
             if (!isSmall(secondCallOp))
               return;
@@ -682,6 +689,9 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
 
     SmallVector<CallOpInterface> alreadyGrouped;
     module->walk([&](CallOpInterface callOp) {
+      if (!isa<StateOp, CallOp>(callOp.getOperation()))
+        return;
+
       // We only care if the starting arc is small (so we avoid fully big
       // partitioning levels)
       if (!isSmall(callOp))
