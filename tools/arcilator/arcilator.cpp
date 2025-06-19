@@ -313,6 +313,7 @@ static void populateHwModuleToArcPipeline(PassManager &pm) {
     opts.optimalPartitionSize = essentThreshold;
     pm.addPass(arc::createPerformEssentMergesPass(opts));
   }
+
   pm.addPass(createCSEPass());
   pm.addPass(arc::createArcCanonicalizerPass());
   if (shouldMakeLUTs)
@@ -345,7 +346,7 @@ static void populateHwModuleToArcPipeline(PassManager &pm) {
   if (shouldInline)
     pm.addPass(arc::createInlineArcsPass());
 
-  pm.addPass(arc::createMergeIfsPass());
+  // pm.addPass(arc::createMergeIfsPass());
   pm.addPass(createCSEPass());
   pm.addPass(arc::createArcCanonicalizerPass());
 

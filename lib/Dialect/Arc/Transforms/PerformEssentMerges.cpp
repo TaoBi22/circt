@@ -238,11 +238,12 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
 }
 
 bool ArcEssentMerger::isSmall(CallOpInterface arc) {
+  arc->dump();
   // Check if the arc is small enough to be merged
   auto arcName =
       cast<mlir::SymbolRefAttr>(arc.getCallableForCallee()).getLeafReference();
   auto arcDef = arcDefs[arcName];
-  assert(arcDef);
+  // assert(arcDef);
   int numOps = 0;
   arcDef->walk([&](Operation *op) { numOps++; });
   // Decrement by one before comparison to account for the operation itself
@@ -718,6 +719,8 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
       for (auto parent : parents)
         for (auto user : parent->getUsers()) {
           if (auto secondCallOp = dyn_cast<CallOpInterface>(user)) {
+            if (!isa<StateOp, CallOp>(secondCallOp.getOperation()))
+              continue;
             // No need to check if it's grouped as the first arc would be too
             // Check if the two arcs are siblings
             SetVector<CallOpInterface> secondParents;
