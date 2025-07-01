@@ -336,7 +336,6 @@ static void populateHwModuleToArcPipeline(PassManager &pm) {
   if (untilReached(UntilStateLowering))
     return;
   pm.addPass(arc::createLowerStatePass());
-
   // TODO: LowerClocksToFuncsPass might not properly consider scf.if operations
   // (or nested regions in general) and thus errors out when muxes are also
   // converted in the hw.module or arc.model
