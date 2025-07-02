@@ -282,7 +282,7 @@ LogicalResult ModuleLowering::run() {
         }
       }
 
-      isArcCond[op] = false; // Default to not being conditional
+      isArcCond[op] = true; // Default to not being conditional
       if (!isArcCond[op])
         return;
 
@@ -1552,7 +1552,9 @@ LogicalResult OpLowering::lower(CallOp op) {
       //                                            activationCondition);
       clonedOp = module.getBuilder(phase).clone(*op, mapping);
       conditionalResults = ifActivatedOp.getResults();
-      module.builder.create<scf::YieldOp>(op.getLoc(), clonedOp->getResults());
+      auto yield = module.builder.create<scf::YieldOp>(op.getLoc(),
+                                                       clonedOp->getResults());
+      module.builder.setInsertionPoint(yield);
     } else {
       clonedOp = module.getBuilder(phase).clone(*op, mapping);
       conditionalResults = clonedOp->getResults();
@@ -1571,6 +1573,7 @@ LogicalResult OpLowering::lower(CallOp op) {
           op.getLoc(), module.allocatedOldCallValues[result]);
       Value newValue = clonedOp->getResult(resIndex);
       auto unConvNewValue = newValue;
+      bool hasAnythingToActivate = false;
       // Read then write activation condition
       for (auto *user : result.getUsers()) {
         if (isa<StateOp, CallOp>(user) && module.isArcCond[user]) {
@@ -1600,6 +1603,7 @@ LogicalResult OpLowering::lower(CallOp op) {
             hasChanged = module.builder.create<hw::ConstantOp>(
                 op->getLoc(), module.builder.getI1Type(), true);
           }
+          hasAnythingToActivate = true;
           // auto hasChanged = module.builder.create<comb::ICmpOp>(
           //     op->getLoc(), comb::ICmpPredicate::ne, oldValue, newValue);
           auto newActivated = module.builder.create<comb::OrOp>(
@@ -1613,11 +1617,13 @@ LogicalResult OpLowering::lower(CallOp op) {
       }
 
       // We also need to update the old value for the next cycle.
-      module.builder
-          .create<StateWriteOp>(op.getLoc(),
-                                module.allocatedOldCallValues[result],
-                                unConvNewValue, Value{})
-          ->setAttr("UpdatingOldValue", module.builder.getBoolArrayAttr(true));
+      if (hasAnythingToActivate)
+        module.builder
+            .create<StateWriteOp>(op.getLoc(),
+                                  module.allocatedOldCallValues[result],
+                                  unConvNewValue, Value{})
+            ->setAttr("UpdatingOldValue",
+                      module.builder.getBoolArrayAttr(true));
     }
 
   } else {
