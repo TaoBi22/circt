@@ -264,7 +264,7 @@ LogicalResult ModuleLowering::run() {
       moduleOp.getLoc(), builder.getI1Type(), false);
   initialBuilder.create<arc::StateWriteOp>(moduleOp.getLoc(), activationSelect,
                                            myQuickFalse, Value{});
-  llvm::outs() << "BUILDING ACTIVATIONS\n";
+  //   llvm::outs() << "BUILDING ACTIVATIONS\n";
   // Create an activation condition for every arc
   auto myQuickTrue = initialBuilder.create<hw::ConstantOp>(
       moduleOp.getLoc(), builder.getI1Type(), true);
@@ -292,7 +292,7 @@ LogicalResult ModuleLowering::run() {
       auto otherActivationStorage = allocBuilder.create<arc::AllocStateOp>(
           moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
 
-      llvm::outs() << __LINE__ << "\n";
+      //       llvm::outs() << __LINE__ << "\n";
       auto select =
           builder.create<arc::StateReadOp>(moduleOp.getLoc(), activationSelect);
       select->setAttr("arc_activation_selectasdas",
@@ -326,7 +326,7 @@ LogicalResult ModuleLowering::run() {
           moduleOp.getLoc(), otherActivationStorage, myQuickTrue, Value{});
     }
   });
-  llvm::outs() << "BUILDING OLD STORAGE ALLOCS\n";
+  //   llvm::outs() << "BUILDING OLD STORAGE ALLOCS\n";
 
   // Allocate old storage for the inputs.
   for (auto arg : moduleOp.getBodyBlock()->getArguments()) {
@@ -346,18 +346,21 @@ LogicalResult ModuleLowering::run() {
     initialBuilder.create<arc::StateWriteOp>(arg.getLoc(), state, myInit,
                                              Value{});
   }
-  llvm::outs() << "CHANGING INPUT CHILDREN\n";
+  //   llvm::outs() << "CHANGING INPUT CHILDREN\n";
 
   // Activate every child of a changed input.
   Value quickTrue = builder.create<hw::ConstantOp>(moduleOp.getLoc(),
                                                    builder.getI1Type(), true);
+  builder.create<arc::SimEmitValueOp>(moduleOp.getLoc(), "Starting cycle",
+                                      quickTrue);
+
   for (auto [i, arg] :
        llvm::enumerate(moduleOp.getBodyBlock()->getArguments())) {
-    llvm::outs() << __LINE__ << "\n";
+    //     llvm::outs() << __LINE__ << "\n";
 
     Value newValue =
         builder.create<arc::StateReadOp>(arg.getLoc(), allocatedInputs[i]);
-    llvm::outs() << __LINE__ << "\n";
+    //     llvm::outs() << __LINE__ << "\n";
 
     Value oldValue =
         builder.create<arc::StateReadOp>(arg.getLoc(), allocatedOldInputs[i]);
@@ -378,6 +381,7 @@ LogicalResult ModuleLowering::run() {
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(&ifInputChanged.getThenRegion().front());
     for (auto *user : arg.getUsers()) {
+
       if (isa<CallOp, StateOp>(user) && !user->getParentOfType<DefineOp>() &&
           isArcCond[user]) {
         // If it's a StateOp then make sure the clock is actually an input, not
@@ -401,7 +405,7 @@ LogicalResult ModuleLowering::run() {
   for (auto [rootInput, oldStorage] :
        llvm::zip(allocatedInputs, allocatedOldInputs)) {
     // We buffer the new input into the old input storage.
-    llvm::outs() << __LINE__ << "\n";
+    //     llvm::outs() << __LINE__ << "\n";
 
     auto newValue =
         builder.create<arc::StateReadOp>(rootInput.getLoc(), rootInput);
@@ -409,7 +413,7 @@ LogicalResult ModuleLowering::run() {
                                       Value{});
   }
 
-  llvm::outs() << "LOWERING OPS\n";
+  //   llvm::outs() << "LOWERING OPS\n";
 
   // Lower the ops.
   for (auto &op : moduleOp.getOps()) {
@@ -428,7 +432,7 @@ LogicalResult ModuleLowering::run() {
       op.erase();
 
   // negate the activation select
-  llvm::outs() << __LINE__ << "\n";
+  //   llvm::outs() << __LINE__ << "\n";
 
   // Set all current activations for ops with activating parents to false.
   // On the next cycle, they'll become the next state activations, so we only go
@@ -436,36 +440,36 @@ LogicalResult ModuleLowering::run() {
   // cycle.
   auto quickFalse = builder.create<hw::ConstantOp>(moduleOp.getLoc(),
                                                    builder.getI1Type(), false);
-  moduleOp.walk([&](Operation *op) {
-    if (isa<StateOp, CallOp>(op) && !op->getParentOfType<DefineOp>()) {
-      if (!isArcCond[op])
-        return; // We only care about arcs that are conditional
-      bool hasActivatingParent = false;
-      ValueRange inputs;
-      if (auto so = dyn_cast<StateOp>(op)) {
-        // op->print(llvm::outs());
-        inputs = so.getInputs();
-        // llvm::outs() << "Inputs: " << inputs.size() << "\n";
-      } else {
-        inputs = op->getOperands();
-      }
-      for (auto parent : inputs) {
-        if (isa<BlockArgument>(parent))
-          hasActivatingParent = true;
-        if (auto parentOp = parent.getDefiningOp()) {
-          if (isa<StateOp>(parentOp)) {
-            hasActivatingParent = true;
-            break;
-          }
-        }
-      }
-      if (hasActivatingParent) {
-        auto activation = arcActivations[op];
-        builder.create<arc::StateWriteOp>(moduleOp.getLoc(), activation,
-                                          quickFalse, Value{});
-      }
-    }
-  });
+  // moduleOp.walk([&](Operation *op) {
+  //   if (isa<StateOp, CallOp>(op) && !op->getParentOfType<DefineOp>()) {
+  //     if (!isArcCond[op])
+  //       return; // We only care about arcs that are conditional
+  //     bool hasActivatingParent = false;
+  //     ValueRange inputs;
+  //     if (auto so = dyn_cast<StateOp>(op)) {
+  //       //         // op->print(llvm::outs());
+  //       inputs = so.getInputs();
+  //       //         // llvm::outs() << "Inputs: " << inputs.size() << "\n";
+  //     } else {
+  //       inputs = op->getOperands();
+  //     }
+  //     for (auto parent : inputs) {
+  //       if (isa<BlockArgument>(parent))
+  //         hasActivatingParent = true;
+  //       if (auto parentOp = parent.getDefiningOp()) {
+  //         if (isa<StateOp>(parentOp)) {
+  //           hasActivatingParent = true;
+  //           break;
+  //         }
+  //       }
+  //     }
+  //     if (hasActivatingParent) {
+  //       auto activation = arcActivations[op];
+  //       builder.create<arc::StateWriteOp>(moduleOp.getLoc(), activation,
+  //                                         quickFalse, Value{});
+  //     }
+  //   }
+  // });
 
   auto readSelect =
       builder.create<arc::StateReadOp>(moduleOp.getLoc(), activationSelect);
@@ -480,12 +484,12 @@ LogicalResult ModuleLowering::run() {
   // auto anotherFalse = builder.create<hw::ConstantOp>(
   //     moduleOp.getLoc(), builder.getI1Type(), false);
   // for (auto [op, nextActivation] : nextCycleActivations) {
-  //   llvm::outs() << __LINE__ << "\n";
+  //   //   llvm::outs() << __LINE__ << "\n";
 
   //   auto newActive =
   //       builder.create<StateReadOp>(moduleOp.getLoc(), nextActivation);
   //   auto activation = arcActivations[op];
-  //   llvm::outs() << __LINE__ << "\n";
+  //   //   llvm::outs() << __LINE__ << "\n";
 
   //   auto oldActivation =
   //       builder.create<StateReadOp>(moduleOp.getLoc(), activation);
@@ -697,7 +701,7 @@ Value ModuleLowering::detectPosedge(Value clock) {
 
   // Read the old clock value from storage and write the new clock value to
   // storage.
-  llvm::outs() << __LINE__ << "\n";
+  //   llvm::outs() << __LINE__ << "\n";
 
   auto oldClock = builder.create<StateReadOp>(loc, oldStorage);
   builder.create<StateWriteOp>(loc, oldStorage, clock, Value{});
@@ -902,7 +906,7 @@ LogicalResult OpLowering::lowerStateful(
   // enable, in order to compute the updated "new" value. The clock needs to
   // be the "new" value though, such that other states can act as a clock
   // source.
-  llvm::outs() << "LOWERING STATEFUL\n";
+  //   llvm::outs() << "LOWERING STATEFUL\n";
   if (initial) {
     lowerValue(clock, Phase::New);
     if (enable) {
@@ -1015,7 +1019,7 @@ LogicalResult OpLowering::lowerStateful(
   // We do the activation inside the enable so that mergeIfs can merge as many
   // matching conditions as possible (an activation condition will never be
   // mergeable as each arc has its own activation)
-  llvm::outs() << "ACTIVATING IF\n";
+  //   llvm::outs() << "ACTIVATING IF\n";
 
   // Slightly hacky to avoid faffing around with func signatures
   scf::YieldOp activatedRegion;
@@ -1025,7 +1029,7 @@ LogicalResult OpLowering::lowerStateful(
   if (!isa<sim::DPICallOp>(originalOp) &&
       !originalOp->getParentOfType<DefineOp>() &&
       module.isArcCond[originalOp]) {
-    llvm::outs() << __LINE__ << "\n";
+    //     llvm::outs() << __LINE__ << "\n";
 
     auto activationCondition = module.builder.create<StateReadOp>(
         originalOp->getLoc(), module.arcActivations[originalOp]);
@@ -1053,14 +1057,16 @@ LogicalResult OpLowering::lowerStateful(
           }
         }
       }
-      if (hasActivatingParent) {
-        // module.builder
-        //     .create<StateWriteOp>(originalOp->getLoc(),
-        //                           module.arcActivations[originalOp],
-        //                           quickFalse, Value{})
-        //     ->setAttr("deactivating", module.builder.getBoolArrayAttr(true));
+      if (hasActivatingParent && module.isArcCond[originalOp]) {
+        module.builder
+            .create<StateWriteOp>(originalOp->getLoc(),
+                                  module.arcActivations[originalOp], quickFalse,
+                                  Value{})
+            ->setAttr("deactivating", module.builder.getBoolArrayAttr(true));
       }
     }
+    module.builder.create<arc::SimEmitValueOp>(
+        originalOp->getLoc(), "is state op activated", activationCondition);
 
     auto ifActivatedOp =
         createOrReuseIf(module.builder, activationCondition, false);
@@ -1072,8 +1078,6 @@ LogicalResult OpLowering::lowerStateful(
             cast<CallOpInterface>(originalOp).getCallableForCallee()));
 
     module.builder.setInsertionPoint(ifActivatedOp.thenYield());
-    // module.builder.create<arc::SimEmitValueOp>(
-    //     originalOp->getLoc(), "state op activated", activationCondition);
     activatedRegion = ifActivatedOp.thenYield();
   }
 
@@ -1100,20 +1104,20 @@ LogicalResult OpLowering::lowerStateful(
       module.builder.saveInsertionPoint(); // Save the insertion point
   module.builder.setInsertionPoint(ifClockOp);
   for (auto [state, result] : llvm::zip(states, results)) {
-    llvm::outs() << __LINE__ << "\n";
+    //     llvm::outs() << __LINE__ << "\n";
 
     auto oldValue = module.builder.create<StateReadOp>(result.getLoc(), state);
     module.loweredValues[{result, Phase::Old}] = oldValue;
   }
 
-  llvm::outs() << "ACTIVATING CHILDREN\n";
+  //   llvm::outs() << "ACTIVATING CHILDREN\n";
 
   if (!isa<sim::DPICallOp>(originalOp) &&
       !originalOp->getParentOfType<DefineOp>()) {
     module.builder.restoreInsertionPoint(oldInsertionPoint);
     // Activate children if value has changed (iff op is an arc state or call)
     // TODO: Add in activating child conditions.
-    llvm::outs() << "ITTING RESULTS\n";
+    //     llvm::outs() << "ITTING RESULTS\n";
 
     for (auto [resIndex, result] : llvm::enumerate(results)) {
       // Check if this result has changed.
@@ -1121,7 +1125,7 @@ LogicalResult OpLowering::lowerStateful(
       auto newValue = loweredResults[resIndex];
       // TODO: this causes nondom
       // Read then write activation condition
-      llvm::outs() << "ITTING USERS\n";
+      //       llvm::outs() << "ITTING USERS\n";
 
       for (auto *user : result.getUsers()) {
         if (isa<StateOp, CallOp>(user) && module.isArcCond[user]) {
@@ -1134,7 +1138,7 @@ LogicalResult OpLowering::lowerStateful(
                                                                oldValue);
           }
           auto userActivation = module.nextCycleActivations[user];
-          llvm::outs() << __LINE__ << "\n";
+          //           llvm::outs() << __LINE__ << "\n";
 
           auto activated =
               module.builder.create<StateReadOp>(op->getLoc(), userActivation);
@@ -1152,7 +1156,7 @@ LogicalResult OpLowering::lowerStateful(
     }
   }
 
-  llvm::outs() << "DONE\n";
+  //   llvm::outs() << "DONE\n";
   return success();
 }
 
@@ -1456,7 +1460,7 @@ LogicalResult OpLowering::lower(llhd::FinalOp op) {
 }
 
 LogicalResult OpLowering::lower(CallOp op) {
-  llvm::outs() << "Lowering call op: \n";
+  //   llvm::outs() << "Lowering call op: \n";
   // This is just copy pasted from lowerDefault tee hee!
   IRMapping mapping;
   auto anyFailed = false;
@@ -1480,12 +1484,12 @@ LogicalResult OpLowering::lower(CallOp op) {
   //   return lowerDefault();
   // }
   // if (module.numOfCallOpsLowered++ > -1) {
-  //   llvm::outs() << "Lowering call op: ";
+  //   //   llvm::outs() << "Lowering call op: ";
   //   op.dump();
   // }
 
   // Create an activation if to enclose the call in
-  // llvm::outs() << "Going in\n";
+  //   // llvm::outs() << "Going in\n";
   OpBuilder::InsertionGuard guard(module.builder);
   bool essenting = false;
   SmallVector<OpResult> conditionalResults;
@@ -1494,7 +1498,7 @@ LogicalResult OpLowering::lower(CallOp op) {
     Operation *clonedOp;
     // We don't want to create an activation if if the call is unconditional
     if (module.isArcCond[op]) { // Read the activation condition.
-      llvm::outs() << __LINE__ << "\n";
+                                //       llvm::outs() << __LINE__ << "\n";
 
       auto activationCondition = module.getBuilder(phase).create<StateReadOp>(
           op.getLoc(), module.arcActivations[op]);
@@ -1516,11 +1520,11 @@ LogicalResult OpLowering::lower(CallOp op) {
           }
         }
       }
-      if (hasActivatingParent) {
-        // module.builder
-        // .create<StateWriteOp>(op->getLoc(), module.arcActivations[op],
-        //                       quickFalse, Value{})
-        // ->setAttr("deactivating", module.builder.getBoolArrayAttr(true));
+      if (hasActivatingParent && module.isArcCond[op]) {
+        module.builder
+            .create<StateWriteOp>(op->getLoc(), module.arcActivations[op],
+                                  quickFalse, Value{})
+            ->setAttr("deactivating", module.builder.getBoolArrayAttr(true));
       }
 
       // Create an if op for the activation condition.
@@ -1536,7 +1540,7 @@ LogicalResult OpLowering::lower(CallOp op) {
       module.builder.setInsertionPointToEnd(ifActivatedOp.elseBlock());
       SmallVector<Value> loadedResults;
       for (auto res : op.getResults()) {
-        llvm::outs() << __LINE__ << "\n";
+        //         llvm::outs() << __LINE__ << "\n";
 
         auto oldValue = module.builder.create<StateReadOp>(
             op.getLoc(), module.allocatedOldCallValues[res]);
@@ -1567,7 +1571,7 @@ LogicalResult OpLowering::lower(CallOp op) {
 
     for (auto [resIndex, result] : llvm::enumerate(op->getResults())) {
       // Check if this result has changed.
-      llvm::outs() << __LINE__ << "\n";
+      //       llvm::outs() << __LINE__ << "\n";
 
       Value oldValue = module.builder.create<StateReadOp>(
           op.getLoc(), module.allocatedOldCallValues[result]);
@@ -1586,7 +1590,7 @@ LogicalResult OpLowering::lower(CallOp op) {
                                                                oldValue);
           }
           auto userActivation = module.arcActivations[user];
-          llvm::outs() << __LINE__ << "\n";
+          //           llvm::outs() << __LINE__ << "\n";
 
           auto activated =
               module.builder.create<StateReadOp>(op->getLoc(), userActivation);
@@ -1636,7 +1640,7 @@ LogicalResult OpLowering::lower(CallOp op) {
        llvm::zip(op->getResults(), conditionalResults))
     module.loweredValues[{oldResult, phase}] = newResult;
 
-  llvm::outs() << "Lowered call op: \n";
+  //   llvm::outs() << "Lowered call op: \n";
   return success();
 }
 
@@ -1670,7 +1674,7 @@ Value OpLowering::lowerValue(Value value, Phase phase) {
     if (initial)
       return {};
     auto state = module.allocatedInputs[arg.getArgNumber()];
-    llvm::outs() << __LINE__ << "\n";
+    //     llvm::outs() << __LINE__ << "\n";
 
     return module.getBuilder(phase).create<StateReadOp>(arg.getLoc(), state);
   }
@@ -1715,7 +1719,7 @@ Value OpLowering::lowerValue(InstanceOp op, OpResult result, Phase phase) {
   if (initial)
     return {};
   auto state = module.getAllocatedState(result);
-  llvm::outs() << __LINE__ << "\n";
+  //   llvm::outs() << __LINE__ << "\n";
 
   return module.getBuilder(phase).create<StateReadOp>(result.getLoc(), state);
 }
@@ -1739,7 +1743,7 @@ Value OpLowering::lowerValue(StateOp op, OpResult result, Phase phase) {
            "need old value but new value already written");
 
   auto state = module.getAllocatedState(result);
-  llvm::outs() << __LINE__ << "\n";
+  //   llvm::outs() << __LINE__ << "\n";
 
   return module.getBuilder(phase).create<StateReadOp>(result.getLoc(), state);
 }
@@ -1763,7 +1767,7 @@ Value OpLowering::lowerValue(sim::DPICallOp op, OpResult result, Phase phase) {
            "need old value but new value already written");
 
   auto state = module.getAllocatedState(result);
-  llvm::outs() << __LINE__ << "\n";
+  //   llvm::outs() << __LINE__ << "\n";
 
   return module.getBuilder(phase).create<StateReadOp>(result.getLoc(), state);
 }
@@ -1836,7 +1840,7 @@ Value OpLowering::lowerValue(seq::InitialOp op, OpResult result, Phase phase) {
   }
 
   // Read back the value computed during the initial phase.
-  llvm::outs() << __LINE__ << "\n";
+  //   llvm::outs() << __LINE__ << "\n";
 
   return module.getBuilder(phase).create<StateReadOp>(state.getLoc(), state);
 }
