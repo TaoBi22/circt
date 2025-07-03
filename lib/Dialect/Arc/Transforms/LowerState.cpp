@@ -175,15 +175,13 @@ struct ModuleLowering {
   /// A map from arcs to their corresponding activation states.
   DenseMap<Operation *, Value> arcActivations;
   /// A buffer of activations for next cycle
-  DenseMap<Operation *, Value> nextCycleActivations;
+  DenseMap<Operation *, Value> nextPosedgeActivations;
   /// A map from call ops to their existing output values (essentially cacheing)
   DenseMap<OpResult, Value> allocatedOldCallValues;
   // Track whether we're conditionally executing a given arc
   DenseMap<Operation *, bool> isArcCond;
 
   int numOfCallOpsLowered = 0;
-
-  Value activationSelect;
 
   /// A mapping from unlowered clocks to a value indicating a posedge. This is
   /// used to not create an excessive number of posedge detectors.
@@ -257,14 +255,6 @@ LogicalResult ModuleLowering::run() {
     //                                          Value{});
   }
 
-  // Initialize the activation select to 0
-  activationSelect = allocBuilder.create<arc::AllocStateOp>(
-      moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
-  auto myQuickFalse = initialBuilder.create<hw::ConstantOp>(
-      moduleOp.getLoc(), builder.getI1Type(), false);
-  initialBuilder.create<arc::StateWriteOp>(moduleOp.getLoc(), activationSelect,
-                                           myQuickFalse, Value{});
-  //   llvm::outs() << "BUILDING ACTIVATIONS\n";
   // Create an activation condition for every arc
   auto myQuickTrue = initialBuilder.create<hw::ConstantOp>(
       moduleOp.getLoc(), builder.getI1Type(), true);
@@ -287,43 +277,48 @@ LogicalResult ModuleLowering::run() {
         return;
 
       // Create the actual allocations
-      auto activationStorage = allocBuilder.create<arc::AllocStateOp>(
-          moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
-      auto otherActivationStorage = allocBuilder.create<arc::AllocStateOp>(
-          moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
+      // StateOps only receive activations for the next (or current) posedge, so
+      // we don't need an arcActivation for them
+      if (isa<CallOp>(op)) {
+        auto activationStorage = allocBuilder.create<arc::AllocStateOp>(
+            moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
+        arcActivations[op] = activationStorage;
+        // Ensure the activation is always true at the start.
+        initialBuilder.create<arc::StateWriteOp>(
+            moduleOp.getLoc(), activationStorage, myQuickTrue, Value{});
+      }
+
+      // If it's a StateOp, then we need to be able to buffer its activations
+      // until the next posedge.
+      if (isa<StateOp>(op)) {
+        // If it's a StateOp, we need to ensure that the activation is always
+        // true at the start.
+        auto posedgeBuffer = allocBuilder.create<arc::AllocStateOp>(
+            moduleOp.getLoc(), StateType::get(builder.getI1Type()), storageArg);
+        nextPosedgeActivations[op] = posedgeBuffer;
+        initialBuilder.create<arc::StateWriteOp>(
+            moduleOp.getLoc(), posedgeBuffer, myQuickTrue, Value{});
+      }
 
       //       llvm::outs() << __LINE__ << "\n";
-      auto select =
-          builder.create<arc::StateReadOp>(moduleOp.getLoc(), activationSelect);
-      select->setAttr("arc_activation_selectasdas",
-                      builder.getBoolArrayAttr(true));
-      arcActivations[op] = builder.create<comb::MuxOp>(
-          moduleOp.getLoc(), select, activationStorage, otherActivationStorage);
-      nextCycleActivations[op] = builder.create<comb::MuxOp>(
-          moduleOp.getLoc(), select, otherActivationStorage, activationStorage);
 
       // arcActivations[op] = activationStorage;
       // nextCycleActivations[op] = otherActivationStorage;
 
-      nextCycleActivations[op].getDefiningOp()->setAttr(
-          "arc_activation_next" + std::to_string(i),
-          builder.getBoolArrayAttr(true));
-      nextCycleActivations[op].getDefiningOp()->setAttr(
-          "arcName" + std::to_string(i),
-          cast<mlir::SymbolRefAttr>(
-              cast<CallOpInterface>(op).getCallableForCallee()));
-      arcActivations[op].getDefiningOp()->setAttr(
-          "arc_activation" + std::to_string(i), builder.getBoolArrayAttr(true));
-      arcActivations[op].getDefiningOp()->setAttr(
-          "arcName" + std::to_string(i),
-          cast<mlir::SymbolRefAttr>(
-              cast<CallOpInterface>(op).getCallableForCallee()));
-
-      // Ensure the activation is always true at the start.
-      initialBuilder.create<arc::StateWriteOp>(
-          moduleOp.getLoc(), activationStorage, myQuickTrue, Value{});
-      initialBuilder.create<arc::StateWriteOp>(
-          moduleOp.getLoc(), otherActivationStorage, myQuickTrue, Value{});
+      // nextCycleActivations[op].getDefiningOp()->setAttr(
+      //     "arc_activation_next" + std::to_string(i),
+      //     builder.getBoolArrayAttr(true));
+      // nextCycleActivations[op].getDefiningOp()->setAttr(
+      //     "arcName" + std::to_string(i),
+      //     cast<mlir::SymbolRefAttr>(
+      //         cast<CallOpInterface>(op).getCallableForCallee()));
+      // arcActivations[op].getDefiningOp()->setAttr(
+      //     "arc_activation" + std::to_string(i),
+      //     builder.getBoolArrayAttr(true));
+      // arcActivations[op].getDefiningOp()->setAttr(
+      //     "arcName" + std::to_string(i),
+      //     cast<mlir::SymbolRefAttr>(
+      //         cast<CallOpInterface>(op).getCallableForCallee()));
     }
   });
   //   llvm::outs() << "BUILDING OLD STORAGE ALLOCS\n";
@@ -351,8 +346,8 @@ LogicalResult ModuleLowering::run() {
   // Activate every child of a changed input.
   Value quickTrue = builder.create<hw::ConstantOp>(moduleOp.getLoc(),
                                                    builder.getI1Type(), true);
-  builder.create<arc::SimEmitValueOp>(moduleOp.getLoc(), "Starting cycle",
-                                      quickTrue);
+  // builder.create<arc::SimEmitValueOp>(moduleOp.getLoc(), "Starting cycle",
+  //                                     quickTrue);
 
   for (auto [i, arg] :
        llvm::enumerate(moduleOp.getBodyBlock()->getArguments())) {
@@ -366,11 +361,7 @@ LogicalResult ModuleLowering::run() {
         builder.create<arc::StateReadOp>(arg.getLoc(), allocatedOldInputs[i]);
     bool isClock = false;
     if (isa<seq::ClockType>(arg.getType())) {
-      continue;
       isClock = true;
-      // If the value is a clock, we skip or we'll always activate every
-      // register
-      // continue;
       oldValue = builder.create<seq::FromClockOp>(arg.getLoc(), oldValue);
       newValue = builder.create<seq::FromClockOp>(arg.getLoc(), newValue);
     }
@@ -392,7 +383,10 @@ LogicalResult ModuleLowering::run() {
                 so.getInputs().end())
               continue; // We don't need to activate it if it's just the clock
           }
-        auto activation = arcActivations[user];
+        // If it's a StateOp then it's the posedge activation that concerns us
+        // (no point activating it on a negedge)
+        auto activation = isa<StateOp>(user) ? nextPosedgeActivations[user]
+                                             : arcActivations[user];
         builder.create<StateWriteOp>(arg.getLoc(), activation, quickTrue,
                                      Value{});
       }
@@ -471,14 +465,14 @@ LogicalResult ModuleLowering::run() {
   //   }
   // });
 
-  auto readSelect =
-      builder.create<arc::StateReadOp>(moduleOp.getLoc(), activationSelect);
-  auto negatedSelect = builder.create<comb::XorOp>(
-      moduleOp.getLoc(), readSelect,
-      builder.create<hw::ConstantOp>(moduleOp.getLoc(), builder.getI1Type(),
-                                     true));
-  builder.create<arc::StateWriteOp>(moduleOp.getLoc(), activationSelect,
-                                    negatedSelect, Value{});
+  // auto readSelect =
+  //     builder.create<arc::StateReadOp>(moduleOp.getLoc(), activationSelect);
+  // auto negatedSelect = builder.create<comb::XorOp>(
+  //     moduleOp.getLoc(), readSelect,
+  //     builder.create<hw::ConstantOp>(moduleOp.getLoc(), builder.getI1Type(),
+  //                                    true));
+  // builder.create<arc::StateWriteOp>(moduleOp.getLoc(), activationSelect,
+  //                                   negatedSelect, Value{});
 
   // Copy next activations to current activations.
   // auto anotherFalse = builder.create<hw::ConstantOp>(
@@ -924,6 +918,21 @@ LogicalResult OpLowering::lowerStateful(
   if (!ifClockOp)
     return failure();
   OpBuilder::InsertionGuard guard(module.builder);
+
+  // HACK!!!! FIXME!!!! TODO!!!! I'm going to make the nextposedgeactivation
+  // copies happen at the start of this ifClockOp under the assumption the
+  // ifClocks will be correctly merged.
+  // This assumption is important because the copying of
+  // buffered posedge activations to current activations MUST happen before
+  // any of the StateOps execute - otherwise a stateop could immediately
+  // activate another stateop (which I think doesn't break correctness but would
+  // slow things down).
+
+  // ACTUALLY maybe I can just make the activation check happen over the
+
+  // module.builder.setInsertionPointToStart(ifClockOp.thenBlock());
+  // auto posedgeActivation =
+
   module.builder.setInsertionPoint(ifClockOp.thenYield());
 
   // Make sure we have the state storage available such that we can read and
@@ -981,7 +990,10 @@ LogicalResult OpLowering::lowerStateful(
         // Read then write activation condition
         for (auto *user : result.getUsers()) {
           if (isa<StateOp, CallOp>(user) && module.isArcCond[user]) {
-            auto userActivation = module.nextCycleActivations[user];
+            auto userActivation = isa<StateOp>(user)
+                                      ? module.nextPosedgeActivations[user]
+                                      : module.arcActivations[user];
+            // FIXME: this doesn't check if the result changed
             auto newActivated = module.builder.create<hw::ConstantOp>(
                 originalOp->getLoc(), module.builder.getI1Type(), true);
             module.builder
@@ -1032,7 +1044,7 @@ LogicalResult OpLowering::lowerStateful(
     //     llvm::outs() << __LINE__ << "\n";
 
     auto activationCondition = module.builder.create<StateReadOp>(
-        originalOp->getLoc(), module.arcActivations[originalOp]);
+        originalOp->getLoc(), module.nextPosedgeActivations[originalOp]);
 
     // We've fetched the activation, so we want to immediately set the arc as
     // deactivated (since we don't want to overwrite activations done within the
@@ -1060,13 +1072,13 @@ LogicalResult OpLowering::lowerStateful(
       if (hasActivatingParent && module.isArcCond[originalOp]) {
         module.builder
             .create<StateWriteOp>(originalOp->getLoc(),
-                                  module.arcActivations[originalOp], quickFalse,
-                                  Value{})
+                                  module.nextPosedgeActivations[originalOp],
+                                  quickFalse, Value{})
             ->setAttr("deactivating", module.builder.getBoolArrayAttr(true));
       }
     }
-    module.builder.create<arc::SimEmitValueOp>(
-        originalOp->getLoc(), "is state op activated", activationCondition);
+    // module.builder.create<arc::SimEmitValueOp>(
+    //     originalOp->getLoc(), "is state op activated", activationCondition);
 
     auto ifActivatedOp =
         createOrReuseIf(module.builder, activationCondition, false);
@@ -1137,7 +1149,9 @@ LogicalResult OpLowering::lowerStateful(
             oldValue = module.builder.create<seq::FromClockOp>(result.getLoc(),
                                                                oldValue);
           }
-          auto userActivation = module.nextCycleActivations[user];
+          auto userActivation = isa<StateOp>(user)
+                                    ? module.nextPosedgeActivations[user]
+                                    : module.arcActivations[user];
           //           llvm::outs() << __LINE__ << "\n";
 
           auto activated =
@@ -1589,7 +1603,10 @@ LogicalResult OpLowering::lower(CallOp op) {
             oldValue = module.builder.create<seq::FromClockOp>(result.getLoc(),
                                                                oldValue);
           }
-          auto userActivation = module.arcActivations[user];
+          auto userActivation = isa<StateOp>(user)
+                                    ? module.nextPosedgeActivations[user]
+                                    : module.arcActivations[user];
+          // auto userActivation = module.arcActivations[user];
           //           llvm::outs() << __LINE__ << "\n";
 
           auto activated =
