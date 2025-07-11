@@ -305,8 +305,10 @@ LogicalResult ModuleLowering::run() {
 
       // lower bound: 49+
       // upper bound: 50!!!!! IT MUST BE 50!!! WAHOO
-      isArcCond[op] =
-          i != 45 && i != 46 && i < 50; // Default to not being conditional
+      isArcCond[op] = i != 450 && i < 46; // Default to not being conditional
+
+      // isArcCond[op] =
+      //     i != 45 && i != 46 && i < 50; // Default to not being conditional
       i++;
       if (!isArcCond[op])
         return;
@@ -1654,6 +1656,7 @@ LogicalResult OpLowering::lower(llhd::FinalOp op) {
 }
 
 LogicalResult OpLowering::lower(CallOp op) {
+
   //   llvm::outs() << "Lowering call op: \n";
   // This is just copy pasted from lowerDefault tee hee!
   IRMapping mapping;
@@ -1702,7 +1705,7 @@ LogicalResult OpLowering::lower(CallOp op) {
           op->getLoc(), module.builder.getI1Type(), false);
       // Deactivation logic copied from lowerStateful
       bool hasActivatingParent = false;
-      for (auto parent : op.getInputs()) {
+      for (auto parent : op->getOperands()) {
         if (isa<BlockArgument>(parent))
           hasActivatingParent = true;
         if (auto parentOp = parent.getDefiningOp()) {
@@ -1715,12 +1718,22 @@ LogicalResult OpLowering::lower(CallOp op) {
           }
         }
       }
+      // if (hasActivatingParent && module.isArcCond[op] &&
+      //     "TLXbar_arc_5_split_0" !=
+      //         cast<mlir::SymbolRefAttr>(op.getCallableForCallee())
+      //             .getRootReference()) {
       if (hasActivatingParent && module.isArcCond[op]) {
         module.builder
             .create<StateWriteOp>(op->getLoc(), module.callActivations[op],
                                   quickFalse, Value{})
             ->setAttr("deactivating", module.builder.getBoolArrayAttr(true));
         assert(module.callActivations[op]);
+      }
+
+      if ("@TLXbar_arc_5_split_0" ==
+          cast<mlir::SymbolRefAttr>(op.getCallableForCallee())
+              .getRootReference()) {
+        llvm::outs() << "FOUND THE DODGY ONE\n";
       }
 
       // Create an if op for the activation condition.
