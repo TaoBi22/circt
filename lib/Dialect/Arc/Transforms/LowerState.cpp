@@ -305,7 +305,9 @@ LogicalResult ModuleLowering::run() {
 
       // lower bound: 49+
       // upper bound: 50!!!!! IT MUST BE 50!!! WAHOO
-      isArcCond[op] = i != 450 && i < 46; // Default to not being conditional
+      isArcCond[op] = cast<mlir::SymbolRefAttr>(
+                          cast<CallOpInterface>(op).getCallableForCallee())
+                          .getRootReference() == "TLXbar_arc_5_split_0";
 
       // isArcCond[op] =
       //     i != 45 && i != 46 && i < 50; // Default to not being conditional
@@ -1235,18 +1237,25 @@ LogicalResult OpLowering::lowerStateful(
     // However, we should only do this if the op has parents that couldactivate
     // it TODO it would be faster to never check parentless arcs
     if (auto so = dyn_cast<StateOp>(originalOp)) {
-      bool hasActivatingParent = false;
-      for (auto parent : so.getInputs()) {
+      bool hasOnlyActivatingParents = true;
+      for (auto parent : op->getOperands()) {
         if (isa<BlockArgument>(parent))
-          hasActivatingParent = true;
+          continue;
         if (auto parentOp = parent.getDefiningOp()) {
-          if (isa<CallOp, StateOp>(parentOp)) {
-            hasActivatingParent = true;
-            break;
+          // FIXME: for some reason switching on StateOp here throws a late
+          // output difference. This is a big TODO though, StateOps should
+          // definitely also be activating
+          if (!isa<CallOp, StateOp>(parentOp)) {
+            hasOnlyActivatingParents = false;
           }
         }
       }
-      if (hasActivatingParent && module.isArcCond[originalOp]) {
+      // if (hasActivatingParent && module.isArcCond[op] &&
+      //     "TLXbar_arc_5_split_0" !=
+      //         cast<mlir::SymbolRefAttr>(op.getCallableForCallee())
+      //             .getRootReference()) {
+      if (hasOnlyActivatingParents && module.isArcCond[op] &&
+          !so.getInputs().empty()) {
         assert(module.nextOrThisPosedgeActivations[originalOp]);
         module.builder
             .create<StateWriteOp>(
@@ -1704,17 +1713,19 @@ LogicalResult OpLowering::lower(CallOp op) {
       auto quickFalse = module.builder.create<hw::ConstantOp>(
           op->getLoc(), module.builder.getI1Type(), false);
       // Deactivation logic copied from lowerStateful
-      bool hasActivatingParent = false;
+      // Some ops should activate, but don't yet. We can't make ops in such
+      // cases deactivate themselves, because the op will only be looking for
+      // activations from a subset of inputs they should do.
+      bool hasOnlyActivatingParents = true;
       for (auto parent : op->getOperands()) {
         if (isa<BlockArgument>(parent))
-          hasActivatingParent = true;
+          continue;
         if (auto parentOp = parent.getDefiningOp()) {
           // FIXME: for some reason switching on StateOp here throws a late
           // output difference. This is a big TODO though, StateOps should
           // definitely also be activating
-          if (isa<CallOp>(parentOp)) {
-            hasActivatingParent = true;
-            break;
+          if (!isa<CallOp, StateOp>(parentOp)) {
+            hasOnlyActivatingParents = false;
           }
         }
       }
@@ -1722,7 +1733,8 @@ LogicalResult OpLowering::lower(CallOp op) {
       //     "TLXbar_arc_5_split_0" !=
       //         cast<mlir::SymbolRefAttr>(op.getCallableForCallee())
       //             .getRootReference()) {
-      if (hasActivatingParent && module.isArcCond[op]) {
+      if (hasOnlyActivatingParents && module.isArcCond[op] &&
+          !op->getOperands().empty()) {
         module.builder
             .create<StateWriteOp>(op->getLoc(), module.callActivations[op],
                                   quickFalse, Value{})
