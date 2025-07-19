@@ -549,6 +549,13 @@ MachineOpConverter::convertState(StateOp state) {
     res.outputs = outputOp.getOperands(); // 3.2
   }
 
+  for (auto &op : state.getTransitions().getOps()) {
+    if (!isa<TransitionOp>(op)) {
+      auto opClone = b.clone(op);
+      for (auto [i, res] : llvm::enumerate(op.getResults()))
+        res.replaceAllUsesWith(opClone->getResult(i));
+    }
+  }
   auto transitions = llvm::SmallVector<TransitionOp>(
       state.getTransitions().getOps<TransitionOp>());
   // 3.3, 3.4) Convert the transitions and record the next-state value
