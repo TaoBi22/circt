@@ -305,19 +305,15 @@ LogicalResult ModuleLowering::run() {
 
       // lower bound: 49+
       // upper bound: 50!!!!! IT MUST BE 50!!! WAHOO
-      isArcCond[op] = cast<mlir::SymbolRefAttr>(
-                          cast<CallOpInterface>(op).getCallableForCallee())
-                          .getRootReference() == "TLXbar_arc_5_split_0";
+      isArcCond[op] = true;
+
+      // isArcCond[op] = ;
 
       // isArcCond[op] =
       //     i != 45 && i != 46 && i < 50; // Default to not being conditional
       i++;
       if (!isArcCond[op])
         return;
-
-      llvm::outs() << cast<mlir::SymbolRefAttr>(
-                          cast<CallOpInterface>(op).getCallableForCallee())
-                   << "\n";
 
       // Create the actual allocations
       // StateOps only receive activations for the next (or current)
@@ -394,9 +390,9 @@ LogicalResult ModuleLowering::run() {
   });
   //   llvm::outs() << "BUILDING OLD STORAGE ALLOCS\n";
 
-  llvm::outs() << "Conditionalized a total of " << i << " arcs, with "
-               << callActivations.size() << " calls and "
-               << nextOrThisPosedgeActivations.size() << " states.\n";
+  // llvm::outs() << "Conditionalized a total of " << i << " arcs, with "
+  //              << callActivations.size() << " calls and "
+  //              << nextOrThisPosedgeActivations.size() << " states.\n";
 
   // Allocate old storage for the inputs.
   for (auto arg : moduleOp.getBodyBlock()->getArguments()) {
@@ -1742,12 +1738,6 @@ LogicalResult OpLowering::lower(CallOp op) {
         assert(module.callActivations[op]);
       }
 
-      if ("@TLXbar_arc_5_split_0" ==
-          cast<mlir::SymbolRefAttr>(op.getCallableForCallee())
-              .getRootReference()) {
-        llvm::outs() << "FOUND THE DODGY ONE\n";
-      }
-
       // Create an if op for the activation condition.
       auto ifActivatedOp = module.builder.create<scf::IfOp>(
           op.getLoc(), op->getResultTypes(), activationCondition, true, true);
@@ -1848,7 +1838,7 @@ LogicalResult OpLowering::lower(CallOp op) {
       }
 
       // We also need to update the old value for the next cycle.
-      if (hasAnythingToActivate)
+      if (hasAnythingToActivate || module.isArcCond[op])
         module.builder
             .create<StateWriteOp>(op.getLoc(),
                                   module.allocatedOldCallValues[result],
