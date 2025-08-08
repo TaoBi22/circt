@@ -249,93 +249,92 @@ static bool untilReached(Until until) {
 /// Populate a pass manager with the arc simulator pipeline for the given
 /// command line options. This pipeline lowers modules to the Arc dialect.
 static void populateHwModuleToArcPipeline(PassManager &pm) {
-  // if (verbosePassExecutions)
-  //   pm.addInstrumentation(
-  //       std::make_unique<VerbosePassInstrumentation<mlir::ModuleOp>>(
-  //           "arcilator"));
+  if (verbosePassExecutions)
+    pm.addInstrumentation(
+        std::make_unique<VerbosePassInstrumentation<mlir::ModuleOp>>(
+            "arcilator"));
 
-  // // Pre-process the input such that it no longer contains any SV dialect ops
-  // // and external modules that are relevant to the arc transformation are
-  // // represented as intrinsic ops.
-  // if (untilReached(UntilPreprocessing))
-  //   return;
-  // pm.addPass(om::createStripOMPass());
-  // pm.addPass(emit::createStripEmitPass());
-  // pm.addPass(createLowerFirMemPass());
-  // pm.addPass(createLowerVerifSimulationsPass());
-  // {
-  //   arc::AddTapsOptions opts;
-  //   opts.tapPorts = observePorts;
-  //   opts.tapWires = observeWires;
-  //   opts.tapNamedValues = observeNamedValues;
-  //   pm.addPass(arc::createAddTapsPass(opts));
-  // }
-  // pm.addPass(arc::createStripSVPass());
-  // {
-  //   arc::InferMemoriesOptions opts;
-  //   opts.tapPorts = observePorts;
-  //   opts.tapMemories = observeMemories;
-  //   pm.addPass(arc::createInferMemoriesPass(opts));
-  // }
-  // pm.addPass(sim::createLowerDPIFunc());
+  // Pre-process the input such that it no longer contains any SV dialect ops
+  // and external modules that are relevant to the arc transformation are
+  // represented as intrinsic ops.
+  if (untilReached(UntilPreprocessing))
+    return;
+  pm.addPass(om::createStripOMPass());
+  pm.addPass(emit::createStripEmitPass());
+  pm.addPass(createLowerFirMemPass());
+  pm.addPass(createLowerVerifSimulationsPass());
+  {
+    arc::AddTapsOptions opts;
+    opts.tapPorts = observePorts;
+    opts.tapWires = observeWires;
+    opts.tapNamedValues = observeNamedValues;
+    pm.addPass(arc::createAddTapsPass(opts));
+  }
+  pm.addPass(arc::createStripSVPass());
+  {
+    arc::InferMemoriesOptions opts;
+    opts.tapPorts = observePorts;
+    opts.tapMemories = observeMemories;
+    pm.addPass(arc::createInferMemoriesPass(opts));
+  }
+  pm.addPass(sim::createLowerDPIFunc());
+  pm.addPass(createCSEPass());
+  pm.addPass(arc::createArcCanonicalizerPass());
+
+  // Restructure the input from a `hw.module` hierarchy to a collection of
+  if (untilReached(UntilArcConversion))
+    return;
+  {
+    ConvertToArcsOptions opts;
+    opts.tapRegisters = observeRegisters;
+    pm.addPass(createConvertToArcsPass(opts));
+  }
+  if (shouldDedup)
+    pm.addPass(arc::createDedupPass());
+  pm.addPass(hw::createFlattenModulesPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(arc::createArcCanonicalizerPass());
+
+  // Perform arc-level optimizations that are not specific to software
+  // simulation.
+  if (untilReached(UntilArcOpt))
+    return;
+  pm.addPass(arc::createSplitLoopsPass());
+  if (shouldDedup)
+    pm.addPass(arc::createDedupPass());
+  {
+    arc::InferStatePropertiesOptions opts;
+    opts.detectEnables = shouldDetectEnables;
+    opts.detectResets = shouldDetectResets;
+    pm.addPass(arc::createInferStateProperties(opts));
+  }
+  {
+    arc::PerformEssentMergesOptions opts;
+    opts.optimalPartitionSize = essentThreshold;
+    pm.addPass(arc::createPerformEssentMergesPass(opts));
+  }
+
+  pm.addPass(createCSEPass());
+  pm.addPass(arc::createArcCanonicalizerPass());
+  if (shouldMakeLUTs)
+    pm.addPass(arc::createMakeTablesPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(arc::createArcCanonicalizerPass());
+  // Now some arguments may be unused because reset conditions are not passed
+  // inputs anymore pm.addPass(arc::createRemoveUnusedArcArgumentsPass());
+  // Because we replace a lot of StateOp inputs with constants in the enable
+  // patterns we may be able to sink a lot of them
+  // TODO: maybe merge RemoveUnusedArcArguments with SinkInputs?
+  // pm.addPass(arc::createSinkInputsPass());
   // pm.addPass(createCSEPass());
-  // pm.addPass(arc::createArcCanonicalizerPass());
-
-  // // Restructure the input from a `hw.module` hierarchy to a collection of
-  // arcs. if (untilReached(UntilArcConversion))
-  //   return;
-  // {
-  //   ConvertToArcsOptions opts;
-  //   opts.tapRegisters = observeRegisters;
-  //   pm.addPass(createConvertToArcsPass(opts));
-  // }
+  // pm.addPass(createSimpleCanonicalizerPass());
+  // Removing some muxes etc. may lead to additional dedup opportunities
   // if (shouldDedup)
-  //   pm.addPass(arc::createDedupPass());
-  // pm.addPass(hw::createFlattenModulesPass());
-  // pm.addPass(createCSEPass());
-  // pm.addPass(arc::createArcCanonicalizerPass());
+  // pm.addPass(arc::createDedupPass());
 
-  // // Perform arc-level optimizations that are not specific to software
-  // // simulation.
-  // if (untilReached(UntilArcOpt))
-  //   return;
-  // pm.addPass(arc::createSplitLoopsPass());
-  // if (shouldDedup)
-  //   pm.addPass(arc::createDedupPass());
-  // {
-  //   arc::InferStatePropertiesOptions opts;
-  //   opts.detectEnables = shouldDetectEnables;
-  //   opts.detectResets = shouldDetectResets;
-  //   pm.addPass(arc::createInferStateProperties(opts));
-  // }
-  // {
-  //   arc::PerformEssentMergesOptions opts;
-  //   opts.optimalPartitionSize = essentThreshold;
-  //   // pm.addPass(arc::createPerformEssentMergesPass(opts));
-  // }
-
-  // pm.addPass(createCSEPass());
-  // pm.addPass(arc::createArcCanonicalizerPass());
-  // if (shouldMakeLUTs)
-  //   pm.addPass(arc::createMakeTablesPass());
-  // pm.addPass(createCSEPass());
-  // pm.addPass(arc::createArcCanonicalizerPass());
-  // // Now some arguments may be unused because reset conditions are not passed
-  // as
-  // // inputs anymore pm.addPass(arc::createRemoveUnusedArcArgumentsPass());
-  // // Because we replace a lot of StateOp inputs with constants in the enable
-  // // patterns we may be able to sink a lot of them
-  // // TODO: maybe merge RemoveUnusedArcArguments with SinkInputs?
-  // // pm.addPass(arc::createSinkInputsPass());
-  // // pm.addPass(createCSEPass());
-  // // pm.addPass(createSimpleCanonicalizerPass());
-  // // Removing some muxes etc. may lead to additional dedup opportunities
-  // // if (shouldDedup)
-  // // pm.addPass(arc::createDedupPass());
-
-  // // Lower stateful arcs into explicit state reads and writes.
-  // if (untilReached(UntilStateLowering))
-  //   return;
+  // Lower stateful arcs into explicit state reads and writes.
+  if (untilReached(UntilStateLowering))
+    return;
   pm.addPass(arc::createLowerStatePass());
   // TODO: LowerClocksToFuncsPass might not properly consider scf.if operations
   // (or nested regions in general) and thus errors out when muxes are also

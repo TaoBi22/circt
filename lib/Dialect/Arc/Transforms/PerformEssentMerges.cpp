@@ -853,7 +853,8 @@ void PerformEssentMergesPass::runOnOperation() {
   // Print the number of small and non-small remaining arcs
   int numSmallArcs = 0;
   int numNonSmallArcs = 0;
-  getOperation()->walk([&](Operation *op) {
+  auto hwModuleOp = *getOperation().getOps<hw::HWModuleOp>().begin();
+  hwModuleOp.walk([&](Operation *op) {
     if (isa<StateOp, CallOp>(op)) {
       if (merger.isSmall(cast<CallOpInterface>(op))) {
         numSmallArcs++;
