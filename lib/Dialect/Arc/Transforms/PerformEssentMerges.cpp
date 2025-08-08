@@ -64,6 +64,8 @@ public:
   llvm::LogicalResult applySingleParentMerges();
   llvm::LogicalResult applySmallSiblingMerges();
   llvm::LogicalResult applySmallIntoBigSiblingMerges();
+  bool isSmall(CallOpInterface arc);
+  int getNumOpsInArc(DefineOp arc);
 
 private:
   DenseMap<StringAttr, DefineOp> arcDefs;
@@ -71,7 +73,6 @@ private:
   int threshold;
   IRRewriter &r;
   ModuleOp module;
-  bool isSmall(CallOpInterface arc);
   void regenerateArcMapping();
 };
 
@@ -153,49 +154,51 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
   // Traverse the use-def chain to make sure we're not creating a comb cycle
   // (TODO: this might be super slow if we have big arcs, but we need to stop
   // comb cycles somehow)
-  {
-    SmallVector<Operation *> worklist;
-    SmallVector<Operation *> visited;
-    worklist.push_back(firstArc.getOperation());
-    while (!worklist.empty()) {
-      auto *op = worklist.pop_back_val();
-      visited.push_back(op);
-      if (op == secondArc.getOperation()) {
-        llvm::dbgs() << "Found cycle in arc merge: " << firstArcName << " -> "
-                     << secondArcName << "\n";
-        return false;
-      }
-      // Ops with latency break the cycle
-      SmallVector<Value> valsToTraverse;
-      if (auto so = dyn_cast<StateOp>(op)) {
-        if (so.getClock())
-          valsToTraverse.push_back(so.getClock());
-        if (so.getEnable())
-          valsToTraverse.push_back(so.getEnable());
-        if (so.getReset())
-          valsToTraverse.push_back(so.getReset());
-      } else {
-        for (auto operand : op->getOperands()) {
-          valsToTraverse.push_back(operand);
-        }
-      }
-      for (auto val : valsToTraverse) {
-        if (!isa<BlockArgument>(val)) {
-          auto *def = val.getDefiningOp();
-          if (def == secondArc.getOperation())
-            return false;
-          if (llvm::is_contained(visited, def))
-            continue;
-          worklist.push_back(def);
-        }
-      }
-    }
-  }
+  // {
+  //   SmallVector<Operation *> worklist;
+  //   SmallVector<Operation *> visited;
+  //   worklist.push_back(firstArc.getOperation());
+  //   while (!worklist.empty()) {
+  //     auto *op = worklist.pop_back_val();
+  //     visited.push_back(op);
+  //     if (op == secondArc.getOperation()) {
+  //       llvm::dbgs() << "Found cycle in arc merge: " << firstArcName << " ->
+  //       "
+  //                    << secondArcName << "\n";
+  //       return false;
+  //     }
+  //     // Ops with latency break the cycle
+  //     SmallVector<Value> valsToTraverse;
+  //     if (auto so = dyn_cast<StateOp>(op)) {
+  //       if (so.getClock())
+  //         valsToTraverse.push_back(so.getClock());
+  //       if (so.getEnable())
+  //         valsToTraverse.push_back(so.getEnable());
+  //       if (so.getReset())
+  //         valsToTraverse.push_back(so.getReset());
+  //     } else {
+  //       for (auto operand : op->getOperands()) {
+  //         valsToTraverse.push_back(operand);
+  //       }
+  //     }
+  //     for (auto val : valsToTraverse) {
+  //       if (!isa<BlockArgument>(val)) {
+  //         auto *def = val.getDefiningOp();
+  //         if (def == secondArc.getOperation())
+  //           return false;
+  //         if (llvm::is_contained(visited, def))
+  //           continue;
+  //         worklist.push_back(def);
+  //       }
+  //     }
+  //   }
+  // }
   // Another case to consider: A -> B -> C (where -> is dataflow)
   // If we merge A and C, we create a comb cycle
   // Thus, we need to make sure A is not an ancestor of C unless it's directly
   // C's parent
 
+  // TODO: surely this can be made faster using the dominance info?
   {
     SmallVector<Operation *> worklist;
     SmallVector<Operation *> visited;
@@ -237,16 +240,27 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
   return true;
 }
 
+int ArcEssentMerger::getNumOpsInArc(DefineOp arc) {
+  int numOps = 0;
+  arc.walk([&](Operation *op) {
+    if (auto callOp = dyn_cast<CallOp>(op)) {
+      auto arcName = cast<mlir::SymbolRefAttr>(callOp.getCallableForCallee())
+                         .getLeafReference();
+      numOps += getNumOpsInArc(arcDefs[arcName]);
+    } else {
+      numOps++;
+    }
+  });
+  return --numOps;
+}
+
 bool ArcEssentMerger::isSmall(CallOpInterface arc) {
   // Check if the arc is small enough to be merged
   auto arcName =
       cast<mlir::SymbolRefAttr>(arc.getCallableForCallee()).getLeafReference();
   auto arcDef = arcDefs[arcName];
-  // assert(arcDef);
-  int numOps = 0;
-  arcDef->walk([&](Operation *op) { numOps++; });
   // Decrement by one before comparison to account for the operation itself
-  return --numOps < threshold;
+  return getNumOpsInArc(arcDef) < threshold;
 }
 
 llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
@@ -624,9 +638,9 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
           }
           // Ignore arcs we can't merge with (makes the code a bit less clean,
           // but otherwise we miss out on loads of possible matches)
-          // if (!canMergeArcs(sibling, candidateSibling)) {
-          //   continue;
-          // }
+          if (!canMergeArcs(sibling, candidateSibling)) {
+            continue;
+          }
           // Calculate reduction in number of cut edges
           int numCutEdges = 0;
           for (auto user : sibling->getUsers()) {
@@ -773,6 +787,11 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
                         candidateSibling) != pairedSiblings.end()) {
             continue;
           }
+          // Ignore arcs we can't merge with (makes the code a bit less clean,
+          // but otherwise we miss out on loads of possible matches)
+          if (!canMergeArcs(sibling, candidateSibling)) {
+            continue;
+          }
           // Calculate reduction in number of cut edges
           int numCutEdges = 0;
           for (auto user : sibling->getUsers()) {
@@ -831,6 +850,20 @@ void PerformEssentMergesPass::runOnOperation() {
   if (failed(merger.applySmallIntoBigSiblingMerges()))
     return signalPassFailure();
   llvm::dbgs() << "Finished small into big sibling merges\n";
+  // Print the number of small and non-small remaining arcs
+  int numSmallArcs = 0;
+  int numNonSmallArcs = 0;
+  getOperation()->walk([&](Operation *op) {
+    if (isa<StateOp, CallOp>(op)) {
+      if (merger.isSmall(cast<CallOpInterface>(op))) {
+        numSmallArcs++;
+      } else {
+        numNonSmallArcs++;
+      }
+    }
+  });
+  llvm::outs() << "Number of small arcs: " << numSmallArcs
+               << ", number of non-small arcs: " << numNonSmallArcs << "\n";
 }
 
 std::unique_ptr<Pass>
