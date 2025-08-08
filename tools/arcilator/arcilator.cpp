@@ -345,7 +345,7 @@ static void populateHwModuleToArcPipeline(PassManager &pm) {
   if (shouldInline)
     pm.addPass(arc::createInlineArcsPass());
 
-  // pm.addPass(arc::createMergeIfsPass());
+  pm.addPass(arc::createMergeIfsPass());
   pm.addPass(createCSEPass());
   pm.addPass(arc::createArcCanonicalizerPass());
 
