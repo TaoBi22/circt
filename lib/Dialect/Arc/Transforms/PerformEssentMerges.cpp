@@ -56,6 +56,8 @@ public:
   ArcEssentMerger(ModuleOp module, IRRewriter &r, int threshold)
       : threshold(threshold), r(r), module(module) {
     regenerateArcMapping();
+    for (int i = 0; i < 10; i++)
+      failureReasons[i] = 0;
   }
 
   bool canMergeArcs(CallOpInterface firstArc, CallOpInterface secondArc);
@@ -66,6 +68,7 @@ public:
   llvm::LogicalResult applySmallIntoBigSiblingMerges();
   bool isSmall(CallOpInterface arc);
   int getNumOpsInArc(DefineOp arc);
+  DenseMap<int, int> failureReasons;
 
 private:
   DenseMap<StringAttr, DefineOp> arcDefs;
@@ -94,20 +97,42 @@ void ArcEssentMerger::regenerateArcMapping() {
 bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
                                    CallOpInterface secondArc) {
 
+  auto firstArcName = cast<mlir::SymbolRefAttr>(firstArc.getCallableForCallee())
+                          .getLeafReference();
+  auto secondArcName =
+      cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
+          .getLeafReference();
+
   // Make sure first arc doesn't use second arc (probably a FIXME, could make
   // direction dynamic)
   auto secondArcUsers = secondArc->getUsers();
   if (std::find(secondArcUsers.begin(), secondArcUsers.end(), firstArc) !=
       secondArcUsers.end()) {
+    failureReasons[0] += 1;
     return false;
   }
 
   // Make sure ops either have same latency or entirely
   // consume each other.
+
+  // If we merge a StateOp into a CallOp, we need to make sure the CallOp
+  // doesn't have other users who now have to wait longer for the result.
+  if (isa<CallOp>(firstArc) && isa<StateOp>(secondArc)) {
+    for (auto res : firstArc->getResults()) {
+      for (auto *user : res.getUsers()) {
+        if (user != secondArc.getOperation()) {
+          failureReasons[1] += 1;
+          return false;
+        }
+      }
+    }
+  }
+
   if (isa<StateOp>(firstArc) || isa<StateOp>(secondArc)) {
     for (auto res : firstArc->getResults()) {
       for (auto *user : res.getUsers()) {
         if (user != secondArc.getOperation()) {
+          failureReasons[1] += 1;
           return false;
         }
       }
@@ -120,36 +145,35 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
       if (secondState.getClock() != firstState.getClock() ||
           secondState.getReset() != firstState.getReset() ||
           secondState.getEnable() != firstState.getEnable()) {
+        failureReasons[2] += 1;
         return false;
       }
     }
   }
 
-  // Make sure arcs do not have other, conflicting uses.
-  auto firstArcName = cast<mlir::SymbolRefAttr>(firstArc.getCallableForCallee())
-                          .getLeafReference();
-  auto secondArcName =
-      cast<mlir::SymbolRefAttr>(secondArc.getCallableForCallee())
-          .getLeafReference();
-
   // Make sure the first arc is dominated by the second arc's arguments
   // We are assuming the ops live in the same parent, which I think is safe?
-  DominanceInfo dom(firstArc->getParentOp());
-  for (auto arg : secondArc->getOperands()) {
-    if (!dom.dominates(arg, firstArc.getOperation())) {
-      return false;
-    }
-  }
+  // DominanceInfo dom(firstArc->getParentOp());
+  // for (auto arg : secondArc->getOperands()) {
+  //   if (!dom.dominates(arg, firstArc.getOperation())) {
+  //     failureReasons[3] += 1;
+  //     return false;
+  //   }
+  // }
 
   // Some other arc ops have CallOpInterface, ignore them for now (e.g. memory
   // write)
-  if (!isa<DefineOp, CallOp>(firstArc) || !isa<DefineOp, CallOp>(secondArc))
+  if (!isa<DefineOp, CallOp>(firstArc) || !isa<DefineOp, CallOp>(secondArc)) {
+    failureReasons[4] += 1;
     return false;
+  }
 
   // Make sure we're not fiddling with an arc that has other uses (it doesn't
   // matter if the second arc has uses since we just add a call)
-  if (arcCalls[firstArcName].size() > 1)
+  if (arcCalls[firstArcName].size() > 1) {
+    failureReasons[5] += 1;
     return false;
+  }
 
   // Traverse the use-def chain to make sure we're not creating a comb cycle
   // (TODO: this might be super slow if we have big arcs, but we need to stop
@@ -224,8 +248,10 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
       for (auto val : valsToTraverse) {
         if (!isa<BlockArgument>(val)) {
           auto *def = val.getDefiningOp();
-          if (def == firstArc.getOperation())
+          if (def == firstArc.getOperation()) {
+            failureReasons[6] += 1;
             return false;
+          }
           if (llvm::is_contained(visited, def))
             continue;
           worklist.push_back(def);
@@ -846,6 +872,12 @@ void PerformEssentMergesPass::runOnOperation() {
   });
   llvm::outs() << "Number of small arcs: " << numSmallArcs
                << ", number of non-small arcs: " << numNonSmallArcs << "\n";
+
+  // Print the failure reasons
+  llvm::outs() << "Failure reasons:\n";
+  for (auto [reason, count] : merger.failureReasons) {
+    llvm::outs() << "Reason " << reason << ": " << count << "\n";
+  }
 }
 
 std::unique_ptr<Pass>
