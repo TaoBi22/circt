@@ -363,9 +363,11 @@ LogicalResult MachineOpConverter::dispatch() {
     auto varLoc = variableOp.getLoc();
     auto nextVariableStateWire = bb.get(varType);
     auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
+    auto extractedName = variableOp.getName();
     auto variableReg = b.create<seq::CompRegOp>(
         varLoc, nextVariableStateWire, clock, reset, varResetVal,
-        b.getStringAttr(variableOp.getName()),
+        extractedName.contains("\\") ? b.getStringAttr(extractedName)
+                                     : b.getStringAttr("output"),
         seq::createConstantInitialValue(b, varResetVal));
     variableToRegister[variableOp] = variableReg;
     variableNextStateWires[variableOp] = nextVariableStateWire;
