@@ -545,8 +545,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
     // of siblings. We need to store the parents so we can invalidate merges
     // that we've tampered with the parents of (actually do we??? they'll
     // still be siblings after a merge???)
-    SmallVector<
-        std::pair<SetVector<CallOpInterface>, SmallVector<CallOpInterface>>>
+    SmallVector<std::pair<SetVector<Value>, SmallVector<CallOpInterface>>>
         smallSiblingSets;
     SmallVector<CallOpInterface> alreadyGrouped;
     module->walk([&](CallOpInterface callOp) {
@@ -561,14 +560,9 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
           alreadyGrouped.end())
         return;
       // Collect the set of parents
-      SetVector<CallOpInterface> parents;
+      SetVector<Value> parents;
       for (auto operand : callOp->getOperands()) {
-        // We only care about ops with only arc parents
-        if (!isa<BlockArgument>(operand) &&
-            isa<CallOp, StateOp>(operand.getDefiningOp())) {
-
-          parents.insert(cast<CallOpInterface>(operand.getDefiningOp()));
-        }
+        parents.insert(operand);
       }
       // TODO: should we ignore parentless arcs here? Are they siblings?
       if (parents.empty())
@@ -577,7 +571,7 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
       SmallVector<CallOpInterface> siblings;
       // Look at any op that shares even one parent
       for (auto parent : parents)
-        for (auto user : parent->getUsers()) {
+        for (auto user : parent.getUsers()) {
           if (auto secondCallOp = dyn_cast<CallOpInterface>(user)) {
             if (!isa<StateOp, CallOp>(secondCallOp.getOperation()))
               continue;
@@ -586,13 +580,9 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
               return;
             // No need to check if it's grouped as the first arc would be too
             // Check if the two arcs are siblings
-            SetVector<CallOpInterface> secondParents;
+            SetVector<Value> secondParents;
             for (auto operand : secondCallOp->getOperands()) {
-              // We only care about ops with only arc parents
-              if (!isa<BlockArgument>(operand) &&
-                  isa<CallOp, StateOp>(operand.getDefiningOp()))
-                secondParents.insert(
-                    cast<CallOpInterface>(operand.getDefiningOp()));
+              secondParents.insert(operand);
             }
             if (!llvm::set_intersects(parents, secondParents)) {
               return;
@@ -715,12 +705,9 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
           alreadyGrouped.end())
         return;
       // Collect the set of parents
-      SetVector<CallOpInterface> parents;
+      SetVector<Value> parents;
       for (auto operand : callOp->getOperands()) {
-        // We only care about ops with only arc parents
-        if (!isa<BlockArgument>(operand) &&
-            isa<CallOp, StateOp>(operand.getDefiningOp()))
-          parents.insert(cast<CallOpInterface>(operand.getDefiningOp()));
+        parents.insert(operand);
       }
       // TODO: should we ignore parentless arcs here? Are they siblings?
       if (parents.empty())
@@ -730,19 +717,16 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
       SmallVector<CallOpInterface> bigSiblings;
       // Look at any op that shares even one parent
       for (auto parent : parents)
-        for (auto user : parent->getUsers()) {
+        for (auto user : parent.getUsers()) {
           if (auto secondCallOp = dyn_cast<CallOpInterface>(user)) {
             if (!isa<StateOp, CallOp>(secondCallOp.getOperation()))
               continue;
             // No need to check if it's grouped as the first arc would be too
             // Check if the two arcs are siblings
-            SetVector<CallOpInterface> secondParents;
+            SetVector<Value> secondParents;
             for (auto operand : secondCallOp->getOperands()) {
               // We only care about ops with only arc parents
-              if (!isa<BlockArgument>(operand) &&
-                  isa<CallOp, StateOp>(operand.getDefiningOp()))
-                secondParents.insert(
-                    cast<CallOpInterface>(operand.getDefiningOp()));
+              secondParents.insert(operand);
             }
             if (!llvm::set_intersects(parents, secondParents))
               return;
