@@ -205,6 +205,7 @@ def LowerStatePass : Pass<"arc-lower-state", "mlir::ModuleOp"> {
     Option<"optimalPartitionSize", "optimal-partition-size", "unsigned", "32",
            "Threshold to use when merging arcs (see ESSENT paper)">,
   ];
+  let constructor = "createLowerStatePass()";
 }
 
 def LowerVectorizationsMode : I32EnumAttr<

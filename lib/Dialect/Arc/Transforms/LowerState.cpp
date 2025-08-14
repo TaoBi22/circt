@@ -205,9 +205,10 @@ struct ModuleLowering {
   /// previous if ops for the same reset value.
   std::pair<Value, Value> prevReset;
 
-  ModuleLowering(HWModuleOp moduleOp)
+  ModuleLowering(HWModuleOp moduleOp, int conditionalExecutionCutoff = 0)
       : moduleOp(moduleOp), builder(moduleOp), allocBuilder(moduleOp),
-        initialBuilder(moduleOp), finalBuilder(moduleOp) {}
+        initialBuilder(moduleOp), finalBuilder(moduleOp),
+        conditionalExecutionCutoff(conditionalExecutionCutoff) {}
   LogicalResult run();
   LogicalResult lowerOp(Operation *op);
   Value getAllocatedState(OpResult result);
@@ -215,6 +216,7 @@ struct ModuleLowering {
   OpBuilder &getBuilder(Phase phase);
   Value requireLoweredValue(Value value, Phase phase, Location useLoc);
   int getNumOpsInArc(DefineOp arc, DenseMap<StringAttr, DefineOp> &arcDefs);
+  int conditionalExecutionCutoff;
 };
 } // namespace
 
@@ -301,7 +303,7 @@ LogicalResult ModuleLowering::run() {
   // Create an activation condition for every arc
   auto myQuickTrue = initialBuilder.create<hw::ConstantOp>(
       moduleOp.getLoc(), builder.getI1Type(), true);
-  int i = 0;
+  int conditionalOps = 0;
   moduleOp.walk([&](Operation *op) {
     if (isa<StateOp, CallOp>(op) && !op->getParentOfType<DefineOp>()) {
       // Regardless of whether a call is condex, we need to cache its old value
@@ -340,17 +342,16 @@ LogicalResult ModuleLowering::run() {
                          cast<CallOpInterface>(op).getCallableForCallee())
                          .getLeafReference();
       auto arcDef = arcDefs[arcName];
-      auto optimalPartitionSize = 32;
-      isArcCond[op] = getNumOpsInArc(arcDef, arcDefs) > optimalPartitionSize;
+      isArcCond[op] =
+          getNumOpsInArc(arcDef, arcDefs) > conditionalExecutionCutoff;
 
       // isArcCond[op] = ;
 
       // isArcCond[op] =
       //     i != 45 && i != 46 && i < 50; // Default to not being conditional
-      i++;
       if (!isArcCond[op])
         return;
-
+      conditionalOps++;
       // Create the actual allocations
       // StateOps only receive activations for the next (or current)
       // posedge, so we don't need an arcActivation for them
@@ -430,6 +431,9 @@ LogicalResult ModuleLowering::run() {
   //              << callActivations.size() << " calls and "
   //              << nextOrThisPosedgeActivations.size() << " states.\n";
 
+  llvm::outs() << "Conditionalized a total of " << conditionalOps
+               << " arcs, with " << callActivations.size() << " calls and "
+               << nextOrThisPosedgeActivations.size() << " states.\n";
   // Allocate old storage for the inputs.
   for (auto arg : moduleOp.getBodyBlock()->getArguments()) {
     auto state = allocBuilder.create<arc::AllocStateOp>(
@@ -2134,11 +2138,16 @@ struct LowerStatePass : public arc::impl::LowerStatePassBase<LowerStatePass> {
 void LowerStatePass::runOnOperation() {
   auto op = getOperation();
   for (auto moduleOp : llvm::make_early_inc_range(op.getOps<HWModuleOp>())) {
-    if (failed(ModuleLowering(moduleOp).run()))
+    if (failed(ModuleLowering(moduleOp, optimalPartitionSize).run()))
       return signalPassFailure();
     moduleOp.erase();
   }
   for (auto extModuleOp :
        llvm::make_early_inc_range(op.getOps<HWModuleExternOp>()))
     extModuleOp.erase();
+}
+
+std::unique_ptr<Pass>
+arc::createLowerStatePass(const LowerStatePassOptions &options) {
+  return std::make_unique<LowerStatePass>(options);
 }

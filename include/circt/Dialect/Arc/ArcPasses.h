@@ -42,6 +42,8 @@ std::unique_ptr<mlir::Pass> createLowerLUTPass();
 std::unique_ptr<mlir::Pass> createLowerVectorizationsPass(
     LowerVectorizationsModeEnum mode = LowerVectorizationsModeEnum::Full);
 std::unique_ptr<mlir::Pass>
+createLowerStatePass(const LowerStatePassOptions &options = {});
+std::unique_ptr<mlir::Pass>
 createPerformEssentMergesPass(const PerformEssentMergesOptions &options = {});
 std::unique_ptr<mlir::Pass> createMakeTablesPass();
 std::unique_ptr<mlir::Pass> createMuxToControlFlowPass();
