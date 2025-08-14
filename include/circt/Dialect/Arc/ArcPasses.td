@@ -201,6 +201,10 @@ def LowerStatePass : Pass<"arc-lower-state", "mlir::ModuleOp"> {
     "mlir::scf::SCFDialect",
     "seq::SeqDialect",
   ];
+  let options = [
+    Option<"optimalPartitionSize", "optimal-partition-size", "unsigned", "32",
+           "Threshold to use when merging arcs (see ESSENT paper)">,
+  ];
 }
 
 def LowerVectorizationsMode : I32EnumAttr<

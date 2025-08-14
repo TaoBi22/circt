@@ -25,6 +25,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Operation.h"
@@ -213,12 +214,28 @@ struct ModuleLowering {
   Value detectPosedge(Value clock);
   OpBuilder &getBuilder(Phase phase);
   Value requireLoweredValue(Value value, Phase phase, Location useLoc);
+  int getNumOpsInArc(DefineOp arc, DenseMap<StringAttr, DefineOp> &arcDefs);
 };
 } // namespace
 
 //===----------------------------------------------------------------------===//
 // Module Lowering
 //===----------------------------------------------------------------------===//
+
+int ModuleLowering::getNumOpsInArc(DefineOp arc,
+                                   DenseMap<StringAttr, DefineOp> &arcDefs) {
+  int numOps = 0;
+  arc.walk([&](Operation *op) {
+    if (auto callOp = dyn_cast<CallOp>(op)) {
+      auto arcName = cast<mlir::SymbolRefAttr>(callOp.getCallableForCallee())
+                         .getLeafReference();
+      numOps += getNumOpsInArc(arcDefs[arcName], arcDefs);
+    } else {
+      numOps++;
+    }
+  });
+  return --numOps;
+}
 
 LogicalResult ModuleLowering::run() {
   LLVM_DEBUG(llvm::dbgs() << "Lowering module `" << moduleOp.getModuleName()
@@ -266,13 +283,27 @@ LogicalResult ModuleLowering::run() {
     //                                          Value{});
   }
 
+  // Gather some useful stats
+
+  DenseMap<StringAttr, DefineOp> arcDefs;
+  DenseMap<StringAttr, SmallVector<CallOpInterface>> arcCalls;
+  moduleOp->getParentOfType<mlir::ModuleOp>()->walk([&](Operation *op) {
+    if (auto defOp = dyn_cast<DefineOp>(op)) {
+      arcDefs[defOp.getNameAttr()] = defOp;
+    } else if (auto callOp = dyn_cast<CallOpInterface>(op)) {
+      auto arcName = cast<mlir::SymbolRefAttr>(callOp.getCallableForCallee())
+                         .getLeafReference();
+      if (arcName)
+        arcCalls[arcName].push_back(callOp);
+    }
+  });
+
   // Create an activation condition for every arc
   auto myQuickTrue = initialBuilder.create<hw::ConstantOp>(
       moduleOp.getLoc(), builder.getI1Type(), true);
   int i = 0;
   moduleOp.walk([&](Operation *op) {
     if (isa<StateOp, CallOp>(op) && !op->getParentOfType<DefineOp>()) {
-
       // Regardless of whether a call is condex, we need to cache its old value
       // so it can activate children.
       if (isa<CallOp>(op)) {
@@ -305,7 +336,12 @@ LogicalResult ModuleLowering::run() {
 
       // lower bound: 49+
       // upper bound: 50!!!!! IT MUST BE 50!!! WAHOO
-      isArcCond[op] = true;
+      auto arcName = cast<mlir::SymbolRefAttr>(
+                         cast<CallOpInterface>(op).getCallableForCallee())
+                         .getLeafReference();
+      auto arcDef = arcDefs[arcName];
+      auto optimalPartitionSize = 32;
+      isArcCond[op] = getNumOpsInArc(arcDef, arcDefs) > optimalPartitionSize;
 
       // isArcCond[op] = ;
 

@@ -154,12 +154,12 @@ bool ArcEssentMerger::canMergeArcs(CallOpInterface firstArc,
   // Make sure the first arc is dominated by the second arc's arguments
   // We are assuming the ops live in the same parent, which I think is safe?
   DominanceInfo dom(firstArc->getParentOp());
-  // for (auto arg : secondArc->getOperands()) {
-  //   if (!dom.dominates(arg, firstArc.getOperation())) {
-  //     failureReasons[3] += 1;
-  //     return false;
-  //   }
-  // }
+  for (auto arg : secondArc->getOperands()) {
+    if (!dom.dominates(arg, firstArc.getOperation())) {
+      failureReasons[3] += 1;
+      return false;
+    }
+  }
 
   // Some other arc ops have CallOpInterface, ignore them for now (e.g. memory
   // write)
@@ -496,6 +496,7 @@ llvm::LogicalResult ArcEssentMerger::mergeArcs(CallOpInterface firstArc,
 
   // secondArc->erase();
   // secondArcDefine->erase();
+
   return success();
 }
 
@@ -514,6 +515,11 @@ llvm::LogicalResult ArcEssentMerger::applySingleParentMerges() {
     module->walk<WalkOrder::PreOrder>([&](CallOpInterface callOp) {
       if (!isa<StateOp, CallOp>(callOp.getOperation()))
         return;
+
+      // We don't really care about merging arcs that are already in other arcs
+      if (callOp->getParentOfType<DefineOp>())
+        return;
+
       // Check if op has single parent
       llvm::SetVector<Operation *> parents;
 
@@ -584,6 +590,10 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
     SmallVector<CallOpInterface> alreadyGrouped;
     module->walk([&](CallOpInterface callOp) {
       if (!isa<StateOp, CallOp>(callOp.getOperation()))
+        return;
+
+      // We don't really care about merging arcs that are already in other arcs
+      if (callOp->getParentOfType<DefineOp>())
         return;
 
       // We only care if the arc is small
@@ -662,9 +672,9 @@ llvm::LogicalResult ArcEssentMerger::applySmallSiblingMerges() {
           }
           // Ignore arcs we can't merge with (makes the code a bit less clean,
           // but otherwise we miss out on loads of possible matches)
-          if (!canMergeArcs(sibling, candidateSibling)) {
-            continue;
-          }
+          // if (!canMergeArcs(sibling, candidateSibling)) {
+          //   continue;
+          // }
           // Calculate reduction in number of cut edges
           int numCutEdges = 0;
           for (auto user : sibling->getUsers()) {
@@ -728,6 +738,10 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
     SmallVector<CallOpInterface> alreadyGrouped;
     module->walk([&](CallOpInterface callOp) {
       if (!isa<StateOp, CallOp>(callOp.getOperation()))
+        return;
+
+      // We don't really care about merging arcs that are already in other arcs
+      if (callOp->getParentOfType<DefineOp>())
         return;
 
       // We only care if the starting arc is small (so we avoid fully big
@@ -807,9 +821,9 @@ llvm::LogicalResult ArcEssentMerger::applySmallIntoBigSiblingMerges() {
           }
           // Ignore arcs we can't merge with (makes the code a bit less clean,
           // but otherwise we miss out on loads of possible matches)
-          if (!canMergeArcs(sibling, candidateSibling)) {
-            continue;
-          }
+          // if (!canMergeArcs(sibling, candidateSibling)) {
+          //   continue;
+          // }
           // Calculate reduction in number of cut edges
           int numCutEdges = 0;
           for (auto user : sibling->getUsers()) {
