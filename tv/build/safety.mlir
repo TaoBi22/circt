@@ -14,10 +14,10 @@ module {
     %obs0 = smt.forall {
     ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
       %obsc0 = smt.int.constant 0
+      %obs11 = smt.apply_func %obsF__0(%obsc0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc0_0 = smt.int.constant 0
-      %obs11 = smt.eq %obsarg1, %obsc0_0 : !smt.int
-      %obs12 = smt.apply_func %obsF__0(%obsc0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
-      %obs13 = smt.implies %obs11, %obs12
+      %obs12 = smt.eq %obsarg1, %obsc0_0 : !smt.int
+      %obs13 = smt.implies %obs12, %obs11
       smt.yield %obs13 : !smt.bool
     }
     smt.assert %obs0
@@ -26,15 +26,13 @@ module {
       %obs11 = smt.apply_func %obsF__0(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__1(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__1(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs1
     %obs2 = smt.forall {
@@ -42,15 +40,13 @@ module {
       %obs11 = smt.apply_func %obsF__1(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__2(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__2(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs2
     %obs3 = smt.forall {
@@ -58,15 +54,13 @@ module {
       %obs11 = smt.apply_func %obsF__2(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__3(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__3(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs3
     %obs4 = smt.forall {
@@ -74,15 +68,13 @@ module {
       %obs11 = smt.apply_func %obsF__3(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__4(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__4(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs4
     %obs5 = smt.forall {
@@ -90,15 +82,13 @@ module {
       %obs11 = smt.apply_func %obsF__4(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__5(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__5(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs5
     %obs6 = smt.forall {
@@ -106,15 +96,13 @@ module {
       %obs11 = smt.apply_func %obsF__5(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__6(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__6(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs6
     %obs7 = smt.forall {
@@ -122,15 +110,13 @@ module {
       %obs11 = smt.apply_func %obsF__6(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__7(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__7(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs7
     %obs8 = smt.forall {
@@ -138,15 +124,13 @@ module {
       %obs11 = smt.apply_func %obsF__7(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__8(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__8(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs8
     %obs9 = smt.forall {
@@ -154,15 +138,13 @@ module {
       %obs11 = smt.apply_func %obsF__8(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__9(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__9(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs9
     %obs10 = smt.forall {
@@ -170,15 +152,13 @@ module {
       %obs11 = smt.apply_func %obsF__9(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__10(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__10(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs10
   }

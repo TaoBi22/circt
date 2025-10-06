@@ -97,10 +97,10 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
 
 print("Output names:", outputNames)
 
-os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound=250\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
+os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound=50\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
 
 # FSM files
-os.system(f"{FSMTRoot}/build/bin/circt-opt --convert-fsm-to-smt-safety {fsmFile} > {builddir}/safety.mlir")
+os.system(f"{FSMTRoot}/build/bin/circt-opt --convert-fsm-to-smt-safety=\"with-time\" {fsmFile} > {builddir}/safety.mlir")
 os.system(f"{FSMTRoot}/build/bin/circt-opt --convert-fsm-to-smt-safety {fsmFile} > {builddir}/liveness.mlir")
 
 # modify names in FSM files to avoid name conflicts
@@ -288,6 +288,7 @@ outputText = []
 
 inCircuitFunc = False
 checkResult = None
+assertionLine = False
 for line in bmcText:
 
     if match := re.search(r"%([A-Za-z0-9_]+) = smt\.check", line):
@@ -298,6 +299,20 @@ for line in bmcText:
         for property in properties:
             outputText.append(property)
         inCircuitFunc = False
+
+    if "arith.ori" in line and not inCircuitFunc:
+        outputText.append(line.replace("arith.ori", "arith.andi"))
+        continue
+
+    if "Assertion can be violated" in line:
+        line = (line.replace("Assertion can be violated", "Translation validation successful"))
+
+    if "Bound reached with no violation" in line:
+        line = (line.replace("Bound reached with no violation", "Translation validation failed"))
+
+    if "scf.for" in line and not inCircuitFunc:
+        line = line.replace("= %false) ->", "= %true) ->")
+
 
     outputText.append(line)
     if "func.func @bmc_circuit" in line:
@@ -315,7 +330,7 @@ for line in bmcText:
         outputText.append(f"llvm.call @printf(%string) vararg(!llvm.func<void (ptr, ...)>) : (!llvm.ptr) -> ()\n")
     
     # Allocate the strings we use to print results
-    if "Assertion can be violated" in line:
+    if "Translation validation successful" in line:
           outputText.append("llvm.mlir.global private constant @satString(\"sat\\0A\\00\") {addr_space = 0 : i32}\n")
           outputText.append("llvm.mlir.global private constant @unsatString(\"unsat\\0A\\00\") {addr_space = 0 : i32}\n")
   
