@@ -69,7 +69,7 @@ module {
 %c0_i16_0_in = hw.constant 0 : i32
 seq.yield %c0_i16_0_in : i32
 } : () -> !seq.immutable<i32>
-%mySpecialConstant = hw.constant 1 : i32
+%mySpecialConstant = hw.constant 2 : i32
 %time_reg = seq.compreg sym @time_reg %added, %clk initial %timer_init : i32
 %added = comb.add %time_reg, %mySpecialConstant : i32
     hw.output

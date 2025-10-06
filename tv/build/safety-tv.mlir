@@ -7,7 +7,7 @@ module {
       %c-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
       %true = arith.constant true
       %false = arith.constant false
-      %c500_i32 = arith.constant 500 : i32
+      %c100_i32 = arith.constant 100 : i32
       %c1_i32 = arith.constant 1 : i32
       %c0_i32 = arith.constant 0 : i32
       %c0_bv32 = smt.bv.constant #smt.bv<0> : !smt.bv<32>
@@ -16,7 +16,7 @@ module {
       %4 = func.call @bmc_init() : () -> !smt.bv<1>
       smt.push 1
       %5 = smt.declare_fun : !smt.bv<1>
-      %6:6 = scf.for %arg0 = %c0_i32 to %c500_i32 step %c1_i32 iter_args(%arg1 = %4, %arg2 = %5, %arg3 = %c0_bv4, %arg4 = %c0_bv16, %arg5 = %c0_bv32, %arg6 = %false) -> (!smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>, i1)  : i32 {
+      %6:6 = scf.for %arg0 = %c0_i32 to %c100_i32 step %c1_i32 iter_args(%arg1 = %4, %arg2 = %5, %arg3 = %c0_bv4, %arg4 = %c0_bv16, %arg5 = %c0_bv32, %arg6 = %true) -> (!smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>, i1)  : i32 {
         smt.pop 1
         smt.push 1
         %8:3 = func.call @bmc_circuit(%arg1, %arg2, %arg3, %arg4, %arg5) : (!smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>) -> (!smt.bv<4>, !smt.bv<16>, !smt.bv<32>)
@@ -31,7 +31,7 @@ module {
 %us = llvm.mlir.addressof @unsatString : !llvm.ptr
 %string = llvm.select %9, %ss, %us : i1, !llvm.ptr
 llvm.call @printf(%string) vararg(!llvm.func<void (ptr, ...)>) : (!llvm.ptr) -> ()
-        %10 = arith.ori %9, %arg6 : i1
+        %10 = arith.andi %9, %arg6 : i1
         %11 = func.call @bmc_loop(%arg1) : (!smt.bv<1>) -> !smt.bv<1>
         %12 = smt.declare_fun : !smt.bv<1>
         %13 = smt.bv.not %arg1 : !smt.bv<1>
@@ -49,8 +49,8 @@ llvm.call @printf(%string) vararg(!llvm.func<void (ptr, ...)>) : (!llvm.ptr) -> 
     llvm.call @printf(%3) vararg(!llvm.func<void (ptr, ...)>) : (!llvm.ptr) -> ()
     return
   }
-  llvm.mlir.global private constant @resultString_0("Bound reached with no violations!\0A\00") {addr_space = 0 : i32}
-  llvm.mlir.global private constant @resultString_1("Assertion can be violated!\0A\00") {addr_space = 0 : i32}
+  llvm.mlir.global private constant @resultString_0("Translation validation faileds!\0A\00") {addr_space = 0 : i32}
+  llvm.mlir.global private constant @resultString_1("Translation validation successful!\0A\00") {addr_space = 0 : i32}
 llvm.mlir.global private constant @satString("sat\0A\00") {addr_space = 0 : i32}
 llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : i32}
   func.func @bmc_init() -> !smt.bv<1> {
@@ -63,7 +63,7 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
     return %0 : !smt.bv<1>
   }
   func.func @bmc_circuit(%arg0: !smt.bv<1>, %arg1: !smt.bv<1>, %arg2: !smt.bv<4>, %arg3: !smt.bv<16>, %arg4: !smt.bv<32>) -> (!smt.bv<4>, !smt.bv<16>, !smt.bv<32>) {
-    %c1_bv32 = smt.bv.constant #smt.bv<1> : !smt.bv<32>
+    %c2_bv32 = smt.bv.constant #smt.bv<2> : !smt.bv<32>
     %c-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
     %c0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
     %c1_bv16 = smt.bv.constant #smt.bv<1> : !smt.bv<16>
@@ -152,7 +152,7 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
     %71 = smt.ite %70, %c-1_bv1, %c0_bv1 : !smt.bv<1>
     %72 = smt.eq %71, %c-1_bv1 : !smt.bv<1>
     %73 = smt.ite %72, %c-6_bv4, %69 : !smt.bv<4>
-    %74 = smt.bv.add %arg4, %c1_bv32 : !smt.bv<32>
+    %74 = smt.bv.add %arg4, %c2_bv32 : !smt.bv<32>
     %obsF__0 = smt.declare_fun "F__0" : !smt.func<(!smt.int, !smt.int) !smt.bool>
     %obsF__1 = smt.declare_fun "F__1" : !smt.func<(!smt.int, !smt.int) !smt.bool>
     %obsF__2 = smt.declare_fun "F__2" : !smt.func<(!smt.int, !smt.int) !smt.bool>
@@ -167,10 +167,10 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
     %obs0 = smt.forall {
     ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
       %obsc0 = smt.int.constant 0
+      %obs11 = smt.apply_func %obsF__0(%obsc0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc0_0 = smt.int.constant 0
-      %obs11 = smt.eq %obsarg1, %obsc0_0 : !smt.int
-      %obs12 = smt.apply_func %obsF__0(%obsc0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
-      %obs13 = smt.implies %obs11, %obs12
+      %obs12 = smt.eq %obsarg1, %obsc0_0 : !smt.int
+      %obs13 = smt.implies %obs12, %obs11
       smt.yield %obs13 : !smt.bool
     }
     smt.assert %obs0
@@ -179,15 +179,13 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
       %obs11 = smt.apply_func %obsF__0(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__1(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__1(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs1
     %obs2 = smt.forall {
@@ -195,15 +193,13 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
       %obs11 = smt.apply_func %obsF__1(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__2(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__2(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs2
     %obs3 = smt.forall {
@@ -211,15 +207,13 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
       %obs11 = smt.apply_func %obsF__2(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__3(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__3(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs3
     %obs4 = smt.forall {
@@ -227,15 +221,13 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
       %obs11 = smt.apply_func %obsF__3(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__4(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__4(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs4
     %obs5 = smt.forall {
@@ -243,15 +235,13 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
       %obs11 = smt.apply_func %obsF__4(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__5(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__5(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs5
     %obs6 = smt.forall {
@@ -259,15 +249,13 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
       %obs11 = smt.apply_func %obsF__5(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__6(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__6(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs6
     %obs7 = smt.forall {
@@ -275,15 +263,13 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
       %obs11 = smt.apply_func %obsF__6(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__7(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__7(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs7
     %obs8 = smt.forall {
@@ -291,15 +277,13 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
       %obs11 = smt.apply_func %obsF__7(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__8(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__8(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs8
     %obs9 = smt.forall {
@@ -307,15 +291,13 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
       %obs11 = smt.apply_func %obsF__8(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__9(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__9(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs9
     %obs10 = smt.forall {
@@ -323,15 +305,13 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
       %obs11 = smt.apply_func %obsF__9(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
       %obs12 = smt.int.add %obsarg0, %obsc1
-      %obsc65536 = smt.int.constant 65536
-      %obs13 = smt.int.mod %obs12, %obsc65536
       %obsc1_0 = smt.int.constant 1
-      %obs14 = smt.int.add %obsarg1, %obsc1_0
-      %obs15 = smt.apply_func %obsF__10(%obs13, %obs14) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obs13 = smt.int.add %obsarg1, %obsc1_0
+      %obs14 = smt.apply_func %obsF__10(%obs12, %obs13) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs16 = smt.and %obs11, %obstrue
-      %obs17 = smt.implies %obs16, %obs15
-      smt.yield %obs17 : !smt.bool
+      %obs15 = smt.and %obs11, %obstrue
+      %obs16 = smt.implies %obs15, %obs14
+      smt.yield %obs16 : !smt.bool
     }
     smt.assert %obs10
 %tvclause_0 = smt.forall{
