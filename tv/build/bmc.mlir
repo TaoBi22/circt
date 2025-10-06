@@ -7,7 +7,7 @@ module {
       %c-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
       %true = arith.constant true
       %false = arith.constant false
-      %c100_i32 = arith.constant 100 : i32
+      %c20_i32 = arith.constant 20 : i32
       %c1_i32 = arith.constant 1 : i32
       %c0_i32 = arith.constant 0 : i32
       %c0_bv32 = smt.bv.constant #smt.bv<0> : !smt.bv<32>
@@ -16,7 +16,7 @@ module {
       %4 = func.call @bmc_init() : () -> !smt.bv<1>
       smt.push 1
       %5 = smt.declare_fun : !smt.bv<1>
-      %6:6 = scf.for %arg0 = %c0_i32 to %c100_i32 step %c1_i32 iter_args(%arg1 = %4, %arg2 = %5, %arg3 = %c0_bv4, %arg4 = %c0_bv16, %arg5 = %c0_bv32, %arg6 = %false) -> (!smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>, i1)  : i32 {
+      %6:6 = scf.for %arg0 = %c0_i32 to %c20_i32 step %c1_i32 iter_args(%arg1 = %4, %arg2 = %5, %arg3 = %c0_bv4, %arg4 = %c0_bv16, %arg5 = %c0_bv32, %arg6 = %false) -> (!smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>, i1)  : i32 {
         smt.pop 1
         smt.push 1
         %8:3 = func.call @bmc_circuit(%arg1, %arg2, %arg3, %arg4, %arg5) : (!smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<16>, !smt.bv<32>) -> (!smt.bv<4>, !smt.bv<16>, !smt.bv<32>)
@@ -57,7 +57,7 @@ module {
     return %0 : !smt.bv<1>
   }
   func.func @bmc_circuit(%arg0: !smt.bv<1>, %arg1: !smt.bv<1>, %arg2: !smt.bv<4>, %arg3: !smt.bv<16>, %arg4: !smt.bv<32>) -> (!smt.bv<4>, !smt.bv<16>, !smt.bv<32>) {
-    %c2_bv32 = smt.bv.constant #smt.bv<2> : !smt.bv<32>
+    %c1_bv32 = smt.bv.constant #smt.bv<1> : !smt.bv<32>
     %c-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
     %c0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
     %c1_bv16 = smt.bv.constant #smt.bv<1> : !smt.bv<16>
@@ -146,7 +146,7 @@ module {
     %71 = smt.ite %70, %c-1_bv1, %c0_bv1 : !smt.bv<1>
     %72 = smt.eq %71, %c-1_bv1 : !smt.bv<1>
     %73 = smt.ite %72, %c-6_bv4, %69 : !smt.bv<4>
-    %74 = smt.bv.add %arg4, %c2_bv32 : !smt.bv<32>
+    %74 = smt.bv.add %arg4, %c1_bv32 : !smt.bv<32>
     return %73, %67, %74 : !smt.bv<4>, !smt.bv<16>, !smt.bv<32>
   }
 }
