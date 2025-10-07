@@ -102,7 +102,7 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
 
 print("Output names:", outputNames)
 
-os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound={bound}\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
+os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound={bound} rising-clocks-only\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt=\"rising-clocks-only\" --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
 
 # FSM files
 os.system(f"{FSMTRoot}/build/bin/circt-opt --convert-fsm-to-smt-safety=\"with-time\" {fsmFile} > {builddir}/safety.mlir")
