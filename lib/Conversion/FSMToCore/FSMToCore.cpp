@@ -162,7 +162,7 @@ StateEncoding::StateEncoding(OpBuilder &b, MachineOp machine,
   // If stateType is explicitly provided, use this - otherwise, calculate the
   // minimum int size that can represent all states
   if (machine->getAttr("stateType"))
-    stateType = machine->getAttr("stateType").cast<TypeAttr>().getValue();
+    stateType = cast<TypeAttr>(machine->getAttr("stateType")).getValue();
   else {
     int numOps = std::distance(machine.getBody().getOps<StateOp>().begin(),
                                machine.getBody().getOps<StateOp>().end());
@@ -354,7 +354,7 @@ LogicalResult MachineOpConverter::dispatch() {
 
   llvm::DenseMap<VariableOp, Backedge> variableNextStateWires;
   for (auto variableOp : machineOp.front().getOps<fsm::VariableOp>()) {
-    auto initValueAttr = variableOp.getInitValueAttr().dyn_cast<IntegerAttr>();
+    auto initValueAttr = dyn_cast<IntegerAttr>(variableOp.getInitValueAttr());
     if (!initValueAttr)
       return variableOp.emitOpError() << "expected an integer attribute "
                                          "for the initial value.";
