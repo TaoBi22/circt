@@ -31,6 +31,7 @@ with open(fsmFile, "r") as f:
     search = re.search(r"fsm.machine @([a-zA-Z0-9_\-]+)\(([\s\S]*)\) -> \(([\s\S]*)\)", x)
     moduleName = search.group(1)
     inputs = search.group(2)
+    print("Inputs:", inputs)
     for input in inputs.split(","):
         if width := re.search(r": i([0-9]+)", input):
             inputWidths.append(int(width.group(1)))
@@ -63,6 +64,7 @@ assert len(inputWidths) == len(inputNames), "Input widths and names do not match
 assert len(varWidths) == len(varNames), "Variable widths and names do not match"
 
 print(inputWidths)
+print(varWidths)
 print(moduleName)
 builddir = "build"
 
@@ -102,7 +104,7 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
 
 print("Output names:", outputNames)
 
-os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module=fsm10 bound={bound} rising-clocks-only\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt=\"rising-clocks-only\" --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
+os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module={moduleName} bound={bound} rising-clocks-only\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt=\"rising-clocks-only\" --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
 
 # FSM files
 os.system(f"{FSMTRoot}/build/bin/circt-opt --convert-fsm-to-smt-safety=\"with-time\" {fsmFile} > {builddir}/safety.mlir")
@@ -152,15 +154,27 @@ for i, invariant in enumerate(invariants):
             signatureStr += f"!smt.int, "
             bv2Ints.append(f"%input_{j}_int = smt.bv2int %input_{j} : !smt.bv<{inputWidth}>\n")
     for j, varWidth in enumerate(varWidths):
-        propertyStr += f"%var_{j}: !smt.bv<{varWidth}>, "
-        applicationStr += f"%var_{j}_int, "
-        signatureStr += f"!smt.int, "
-        bv2Ints.append(f"%var_{j}_int = smt.bv2int %var_{j} : !smt.bv<{varWidth}>\n")
+        if varWidth == 1:
+            propertyStr += f"%var_{j}: !smt.bool, "
+            applicationStr += f"%var_{j}, "
+            signatureStr += f"!smt.bool, "
+            bv2Ints.append(f"%var_{j}_int = smt.ite %var_{j}, %myConst1, %myConst0 : !smt.bv<{varWidth}>\n")
+        else:
+            propertyStr += f"%var_{j}: !smt.bv<{varWidth}>, "
+            applicationStr += f"%var_{j}_int, "
+            signatureStr += f"!smt.int, "
+            bv2Ints.append(f"%var_{j}_int = smt.bv2int %var_{j} : !smt.bv<{varWidth}>\n")
     for j, outputWidth in enumerate(outputWidths):
-        propertyStr += f"%output_{j}: !smt.bv<{outputWidth}>, "
-        applicationStr += f"%output_{j}_int, "
-        signatureStr += f"!smt.int, "
-        bv2Ints.append(f"%output_{j}_int = smt.bv2int %output_{j} : !smt.bv<{outputWidth}>\n")
+        if outputWidth == 1:
+            propertyStr += f"%output_{j}: !smt.bool, "
+            applicationStr += f"%output_{j}, "
+            signatureStr += f"!smt.bool, "
+            bv2Ints.append(f"%output_{j}_int = smt.ite %output_{j}, %myConst1, %myConst0 : !smt.bv<{outputWidth}>\n")
+        else:
+            propertyStr += f"%output_{j}: !smt.bv<{outputWidth}>, "
+            applicationStr += f"%output_{j}_int, "
+            signatureStr += f"!smt.int, "
+            bv2Ints.append(f"%output_{j}_int = smt.bv2int %output_{j} : !smt.bv<{outputWidth}>\n")
     propertyStr += "%rtlTime: !smt.bv<32>):\n"
     applicationStr += "%rtlTime_int"
     signatureStr += "!smt.int) !smt.bool>"
@@ -347,4 +361,4 @@ with open(f"{builddir}/safety-tv.mlir", "w+") as f:
 # print(f"../build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
 # print(f"../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
 os.system(f"../build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
-os.system(f"time ../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
+os.system(f"time ../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e {moduleName} -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
