@@ -48,7 +48,7 @@ with open(fsmFile, "r") as f:
         x = f.readline()
         if search := re.search(r"%([\s\S]+) = fsm.variable [\s\S]+ : i([0-9]+)", x):
             # varNames.append(search.group(1))
-            varWidths.append(search.group(2))
+            varWidths.append(int(search.group(2)))
 
 # We can do another naughty hack by working out the RTL names of our variables (since they're externalized so just function args)
 
@@ -100,7 +100,7 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
         x = re.search(r"hw.output[\s]?(%[A-Za-z0-9_]+)?(, %[A-Za-z0-9_]+)+ :", terminator)
         outputNames.append(x.group(0))
         if x.group(1):
-            outputNames = [x.group(1).split(",")]
+            outputNames = x.group(1).split(",")
 
 print("Output names:", outputNames)
 
@@ -139,9 +139,9 @@ for i, invariant in enumerate(invariants):
     applicationStr = ""
     signatureStr = "!smt.func<("
     bv2Ints = []
-    if 1 in inputWidths:
-        bv2Ints.append(f"%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
-        bv2Ints.append(f"%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
+    # if 1 in inputWidths:
+    #     bv2Ints.append(f"%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
+    #     bv2Ints.append(f"%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
     for j, inputWidth in enumerate(inputWidths):
         if inputWidth == 1:
             propertyStr += f"%input_{j}: !smt.bool, "
@@ -153,17 +153,6 @@ for i, invariant in enumerate(invariants):
             applicationStr += f"%input_{j}_int, "
             signatureStr += f"!smt.int, "
             bv2Ints.append(f"%input_{j}_int = smt.bv2int %input_{j} : !smt.bv<{inputWidth}>\n")
-    for j, varWidth in enumerate(varWidths):
-        if varWidth == 1:
-            propertyStr += f"%var_{j}: !smt.bool, "
-            applicationStr += f"%var_{j}, "
-            signatureStr += f"!smt.bool, "
-            bv2Ints.append(f"%var_{j}_int = smt.ite %var_{j}, %myConst1, %myConst0 : !smt.bv<{varWidth}>\n")
-        else:
-            propertyStr += f"%var_{j}: !smt.bv<{varWidth}>, "
-            applicationStr += f"%var_{j}_int, "
-            signatureStr += f"!smt.int, "
-            bv2Ints.append(f"%var_{j}_int = smt.bv2int %var_{j} : !smt.bv<{varWidth}>\n")
     for j, outputWidth in enumerate(outputWidths):
         if outputWidth == 1:
             propertyStr += f"%output_{j}: !smt.bool, "
@@ -175,7 +164,20 @@ for i, invariant in enumerate(invariants):
             applicationStr += f"%output_{j}_int, "
             signatureStr += f"!smt.int, "
             bv2Ints.append(f"%output_{j}_int = smt.bv2int %output_{j} : !smt.bv<{outputWidth}>\n")
+    for j, varWidth in enumerate(varWidths):
+        if varWidth == 1:
+            propertyStr += f"%var_{j}: !smt.bool, "
+            applicationStr += f"%var_{j}, "
+            signatureStr += f"!smt.bool, "
+            bv2Ints.append(f"%var_{j}_int = smt.ite %var_{j}, %myConst1, %myConst0 : !smt.bv<{varWidth}>\n")
+        else:
+            propertyStr += f"%var_{j}: !smt.bv<{varWidth}>, "
+            applicationStr += f"%var_{j}_int, "
+            signatureStr += f"!smt.int, "
+            bv2Ints.append(f"%var_{j}_int = smt.bv2int %var_{j} : !smt.bv<{varWidth}>\n")
     propertyStr += "%rtlTime: !smt.bv<32>):\n"
+    propertyStr += (f"%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
+    propertyStr += (f"%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
     applicationStr += "%rtlTime_int"
     signatureStr += "!smt.int) !smt.bool>"
     bv2Ints.append(f"%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>\n")
@@ -187,15 +189,25 @@ for i, invariant in enumerate(invariants):
 
     # Our form should be: F(I, V, O, T) and T = timeReg and or(V_n != var_n forall n) => false
 
+    # The ones we made before are in a different scope
+
     # Check equivalence of variables:
     inputChecks = []
     for j, varName in enumerate(varNames):
-        propertyStr += f"%var_{j}_eq = smt.distinct %var_{j}, %{varName} : !smt.bv<{varWidths[j]}>\n"
+        if varWidths[j] == 1:
+            propertyStr += f"%var_{j}_conv = smt.ite %var_{j}, %myConst1, %myConst0 : !smt.bv<1>\n"
+            propertyStr += f"%var_{j}_eq = smt.distinct %var_{j}_conv, %{varName} : !smt.bv<1>\n"
+        else:
+            propertyStr += f"%var_{j}_eq = smt.distinct %var_{j}, %{varName} : !smt.bv<{varWidths[j]}>\n"
         inputChecks.append(f"%var_{j}_eq")
 
     # Check equivalence of outputs:
     for j, outputName in enumerate(outputNames):
-        propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}, %{outputName} : !smt.bv<{outputWidths[j]}>\n"
+        if outputWidths[j] == 1:
+            propertyStr += f"%output_{j}_conv = smt.ite %output_{j}, %myConst1, %myConst0 : !smt.bv<1>\n"
+            propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}_conv, {outputName} : !smt.bv<1>\n"
+        else:
+            propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}, %{outputName} : !smt.bv<{outputWidths[j]}>\n"
         inputChecks.append(f"%output_{j}_eq")
     
     propertyStr += f"%myFalse = smt.constant false\n"
