@@ -1,25 +1,25 @@
 module {
   llvm.func @printf(!llvm.ptr, ...)
-  func.func @fsm10() {
+  func.func @fsm50() {
     %0 = llvm.mlir.addressof @resultString_1 : !llvm.ptr
     %1 = llvm.mlir.addressof @resultString_0 : !llvm.ptr
     %2 = smt.solver() : () -> i1 {
       %true = arith.constant true
       %false = arith.constant false
-      %c10_i32 = arith.constant 10 : i32
+      %c50_i32 = arith.constant 50 : i32
       %c1_i32 = arith.constant 1 : i32
       %c0_i32 = arith.constant 0 : i32
       %c0_bv32 = smt.bv.constant #smt.bv<0> : !smt.bv<32>
-      %c0_bv4 = smt.bv.constant #smt.bv<0> : !smt.bv<4>
+      %c0_bv16 = smt.bv.constant #smt.bv<0> : !smt.bv<16>
+      %c0_bv6 = smt.bv.constant #smt.bv<0> : !smt.bv<6>
       %4 = func.call @bmc_init() : () -> !smt.bv<1>
       smt.push 1
       %5 = smt.declare_fun : !smt.bv<1>
-      %6 = smt.declare_fun : !smt.bv<1>
-      %7:6 = scf.for %arg0 = %c0_i32 to %c10_i32 step %c1_i32 iter_args(%arg1 = %5, %arg2 = %4, %arg3 = %6, %arg4 = %c0_bv4, %arg5 = %c0_bv32, %arg6 = %true) -> (!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<32>, i1)  : i32 {
+      %6:6 = scf.for %arg0 = %c0_i32 to %c50_i32 step %c1_i32 iter_args(%arg1 = %4, %arg2 = %5, %arg3 = %c0_bv6, %arg4 = %c0_bv16, %arg5 = %c0_bv32, %arg6 = %true) -> (!smt.bv<1>, !smt.bv<1>, !smt.bv<6>, !smt.bv<16>, !smt.bv<32>, i1)  : i32 {
         smt.pop 1
         smt.push 1
-        %9:9 = func.call @bmc_circuit(%arg1, %arg2, %arg3, %arg4, %arg5) : (!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<32>) -> (!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<32>)
-        %10 = smt.check sat {
+        %8:3 = func.call @bmc_circuit(%arg1, %arg2, %arg3, %arg4, %arg5) : (!smt.bv<1>, !smt.bv<1>, !smt.bv<6>, !smt.bv<16>, !smt.bv<32>) -> (!smt.bv<6>, !smt.bv<16>, !smt.bv<32>)
+        %9 = smt.check sat {
           smt.yield %true : i1
         } unknown {
           smt.yield %true : i1
@@ -28,16 +28,15 @@ module {
         } -> i1
 %ss = llvm.mlir.addressof @satString : !llvm.ptr
 %us = llvm.mlir.addressof @unsatString : !llvm.ptr
-%string = llvm.select %10, %ss, %us : i1, !llvm.ptr
+%string = llvm.select %9, %ss, %us : i1, !llvm.ptr
 llvm.call @printf(%string) vararg(!llvm.func<void (ptr, ...)>) : (!llvm.ptr) -> ()
-        %11 = arith.andi %10, %arg6 : i1
-        %12 = func.call @bmc_loop(%arg2) : (!smt.bv<1>) -> !smt.bv<1>
-        %13 = smt.declare_fun : !smt.bv<1>
-        %14 = smt.declare_fun : !smt.bv<1>
-        scf.yield %13, %12, %14, %9#7, %9#8, %11 : !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<32>, i1
+        %10 = arith.andi %9, %arg6 : i1
+        %11 = func.call @bmc_loop(%arg1) : (!smt.bv<1>) -> !smt.bv<1>
+        %12 = smt.declare_fun : !smt.bv<1>
+        scf.yield %11, %12, %8#0, %8#1, %8#2, %10 : !smt.bv<1>, !smt.bv<1>, !smt.bv<6>, !smt.bv<16>, !smt.bv<32>, i1
       }
-      %8 = arith.xori %7#5, %true : i1
-      smt.yield %8 : i1
+      %7 = arith.xori %6#5, %true : i1
+      smt.yield %7 : i1
     }
     %3 = llvm.select %2, %1, %0 : i1, !llvm.ptr
     llvm.call @printf(%3) vararg(!llvm.func<void (ptr, ...)>) : (!llvm.ptr) -> ()
@@ -54,1851 +53,2095 @@ llvm.mlir.global private constant @unsatString("unsat\0A\00") {addr_space = 0 : 
   func.func @bmc_loop(%arg0: !smt.bv<1>) -> !smt.bv<1> {
     return %arg0 : !smt.bv<1>
   }
-  func.func @bmc_circuit(%arg0: !smt.bv<1>, %arg1: !smt.bv<1>, %arg2: !smt.bv<1>, %arg3: !smt.bv<4>, %arg4: !smt.bv<32>) -> (!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<32>) {
-%input_0_func = smt.declare_fun "input_0_func" : !smt.func<(!smt.bv<32>) !smt.bool>
+  func.func @bmc_circuit(%arg0: !smt.bv<1>, %arg1: !smt.bv<1>, %arg2: !smt.bv<6>, %arg3: !smt.bv<16>, %arg4: !smt.bv<32>) -> (!smt.bv<6>, !smt.bv<16>, !smt.bv<32>) {
     %c1_bv32 = smt.bv.constant #smt.bv<1> : !smt.bv<32>
-    %c0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
     %c-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-    %c-1_bv4 = smt.bv.constant #smt.bv<-1> : !smt.bv<4>
-    %c-2_bv4 = smt.bv.constant #smt.bv<-2> : !smt.bv<4>
-    %c-3_bv4 = smt.bv.constant #smt.bv<-3> : !smt.bv<4>
-    %c-4_bv4 = smt.bv.constant #smt.bv<-4> : !smt.bv<4>
-    %c-5_bv4 = smt.bv.constant #smt.bv<-5> : !smt.bv<4>
-    %c-6_bv4 = smt.bv.constant #smt.bv<-6> : !smt.bv<4>
-    %c-7_bv4 = smt.bv.constant #smt.bv<-7> : !smt.bv<4>
-    %c-8_bv4 = smt.bv.constant #smt.bv<-8> : !smt.bv<4>
-    %c7_bv4 = smt.bv.constant #smt.bv<7> : !smt.bv<4>
-    %c6_bv4 = smt.bv.constant #smt.bv<6> : !smt.bv<4>
-    %c5_bv4 = smt.bv.constant #smt.bv<5> : !smt.bv<4>
-    %c4_bv4 = smt.bv.constant #smt.bv<4> : !smt.bv<4>
-    %c3_bv4 = smt.bv.constant #smt.bv<3> : !smt.bv<4>
-    %c2_bv4 = smt.bv.constant #smt.bv<2> : !smt.bv<4>
-    %c1_bv4 = smt.bv.constant #smt.bv<1> : !smt.bv<4>
-    %c0_bv4 = smt.bv.constant #smt.bv<0> : !smt.bv<4>
-    %0 = smt.eq %arg3, %c0_bv4 : !smt.bv<4>
+    %c0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+    %c1_bv16 = smt.bv.constant #smt.bv<1> : !smt.bv<16>
+    %c-14_bv6 = smt.bv.constant #smt.bv<-14> : !smt.bv<6>
+    %c-15_bv6 = smt.bv.constant #smt.bv<-15> : !smt.bv<6>
+    %c-16_bv6 = smt.bv.constant #smt.bv<-16> : !smt.bv<6>
+    %c-17_bv6 = smt.bv.constant #smt.bv<-17> : !smt.bv<6>
+    %c-18_bv6 = smt.bv.constant #smt.bv<-18> : !smt.bv<6>
+    %c-19_bv6 = smt.bv.constant #smt.bv<-19> : !smt.bv<6>
+    %c-20_bv6 = smt.bv.constant #smt.bv<-20> : !smt.bv<6>
+    %c-21_bv6 = smt.bv.constant #smt.bv<-21> : !smt.bv<6>
+    %c-22_bv6 = smt.bv.constant #smt.bv<-22> : !smt.bv<6>
+    %c-23_bv6 = smt.bv.constant #smt.bv<-23> : !smt.bv<6>
+    %c-24_bv6 = smt.bv.constant #smt.bv<-24> : !smt.bv<6>
+    %c-25_bv6 = smt.bv.constant #smt.bv<-25> : !smt.bv<6>
+    %c-26_bv6 = smt.bv.constant #smt.bv<-26> : !smt.bv<6>
+    %c-27_bv6 = smt.bv.constant #smt.bv<-27> : !smt.bv<6>
+    %c-28_bv6 = smt.bv.constant #smt.bv<-28> : !smt.bv<6>
+    %c-29_bv6 = smt.bv.constant #smt.bv<-29> : !smt.bv<6>
+    %c-30_bv6 = smt.bv.constant #smt.bv<-30> : !smt.bv<6>
+    %c-31_bv6 = smt.bv.constant #smt.bv<-31> : !smt.bv<6>
+    %c-32_bv6 = smt.bv.constant #smt.bv<-32> : !smt.bv<6>
+    %c31_bv6 = smt.bv.constant #smt.bv<31> : !smt.bv<6>
+    %c30_bv6 = smt.bv.constant #smt.bv<30> : !smt.bv<6>
+    %c29_bv6 = smt.bv.constant #smt.bv<29> : !smt.bv<6>
+    %c28_bv6 = smt.bv.constant #smt.bv<28> : !smt.bv<6>
+    %c27_bv6 = smt.bv.constant #smt.bv<27> : !smt.bv<6>
+    %c26_bv6 = smt.bv.constant #smt.bv<26> : !smt.bv<6>
+    %c25_bv6 = smt.bv.constant #smt.bv<25> : !smt.bv<6>
+    %c24_bv6 = smt.bv.constant #smt.bv<24> : !smt.bv<6>
+    %c23_bv6 = smt.bv.constant #smt.bv<23> : !smt.bv<6>
+    %c22_bv6 = smt.bv.constant #smt.bv<22> : !smt.bv<6>
+    %c21_bv6 = smt.bv.constant #smt.bv<21> : !smt.bv<6>
+    %c20_bv6 = smt.bv.constant #smt.bv<20> : !smt.bv<6>
+    %c19_bv6 = smt.bv.constant #smt.bv<19> : !smt.bv<6>
+    %c18_bv6 = smt.bv.constant #smt.bv<18> : !smt.bv<6>
+    %c17_bv6 = smt.bv.constant #smt.bv<17> : !smt.bv<6>
+    %c16_bv6 = smt.bv.constant #smt.bv<16> : !smt.bv<6>
+    %c15_bv6 = smt.bv.constant #smt.bv<15> : !smt.bv<6>
+    %c14_bv6 = smt.bv.constant #smt.bv<14> : !smt.bv<6>
+    %c13_bv6 = smt.bv.constant #smt.bv<13> : !smt.bv<6>
+    %c12_bv6 = smt.bv.constant #smt.bv<12> : !smt.bv<6>
+    %c11_bv6 = smt.bv.constant #smt.bv<11> : !smt.bv<6>
+    %c10_bv6 = smt.bv.constant #smt.bv<10> : !smt.bv<6>
+    %c9_bv6 = smt.bv.constant #smt.bv<9> : !smt.bv<6>
+    %c8_bv6 = smt.bv.constant #smt.bv<8> : !smt.bv<6>
+    %c7_bv6 = smt.bv.constant #smt.bv<7> : !smt.bv<6>
+    %c6_bv6 = smt.bv.constant #smt.bv<6> : !smt.bv<6>
+    %c5_bv6 = smt.bv.constant #smt.bv<5> : !smt.bv<6>
+    %c4_bv6 = smt.bv.constant #smt.bv<4> : !smt.bv<6>
+    %c3_bv6 = smt.bv.constant #smt.bv<3> : !smt.bv<6>
+    %c2_bv6 = smt.bv.constant #smt.bv<2> : !smt.bv<6>
+    %c1_bv6 = smt.bv.constant #smt.bv<1> : !smt.bv<6>
+    %c0_bv6 = smt.bv.constant #smt.bv<0> : !smt.bv<6>
+    %0 = smt.eq %arg2, %c0_bv6 : !smt.bv<6>
     %1 = smt.ite %0, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %2 = smt.eq %arg3, %c0_bv4 : !smt.bv<4>
-    %3 = smt.ite %2, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %4 = smt.eq %arg3, %c0_bv4 : !smt.bv<4>
-    %5 = smt.ite %4, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %6 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %7 = smt.eq %arg3, %c0_bv4 : !smt.bv<4>
+    %2 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %3 = smt.eq %1, %c-1_bv1 : !smt.bv<1>
+    %4 = smt.ite %3, %2, %arg3 : !smt.bv<16>
+    %5 = smt.eq %1, %c-1_bv1 : !smt.bv<1>
+    %6 = smt.ite %5, %c1_bv6, %arg2 : !smt.bv<6>
+    %7 = smt.eq %arg2, %c1_bv6 : !smt.bv<6>
     %8 = smt.ite %7, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %9 = smt.eq %8, %c-1_bv1 : !smt.bv<1>
-    %10 = smt.ite %9, %c0_bv4, %arg3 : !smt.bv<4>
-    %11 = smt.eq %6, %c-1_bv1 : !smt.bv<1>
-    %12 = smt.ite %11, %c1_bv4, %c0_bv4 : !smt.bv<4>
-    %13 = smt.eq %5, %c-1_bv1 : !smt.bv<1>
-    %14 = smt.ite %13, %12, %10 : !smt.bv<4>
-    %15 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %16 = smt.ite %15, %c0_bv4, %12 : !smt.bv<4>
-    %17 = smt.eq %3, %c-1_bv1 : !smt.bv<1>
-    %18 = smt.ite %17, %16, %14 : !smt.bv<4>
-    %19 = smt.eq %arg3, %c1_bv4 : !smt.bv<4>
-    %20 = smt.ite %19, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %21 = smt.eq %20, %c-1_bv1 : !smt.bv<1>
-    %22 = smt.ite %21, %c0_bv1, %1 : !smt.bv<1>
-    %23 = smt.eq %20, %c-1_bv1 : !smt.bv<1>
-    %24 = smt.ite %23, %c0_bv1, %c0_bv1 : !smt.bv<1>
-    %25 = smt.eq %20, %c-1_bv1 : !smt.bv<1>
-    %26 = smt.ite %25, %c0_bv1, %c0_bv1 : !smt.bv<1>
-    %27 = smt.eq %20, %c-1_bv1 : !smt.bv<1>
-    %28 = smt.ite %27, %c0_bv1, %c0_bv1 : !smt.bv<1>
-    %29 = smt.eq %20, %c-1_bv1 : !smt.bv<1>
-    %30 = smt.ite %29, %c0_bv1, %c0_bv1 : !smt.bv<1>
-    %31 = smt.eq %20, %c-1_bv1 : !smt.bv<1>
-    %32 = smt.ite %31, %c0_bv1, %c0_bv1 : !smt.bv<1>
-    %33 = smt.eq %20, %c-1_bv1 : !smt.bv<1>
-    %34 = smt.ite %33, %c0_bv1, %c0_bv1 : !smt.bv<1>
-    %35 = smt.eq %arg3, %c1_bv4 : !smt.bv<4>
+    %9 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %10 = smt.eq %8, %c-1_bv1 : !smt.bv<1>
+    %11 = smt.ite %10, %9, %4 : !smt.bv<16>
+    %12 = smt.eq %8, %c-1_bv1 : !smt.bv<1>
+    %13 = smt.ite %12, %c2_bv6, %6 : !smt.bv<6>
+    %14 = smt.eq %arg2, %c2_bv6 : !smt.bv<6>
+    %15 = smt.ite %14, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %16 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %17 = smt.eq %15, %c-1_bv1 : !smt.bv<1>
+    %18 = smt.ite %17, %16, %11 : !smt.bv<16>
+    %19 = smt.eq %15, %c-1_bv1 : !smt.bv<1>
+    %20 = smt.ite %19, %c3_bv6, %13 : !smt.bv<6>
+    %21 = smt.eq %arg2, %c3_bv6 : !smt.bv<6>
+    %22 = smt.ite %21, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %23 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %24 = smt.eq %22, %c-1_bv1 : !smt.bv<1>
+    %25 = smt.ite %24, %23, %18 : !smt.bv<16>
+    %26 = smt.eq %22, %c-1_bv1 : !smt.bv<1>
+    %27 = smt.ite %26, %c4_bv6, %20 : !smt.bv<6>
+    %28 = smt.eq %arg2, %c4_bv6 : !smt.bv<6>
+    %29 = smt.ite %28, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %30 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %31 = smt.eq %29, %c-1_bv1 : !smt.bv<1>
+    %32 = smt.ite %31, %30, %25 : !smt.bv<16>
+    %33 = smt.eq %29, %c-1_bv1 : !smt.bv<1>
+    %34 = smt.ite %33, %c5_bv6, %27 : !smt.bv<6>
+    %35 = smt.eq %arg2, %c5_bv6 : !smt.bv<6>
     %36 = smt.ite %35, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %37 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %38 = smt.eq %arg3, %c1_bv4 : !smt.bv<4>
-    %39 = smt.ite %38, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %40 = smt.eq %arg3, %c1_bv4 : !smt.bv<4>
-    %41 = smt.ite %40, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %42 = smt.eq %41, %c-1_bv1 : !smt.bv<1>
-    %43 = smt.ite %42, %c1_bv4, %18 : !smt.bv<4>
-    %44 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %45 = smt.ite %44, %c2_bv4, %c1_bv4 : !smt.bv<4>
-    %46 = smt.eq %39, %c-1_bv1 : !smt.bv<1>
-    %47 = smt.ite %46, %45, %43 : !smt.bv<4>
-    %48 = smt.eq %37, %c-1_bv1 : !smt.bv<1>
-    %49 = smt.ite %48, %c1_bv4, %45 : !smt.bv<4>
-    %50 = smt.eq %36, %c-1_bv1 : !smt.bv<1>
-    %51 = smt.ite %50, %49, %47 : !smt.bv<4>
-    %52 = smt.eq %arg3, %c2_bv4 : !smt.bv<4>
-    %53 = smt.ite %52, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %54 = smt.eq %53, %c-1_bv1 : !smt.bv<1>
-    %55 = smt.ite %54, %c0_bv1, %22 : !smt.bv<1>
-    %56 = smt.eq %53, %c-1_bv1 : !smt.bv<1>
-    %57 = smt.ite %56, %c0_bv1, %24 : !smt.bv<1>
-    %58 = smt.eq %53, %c-1_bv1 : !smt.bv<1>
-    %59 = smt.ite %58, %c0_bv1, %26 : !smt.bv<1>
-    %60 = smt.eq %53, %c-1_bv1 : !smt.bv<1>
-    %61 = smt.ite %60, %c0_bv1, %28 : !smt.bv<1>
-    %62 = smt.eq %53, %c-1_bv1 : !smt.bv<1>
-    %63 = smt.ite %62, %c0_bv1, %30 : !smt.bv<1>
-    %64 = smt.eq %53, %c-1_bv1 : !smt.bv<1>
-    %65 = smt.ite %64, %c0_bv1, %32 : !smt.bv<1>
-    %66 = smt.eq %53, %c-1_bv1 : !smt.bv<1>
-    %67 = smt.ite %66, %c0_bv1, %34 : !smt.bv<1>
-    %68 = smt.eq %arg3, %c2_bv4 : !smt.bv<4>
-    %69 = smt.ite %68, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %70 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %71 = smt.eq %arg3, %c2_bv4 : !smt.bv<4>
-    %72 = smt.ite %71, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %73 = smt.eq %arg3, %c2_bv4 : !smt.bv<4>
-    %74 = smt.ite %73, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %75 = smt.eq %74, %c-1_bv1 : !smt.bv<1>
-    %76 = smt.ite %75, %c2_bv4, %51 : !smt.bv<4>
-    %77 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %78 = smt.ite %77, %c-7_bv4, %c2_bv4 : !smt.bv<4>
-    %79 = smt.eq %72, %c-1_bv1 : !smt.bv<1>
-    %80 = smt.ite %79, %78, %76 : !smt.bv<4>
-    %81 = smt.eq %70, %c-1_bv1 : !smt.bv<1>
-    %82 = smt.ite %81, %c3_bv4, %78 : !smt.bv<4>
-    %83 = smt.eq %69, %c-1_bv1 : !smt.bv<1>
-    %84 = smt.ite %83, %82, %80 : !smt.bv<4>
-    %85 = smt.eq %arg3, %c3_bv4 : !smt.bv<4>
-    %86 = smt.ite %85, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %87 = smt.eq %86, %c-1_bv1 : !smt.bv<1>
-    %88 = smt.ite %87, %c0_bv1, %55 : !smt.bv<1>
-    %89 = smt.eq %86, %c-1_bv1 : !smt.bv<1>
-    %90 = smt.ite %89, %c-1_bv1, %57 : !smt.bv<1>
-    %91 = smt.eq %86, %c-1_bv1 : !smt.bv<1>
-    %92 = smt.ite %91, %c0_bv1, %59 : !smt.bv<1>
-    %93 = smt.eq %86, %c-1_bv1 : !smt.bv<1>
-    %94 = smt.ite %93, %c0_bv1, %61 : !smt.bv<1>
-    %95 = smt.eq %86, %c-1_bv1 : !smt.bv<1>
-    %96 = smt.ite %95, %c0_bv1, %63 : !smt.bv<1>
-    %97 = smt.eq %86, %c-1_bv1 : !smt.bv<1>
-    %98 = smt.ite %97, %c0_bv1, %65 : !smt.bv<1>
-    %99 = smt.eq %86, %c-1_bv1 : !smt.bv<1>
-    %100 = smt.ite %99, %c0_bv1, %67 : !smt.bv<1>
-    %101 = smt.eq %arg3, %c3_bv4 : !smt.bv<4>
-    %102 = smt.ite %101, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %103 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %104 = smt.eq %arg3, %c3_bv4 : !smt.bv<4>
-    %105 = smt.ite %104, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %106 = smt.eq %arg3, %c3_bv4 : !smt.bv<4>
-    %107 = smt.ite %106, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %108 = smt.eq %107, %c-1_bv1 : !smt.bv<1>
-    %109 = smt.ite %108, %c3_bv4, %84 : !smt.bv<4>
-    %110 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %111 = smt.ite %110, %c5_bv4, %c3_bv4 : !smt.bv<4>
-    %112 = smt.eq %105, %c-1_bv1 : !smt.bv<1>
-    %113 = smt.ite %112, %111, %109 : !smt.bv<4>
-    %114 = smt.eq %103, %c-1_bv1 : !smt.bv<1>
-    %115 = smt.ite %114, %c4_bv4, %111 : !smt.bv<4>
-    %116 = smt.eq %102, %c-1_bv1 : !smt.bv<1>
-    %117 = smt.ite %116, %115, %113 : !smt.bv<4>
-    %118 = smt.eq %arg3, %c4_bv4 : !smt.bv<4>
-    %119 = smt.ite %118, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %120 = smt.eq %119, %c-1_bv1 : !smt.bv<1>
-    %121 = smt.ite %120, %c0_bv1, %88 : !smt.bv<1>
-    %122 = smt.eq %119, %c-1_bv1 : !smt.bv<1>
-    %123 = smt.ite %122, %c0_bv1, %90 : !smt.bv<1>
-    %124 = smt.eq %119, %c-1_bv1 : !smt.bv<1>
-    %125 = smt.ite %124, %c-1_bv1, %92 : !smt.bv<1>
-    %126 = smt.eq %119, %c-1_bv1 : !smt.bv<1>
-    %127 = smt.ite %126, %c0_bv1, %94 : !smt.bv<1>
-    %128 = smt.eq %119, %c-1_bv1 : !smt.bv<1>
-    %129 = smt.ite %128, %c0_bv1, %96 : !smt.bv<1>
-    %130 = smt.eq %119, %c-1_bv1 : !smt.bv<1>
-    %131 = smt.ite %130, %c0_bv1, %98 : !smt.bv<1>
-    %132 = smt.eq %119, %c-1_bv1 : !smt.bv<1>
-    %133 = smt.ite %132, %c0_bv1, %100 : !smt.bv<1>
-    %134 = smt.eq %arg3, %c4_bv4 : !smt.bv<4>
-    %135 = smt.ite %134, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %136 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %137 = smt.eq %arg3, %c4_bv4 : !smt.bv<4>
-    %138 = smt.ite %137, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %139 = smt.eq %arg3, %c4_bv4 : !smt.bv<4>
-    %140 = smt.ite %139, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %141 = smt.eq %140, %c-1_bv1 : !smt.bv<1>
-    %142 = smt.ite %141, %c4_bv4, %117 : !smt.bv<4>
-    %143 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %144 = smt.ite %143, %c5_bv4, %c4_bv4 : !smt.bv<4>
-    %145 = smt.eq %138, %c-1_bv1 : !smt.bv<1>
-    %146 = smt.ite %145, %144, %142 : !smt.bv<4>
-    %147 = smt.eq %136, %c-1_bv1 : !smt.bv<1>
-    %148 = smt.ite %147, %c4_bv4, %144 : !smt.bv<4>
-    %149 = smt.eq %135, %c-1_bv1 : !smt.bv<1>
-    %150 = smt.ite %149, %148, %146 : !smt.bv<4>
-    %151 = smt.eq %arg3, %c5_bv4 : !smt.bv<4>
-    %152 = smt.ite %151, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %153 = smt.eq %152, %c-1_bv1 : !smt.bv<1>
-    %154 = smt.ite %153, %c0_bv1, %121 : !smt.bv<1>
-    %155 = smt.eq %152, %c-1_bv1 : !smt.bv<1>
-    %156 = smt.ite %155, %c0_bv1, %123 : !smt.bv<1>
-    %157 = smt.eq %152, %c-1_bv1 : !smt.bv<1>
-    %158 = smt.ite %157, %c0_bv1, %125 : !smt.bv<1>
-    %159 = smt.eq %152, %c-1_bv1 : !smt.bv<1>
-    %160 = smt.ite %159, %c0_bv1, %127 : !smt.bv<1>
-    %161 = smt.eq %152, %c-1_bv1 : !smt.bv<1>
-    %162 = smt.ite %161, %c0_bv1, %129 : !smt.bv<1>
-    %163 = smt.eq %152, %c-1_bv1 : !smt.bv<1>
-    %164 = smt.ite %163, %c0_bv1, %131 : !smt.bv<1>
-    %165 = smt.eq %152, %c-1_bv1 : !smt.bv<1>
-    %166 = smt.ite %165, %c0_bv1, %133 : !smt.bv<1>
-    %167 = smt.eq %arg3, %c5_bv4 : !smt.bv<4>
-    %168 = smt.ite %167, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %169 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %170 = smt.eq %arg3, %c5_bv4 : !smt.bv<4>
-    %171 = smt.ite %170, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %172 = smt.eq %arg3, %c5_bv4 : !smt.bv<4>
-    %173 = smt.ite %172, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %174 = smt.eq %173, %c-1_bv1 : !smt.bv<1>
-    %175 = smt.ite %174, %c5_bv4, %150 : !smt.bv<4>
-    %176 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %177 = smt.ite %176, %c-8_bv4, %c5_bv4 : !smt.bv<4>
-    %178 = smt.eq %171, %c-1_bv1 : !smt.bv<1>
-    %179 = smt.ite %178, %177, %175 : !smt.bv<4>
-    %180 = smt.eq %169, %c-1_bv1 : !smt.bv<1>
-    %181 = smt.ite %180, %c6_bv4, %177 : !smt.bv<4>
-    %182 = smt.eq %168, %c-1_bv1 : !smt.bv<1>
-    %183 = smt.ite %182, %181, %179 : !smt.bv<4>
-    %184 = smt.eq %arg3, %c6_bv4 : !smt.bv<4>
-    %185 = smt.ite %184, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %186 = smt.eq %185, %c-1_bv1 : !smt.bv<1>
-    %187 = smt.ite %186, %c0_bv1, %154 : !smt.bv<1>
-    %188 = smt.eq %185, %c-1_bv1 : !smt.bv<1>
-    %189 = smt.ite %188, %c0_bv1, %156 : !smt.bv<1>
-    %190 = smt.eq %185, %c-1_bv1 : !smt.bv<1>
-    %191 = smt.ite %190, %c0_bv1, %158 : !smt.bv<1>
-    %192 = smt.eq %185, %c-1_bv1 : !smt.bv<1>
-    %193 = smt.ite %192, %c0_bv1, %160 : !smt.bv<1>
-    %194 = smt.eq %185, %c-1_bv1 : !smt.bv<1>
-    %195 = smt.ite %194, %c0_bv1, %162 : !smt.bv<1>
-    %196 = smt.eq %185, %c-1_bv1 : !smt.bv<1>
-    %197 = smt.ite %196, %c0_bv1, %164 : !smt.bv<1>
-    %198 = smt.eq %185, %c-1_bv1 : !smt.bv<1>
-    %199 = smt.ite %198, %c0_bv1, %166 : !smt.bv<1>
-    %200 = smt.eq %arg3, %c6_bv4 : !smt.bv<4>
-    %201 = smt.ite %200, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %202 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %203 = smt.eq %arg3, %c6_bv4 : !smt.bv<4>
+    %37 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %38 = smt.eq %36, %c-1_bv1 : !smt.bv<1>
+    %39 = smt.ite %38, %37, %32 : !smt.bv<16>
+    %40 = smt.eq %36, %c-1_bv1 : !smt.bv<1>
+    %41 = smt.ite %40, %c6_bv6, %34 : !smt.bv<6>
+    %42 = smt.eq %arg2, %c6_bv6 : !smt.bv<6>
+    %43 = smt.ite %42, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %44 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %45 = smt.eq %43, %c-1_bv1 : !smt.bv<1>
+    %46 = smt.ite %45, %44, %39 : !smt.bv<16>
+    %47 = smt.eq %43, %c-1_bv1 : !smt.bv<1>
+    %48 = smt.ite %47, %c7_bv6, %41 : !smt.bv<6>
+    %49 = smt.eq %arg2, %c7_bv6 : !smt.bv<6>
+    %50 = smt.ite %49, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %51 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %52 = smt.eq %50, %c-1_bv1 : !smt.bv<1>
+    %53 = smt.ite %52, %51, %46 : !smt.bv<16>
+    %54 = smt.eq %50, %c-1_bv1 : !smt.bv<1>
+    %55 = smt.ite %54, %c8_bv6, %48 : !smt.bv<6>
+    %56 = smt.eq %arg2, %c8_bv6 : !smt.bv<6>
+    %57 = smt.ite %56, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %58 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %59 = smt.eq %57, %c-1_bv1 : !smt.bv<1>
+    %60 = smt.ite %59, %58, %53 : !smt.bv<16>
+    %61 = smt.eq %57, %c-1_bv1 : !smt.bv<1>
+    %62 = smt.ite %61, %c9_bv6, %55 : !smt.bv<6>
+    %63 = smt.eq %arg2, %c9_bv6 : !smt.bv<6>
+    %64 = smt.ite %63, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %65 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %66 = smt.eq %64, %c-1_bv1 : !smt.bv<1>
+    %67 = smt.ite %66, %65, %60 : !smt.bv<16>
+    %68 = smt.eq %64, %c-1_bv1 : !smt.bv<1>
+    %69 = smt.ite %68, %c10_bv6, %62 : !smt.bv<6>
+    %70 = smt.eq %arg2, %c10_bv6 : !smt.bv<6>
+    %71 = smt.ite %70, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %72 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %73 = smt.eq %71, %c-1_bv1 : !smt.bv<1>
+    %74 = smt.ite %73, %72, %67 : !smt.bv<16>
+    %75 = smt.eq %71, %c-1_bv1 : !smt.bv<1>
+    %76 = smt.ite %75, %c11_bv6, %69 : !smt.bv<6>
+    %77 = smt.eq %arg2, %c11_bv6 : !smt.bv<6>
+    %78 = smt.ite %77, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %79 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %80 = smt.eq %78, %c-1_bv1 : !smt.bv<1>
+    %81 = smt.ite %80, %79, %74 : !smt.bv<16>
+    %82 = smt.eq %78, %c-1_bv1 : !smt.bv<1>
+    %83 = smt.ite %82, %c12_bv6, %76 : !smt.bv<6>
+    %84 = smt.eq %arg2, %c12_bv6 : !smt.bv<6>
+    %85 = smt.ite %84, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %86 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %87 = smt.eq %85, %c-1_bv1 : !smt.bv<1>
+    %88 = smt.ite %87, %86, %81 : !smt.bv<16>
+    %89 = smt.eq %85, %c-1_bv1 : !smt.bv<1>
+    %90 = smt.ite %89, %c13_bv6, %83 : !smt.bv<6>
+    %91 = smt.eq %arg2, %c13_bv6 : !smt.bv<6>
+    %92 = smt.ite %91, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %93 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %94 = smt.eq %92, %c-1_bv1 : !smt.bv<1>
+    %95 = smt.ite %94, %93, %88 : !smt.bv<16>
+    %96 = smt.eq %92, %c-1_bv1 : !smt.bv<1>
+    %97 = smt.ite %96, %c14_bv6, %90 : !smt.bv<6>
+    %98 = smt.eq %arg2, %c14_bv6 : !smt.bv<6>
+    %99 = smt.ite %98, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %100 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %101 = smt.eq %99, %c-1_bv1 : !smt.bv<1>
+    %102 = smt.ite %101, %100, %95 : !smt.bv<16>
+    %103 = smt.eq %99, %c-1_bv1 : !smt.bv<1>
+    %104 = smt.ite %103, %c15_bv6, %97 : !smt.bv<6>
+    %105 = smt.eq %arg2, %c15_bv6 : !smt.bv<6>
+    %106 = smt.ite %105, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %107 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %108 = smt.eq %106, %c-1_bv1 : !smt.bv<1>
+    %109 = smt.ite %108, %107, %102 : !smt.bv<16>
+    %110 = smt.eq %106, %c-1_bv1 : !smt.bv<1>
+    %111 = smt.ite %110, %c16_bv6, %104 : !smt.bv<6>
+    %112 = smt.eq %arg2, %c16_bv6 : !smt.bv<6>
+    %113 = smt.ite %112, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %114 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %115 = smt.eq %113, %c-1_bv1 : !smt.bv<1>
+    %116 = smt.ite %115, %114, %109 : !smt.bv<16>
+    %117 = smt.eq %113, %c-1_bv1 : !smt.bv<1>
+    %118 = smt.ite %117, %c17_bv6, %111 : !smt.bv<6>
+    %119 = smt.eq %arg2, %c17_bv6 : !smt.bv<6>
+    %120 = smt.ite %119, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %121 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %122 = smt.eq %120, %c-1_bv1 : !smt.bv<1>
+    %123 = smt.ite %122, %121, %116 : !smt.bv<16>
+    %124 = smt.eq %120, %c-1_bv1 : !smt.bv<1>
+    %125 = smt.ite %124, %c18_bv6, %118 : !smt.bv<6>
+    %126 = smt.eq %arg2, %c18_bv6 : !smt.bv<6>
+    %127 = smt.ite %126, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %128 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %129 = smt.eq %127, %c-1_bv1 : !smt.bv<1>
+    %130 = smt.ite %129, %128, %123 : !smt.bv<16>
+    %131 = smt.eq %127, %c-1_bv1 : !smt.bv<1>
+    %132 = smt.ite %131, %c19_bv6, %125 : !smt.bv<6>
+    %133 = smt.eq %arg2, %c19_bv6 : !smt.bv<6>
+    %134 = smt.ite %133, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %135 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %136 = smt.eq %134, %c-1_bv1 : !smt.bv<1>
+    %137 = smt.ite %136, %135, %130 : !smt.bv<16>
+    %138 = smt.eq %134, %c-1_bv1 : !smt.bv<1>
+    %139 = smt.ite %138, %c20_bv6, %132 : !smt.bv<6>
+    %140 = smt.eq %arg2, %c20_bv6 : !smt.bv<6>
+    %141 = smt.ite %140, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %142 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %143 = smt.eq %141, %c-1_bv1 : !smt.bv<1>
+    %144 = smt.ite %143, %142, %137 : !smt.bv<16>
+    %145 = smt.eq %141, %c-1_bv1 : !smt.bv<1>
+    %146 = smt.ite %145, %c21_bv6, %139 : !smt.bv<6>
+    %147 = smt.eq %arg2, %c21_bv6 : !smt.bv<6>
+    %148 = smt.ite %147, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %149 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %150 = smt.eq %148, %c-1_bv1 : !smt.bv<1>
+    %151 = smt.ite %150, %149, %144 : !smt.bv<16>
+    %152 = smt.eq %148, %c-1_bv1 : !smt.bv<1>
+    %153 = smt.ite %152, %c22_bv6, %146 : !smt.bv<6>
+    %154 = smt.eq %arg2, %c22_bv6 : !smt.bv<6>
+    %155 = smt.ite %154, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %156 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %157 = smt.eq %155, %c-1_bv1 : !smt.bv<1>
+    %158 = smt.ite %157, %156, %151 : !smt.bv<16>
+    %159 = smt.eq %155, %c-1_bv1 : !smt.bv<1>
+    %160 = smt.ite %159, %c23_bv6, %153 : !smt.bv<6>
+    %161 = smt.eq %arg2, %c23_bv6 : !smt.bv<6>
+    %162 = smt.ite %161, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %163 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %164 = smt.eq %162, %c-1_bv1 : !smt.bv<1>
+    %165 = smt.ite %164, %163, %158 : !smt.bv<16>
+    %166 = smt.eq %162, %c-1_bv1 : !smt.bv<1>
+    %167 = smt.ite %166, %c24_bv6, %160 : !smt.bv<6>
+    %168 = smt.eq %arg2, %c24_bv6 : !smt.bv<6>
+    %169 = smt.ite %168, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %170 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %171 = smt.eq %169, %c-1_bv1 : !smt.bv<1>
+    %172 = smt.ite %171, %170, %165 : !smt.bv<16>
+    %173 = smt.eq %169, %c-1_bv1 : !smt.bv<1>
+    %174 = smt.ite %173, %c25_bv6, %167 : !smt.bv<6>
+    %175 = smt.eq %arg2, %c25_bv6 : !smt.bv<6>
+    %176 = smt.ite %175, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %177 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %178 = smt.eq %176, %c-1_bv1 : !smt.bv<1>
+    %179 = smt.ite %178, %177, %172 : !smt.bv<16>
+    %180 = smt.eq %176, %c-1_bv1 : !smt.bv<1>
+    %181 = smt.ite %180, %c26_bv6, %174 : !smt.bv<6>
+    %182 = smt.eq %arg2, %c26_bv6 : !smt.bv<6>
+    %183 = smt.ite %182, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %184 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %185 = smt.eq %183, %c-1_bv1 : !smt.bv<1>
+    %186 = smt.ite %185, %184, %179 : !smt.bv<16>
+    %187 = smt.eq %183, %c-1_bv1 : !smt.bv<1>
+    %188 = smt.ite %187, %c27_bv6, %181 : !smt.bv<6>
+    %189 = smt.eq %arg2, %c27_bv6 : !smt.bv<6>
+    %190 = smt.ite %189, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %191 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %192 = smt.eq %190, %c-1_bv1 : !smt.bv<1>
+    %193 = smt.ite %192, %191, %186 : !smt.bv<16>
+    %194 = smt.eq %190, %c-1_bv1 : !smt.bv<1>
+    %195 = smt.ite %194, %c28_bv6, %188 : !smt.bv<6>
+    %196 = smt.eq %arg2, %c28_bv6 : !smt.bv<6>
+    %197 = smt.ite %196, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %198 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %199 = smt.eq %197, %c-1_bv1 : !smt.bv<1>
+    %200 = smt.ite %199, %198, %193 : !smt.bv<16>
+    %201 = smt.eq %197, %c-1_bv1 : !smt.bv<1>
+    %202 = smt.ite %201, %c29_bv6, %195 : !smt.bv<6>
+    %203 = smt.eq %arg2, %c29_bv6 : !smt.bv<6>
     %204 = smt.ite %203, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %205 = smt.eq %arg3, %c6_bv4 : !smt.bv<4>
-    %206 = smt.ite %205, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %207 = smt.eq %206, %c-1_bv1 : !smt.bv<1>
-    %208 = smt.ite %207, %c6_bv4, %183 : !smt.bv<4>
-    %209 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %210 = smt.ite %209, %c7_bv4, %c6_bv4 : !smt.bv<4>
-    %211 = smt.eq %204, %c-1_bv1 : !smt.bv<1>
-    %212 = smt.ite %211, %210, %208 : !smt.bv<4>
-    %213 = smt.eq %202, %c-1_bv1 : !smt.bv<1>
-    %214 = smt.ite %213, %c6_bv4, %210 : !smt.bv<4>
-    %215 = smt.eq %201, %c-1_bv1 : !smt.bv<1>
-    %216 = smt.ite %215, %214, %212 : !smt.bv<4>
-    %217 = smt.eq %arg3, %c7_bv4 : !smt.bv<4>
+    %205 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %206 = smt.eq %204, %c-1_bv1 : !smt.bv<1>
+    %207 = smt.ite %206, %205, %200 : !smt.bv<16>
+    %208 = smt.eq %204, %c-1_bv1 : !smt.bv<1>
+    %209 = smt.ite %208, %c30_bv6, %202 : !smt.bv<6>
+    %210 = smt.eq %arg2, %c30_bv6 : !smt.bv<6>
+    %211 = smt.ite %210, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %212 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %213 = smt.eq %211, %c-1_bv1 : !smt.bv<1>
+    %214 = smt.ite %213, %212, %207 : !smt.bv<16>
+    %215 = smt.eq %211, %c-1_bv1 : !smt.bv<1>
+    %216 = smt.ite %215, %c31_bv6, %209 : !smt.bv<6>
+    %217 = smt.eq %arg2, %c31_bv6 : !smt.bv<6>
     %218 = smt.ite %217, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %219 = smt.eq %218, %c-1_bv1 : !smt.bv<1>
-    %220 = smt.ite %219, %c0_bv1, %187 : !smt.bv<1>
-    %221 = smt.eq %218, %c-1_bv1 : !smt.bv<1>
-    %222 = smt.ite %221, %c0_bv1, %189 : !smt.bv<1>
-    %223 = smt.eq %218, %c-1_bv1 : !smt.bv<1>
-    %224 = smt.ite %223, %c0_bv1, %191 : !smt.bv<1>
-    %225 = smt.eq %218, %c-1_bv1 : !smt.bv<1>
-    %226 = smt.ite %225, %c0_bv1, %193 : !smt.bv<1>
-    %227 = smt.eq %218, %c-1_bv1 : !smt.bv<1>
-    %228 = smt.ite %227, %c0_bv1, %195 : !smt.bv<1>
-    %229 = smt.eq %218, %c-1_bv1 : !smt.bv<1>
-    %230 = smt.ite %229, %c0_bv1, %197 : !smt.bv<1>
-    %231 = smt.eq %218, %c-1_bv1 : !smt.bv<1>
-    %232 = smt.ite %231, %c0_bv1, %199 : !smt.bv<1>
-    %233 = smt.eq %arg3, %c7_bv4 : !smt.bv<4>
-    %234 = smt.ite %233, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %235 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %236 = smt.eq %arg3, %c7_bv4 : !smt.bv<4>
-    %237 = smt.ite %236, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %238 = smt.eq %arg3, %c7_bv4 : !smt.bv<4>
+    %219 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %220 = smt.eq %218, %c-1_bv1 : !smt.bv<1>
+    %221 = smt.ite %220, %219, %214 : !smt.bv<16>
+    %222 = smt.eq %218, %c-1_bv1 : !smt.bv<1>
+    %223 = smt.ite %222, %c-32_bv6, %216 : !smt.bv<6>
+    %224 = smt.eq %arg2, %c-32_bv6 : !smt.bv<6>
+    %225 = smt.ite %224, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %226 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %227 = smt.eq %225, %c-1_bv1 : !smt.bv<1>
+    %228 = smt.ite %227, %226, %221 : !smt.bv<16>
+    %229 = smt.eq %225, %c-1_bv1 : !smt.bv<1>
+    %230 = smt.ite %229, %c-31_bv6, %223 : !smt.bv<6>
+    %231 = smt.eq %arg2, %c-31_bv6 : !smt.bv<6>
+    %232 = smt.ite %231, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %233 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %234 = smt.eq %232, %c-1_bv1 : !smt.bv<1>
+    %235 = smt.ite %234, %233, %228 : !smt.bv<16>
+    %236 = smt.eq %232, %c-1_bv1 : !smt.bv<1>
+    %237 = smt.ite %236, %c-30_bv6, %230 : !smt.bv<6>
+    %238 = smt.eq %arg2, %c-30_bv6 : !smt.bv<6>
     %239 = smt.ite %238, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %240 = smt.eq %239, %c-1_bv1 : !smt.bv<1>
-    %241 = smt.ite %240, %c7_bv4, %216 : !smt.bv<4>
-    %242 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %243 = smt.ite %242, %c-8_bv4, %c7_bv4 : !smt.bv<4>
-    %244 = smt.eq %237, %c-1_bv1 : !smt.bv<1>
-    %245 = smt.ite %244, %243, %241 : !smt.bv<4>
-    %246 = smt.eq %235, %c-1_bv1 : !smt.bv<1>
-    %247 = smt.ite %246, %c4_bv4, %243 : !smt.bv<4>
-    %248 = smt.eq %234, %c-1_bv1 : !smt.bv<1>
-    %249 = smt.ite %248, %247, %245 : !smt.bv<4>
-    %250 = smt.eq %arg3, %c-8_bv4 : !smt.bv<4>
-    %251 = smt.ite %250, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %252 = smt.eq %251, %c-1_bv1 : !smt.bv<1>
-    %253 = smt.ite %252, %c0_bv1, %220 : !smt.bv<1>
-    %254 = smt.eq %251, %c-1_bv1 : !smt.bv<1>
-    %255 = smt.ite %254, %c0_bv1, %222 : !smt.bv<1>
-    %256 = smt.eq %251, %c-1_bv1 : !smt.bv<1>
-    %257 = smt.ite %256, %c0_bv1, %224 : !smt.bv<1>
-    %258 = smt.eq %251, %c-1_bv1 : !smt.bv<1>
-    %259 = smt.ite %258, %c-1_bv1, %226 : !smt.bv<1>
-    %260 = smt.eq %251, %c-1_bv1 : !smt.bv<1>
-    %261 = smt.ite %260, %c0_bv1, %228 : !smt.bv<1>
-    %262 = smt.eq %251, %c-1_bv1 : !smt.bv<1>
-    %263 = smt.ite %262, %c0_bv1, %230 : !smt.bv<1>
-    %264 = smt.eq %251, %c-1_bv1 : !smt.bv<1>
-    %265 = smt.ite %264, %c0_bv1, %232 : !smt.bv<1>
-    %266 = smt.eq %arg3, %c-8_bv4 : !smt.bv<4>
+    %240 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %241 = smt.eq %239, %c-1_bv1 : !smt.bv<1>
+    %242 = smt.ite %241, %240, %235 : !smt.bv<16>
+    %243 = smt.eq %239, %c-1_bv1 : !smt.bv<1>
+    %244 = smt.ite %243, %c-29_bv6, %237 : !smt.bv<6>
+    %245 = smt.eq %arg2, %c-29_bv6 : !smt.bv<6>
+    %246 = smt.ite %245, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %247 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %248 = smt.eq %246, %c-1_bv1 : !smt.bv<1>
+    %249 = smt.ite %248, %247, %242 : !smt.bv<16>
+    %250 = smt.eq %246, %c-1_bv1 : !smt.bv<1>
+    %251 = smt.ite %250, %c-28_bv6, %244 : !smt.bv<6>
+    %252 = smt.eq %arg2, %c-28_bv6 : !smt.bv<6>
+    %253 = smt.ite %252, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %254 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %255 = smt.eq %253, %c-1_bv1 : !smt.bv<1>
+    %256 = smt.ite %255, %254, %249 : !smt.bv<16>
+    %257 = smt.eq %253, %c-1_bv1 : !smt.bv<1>
+    %258 = smt.ite %257, %c-27_bv6, %251 : !smt.bv<6>
+    %259 = smt.eq %arg2, %c-27_bv6 : !smt.bv<6>
+    %260 = smt.ite %259, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %261 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %262 = smt.eq %260, %c-1_bv1 : !smt.bv<1>
+    %263 = smt.ite %262, %261, %256 : !smt.bv<16>
+    %264 = smt.eq %260, %c-1_bv1 : !smt.bv<1>
+    %265 = smt.ite %264, %c-26_bv6, %258 : !smt.bv<6>
+    %266 = smt.eq %arg2, %c-26_bv6 : !smt.bv<6>
     %267 = smt.ite %266, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %268 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %269 = smt.eq %arg3, %c-8_bv4 : !smt.bv<4>
-    %270 = smt.ite %269, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %271 = smt.eq %arg3, %c-8_bv4 : !smt.bv<4>
-    %272 = smt.ite %271, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %273 = smt.eq %272, %c-1_bv1 : !smt.bv<1>
-    %274 = smt.ite %273, %c-8_bv4, %249 : !smt.bv<4>
-    %275 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %276 = smt.ite %275, %c2_bv4, %c-8_bv4 : !smt.bv<4>
-    %277 = smt.eq %270, %c-1_bv1 : !smt.bv<1>
-    %278 = smt.ite %277, %276, %274 : !smt.bv<4>
-    %279 = smt.eq %268, %c-1_bv1 : !smt.bv<1>
-    %280 = smt.ite %279, %c1_bv4, %276 : !smt.bv<4>
-    %281 = smt.eq %267, %c-1_bv1 : !smt.bv<1>
-    %282 = smt.ite %281, %280, %278 : !smt.bv<4>
-    %283 = smt.eq %arg3, %c-7_bv4 : !smt.bv<4>
-    %284 = smt.ite %283, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %285 = smt.eq %284, %c-1_bv1 : !smt.bv<1>
-    %286 = smt.ite %285, %c0_bv1, %253 : !smt.bv<1>
-    %287 = smt.eq %284, %c-1_bv1 : !smt.bv<1>
-    %288 = smt.ite %287, %c0_bv1, %255 : !smt.bv<1>
-    %289 = smt.eq %284, %c-1_bv1 : !smt.bv<1>
-    %290 = smt.ite %289, %c0_bv1, %257 : !smt.bv<1>
-    %291 = smt.eq %284, %c-1_bv1 : !smt.bv<1>
-    %292 = smt.ite %291, %c0_bv1, %259 : !smt.bv<1>
-    %293 = smt.eq %284, %c-1_bv1 : !smt.bv<1>
-    %294 = smt.ite %293, %c0_bv1, %261 : !smt.bv<1>
-    %295 = smt.eq %284, %c-1_bv1 : !smt.bv<1>
-    %296 = smt.ite %295, %c0_bv1, %263 : !smt.bv<1>
-    %297 = smt.eq %284, %c-1_bv1 : !smt.bv<1>
-    %298 = smt.ite %297, %c0_bv1, %265 : !smt.bv<1>
-    %299 = smt.eq %arg3, %c-7_bv4 : !smt.bv<4>
-    %300 = smt.ite %299, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %301 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %302 = smt.eq %arg3, %c-7_bv4 : !smt.bv<4>
-    %303 = smt.ite %302, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %304 = smt.eq %arg3, %c-7_bv4 : !smt.bv<4>
-    %305 = smt.ite %304, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %306 = smt.eq %305, %c-1_bv1 : !smt.bv<1>
-    %307 = smt.ite %306, %c-7_bv4, %282 : !smt.bv<4>
-    %308 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %309 = smt.ite %308, %c0_bv4, %c-7_bv4 : !smt.bv<4>
-    %310 = smt.eq %303, %c-1_bv1 : !smt.bv<1>
-    %311 = smt.ite %310, %309, %307 : !smt.bv<4>
-    %312 = smt.eq %301, %c-1_bv1 : !smt.bv<1>
-    %313 = smt.ite %312, %c-6_bv4, %309 : !smt.bv<4>
-    %314 = smt.eq %300, %c-1_bv1 : !smt.bv<1>
-    %315 = smt.ite %314, %313, %311 : !smt.bv<4>
-    %316 = smt.eq %arg3, %c-6_bv4 : !smt.bv<4>
-    %317 = smt.ite %316, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %318 = smt.eq %317, %c-1_bv1 : !smt.bv<1>
-    %319 = smt.ite %318, %c0_bv1, %286 : !smt.bv<1>
-    %320 = smt.eq %317, %c-1_bv1 : !smt.bv<1>
-    %321 = smt.ite %320, %c0_bv1, %288 : !smt.bv<1>
-    %322 = smt.eq %317, %c-1_bv1 : !smt.bv<1>
-    %323 = smt.ite %322, %c0_bv1, %290 : !smt.bv<1>
-    %324 = smt.eq %317, %c-1_bv1 : !smt.bv<1>
-    %325 = smt.ite %324, %c0_bv1, %292 : !smt.bv<1>
-    %326 = smt.eq %317, %c-1_bv1 : !smt.bv<1>
-    %327 = smt.ite %326, %c-1_bv1, %294 : !smt.bv<1>
-    %328 = smt.eq %317, %c-1_bv1 : !smt.bv<1>
-    %329 = smt.ite %328, %c0_bv1, %296 : !smt.bv<1>
-    %330 = smt.eq %317, %c-1_bv1 : !smt.bv<1>
-    %331 = smt.ite %330, %c0_bv1, %298 : !smt.bv<1>
-    %332 = smt.eq %arg3, %c-6_bv4 : !smt.bv<4>
-    %333 = smt.ite %332, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %334 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %335 = smt.eq %arg3, %c-6_bv4 : !smt.bv<4>
-    %336 = smt.ite %335, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %337 = smt.eq %arg3, %c-6_bv4 : !smt.bv<4>
-    %338 = smt.ite %337, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %339 = smt.eq %338, %c-1_bv1 : !smt.bv<1>
-    %340 = smt.ite %339, %c-6_bv4, %315 : !smt.bv<4>
-    %341 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %342 = smt.ite %341, %c-4_bv4, %c-6_bv4 : !smt.bv<4>
-    %343 = smt.eq %336, %c-1_bv1 : !smt.bv<1>
-    %344 = smt.ite %343, %342, %340 : !smt.bv<4>
-    %345 = smt.eq %334, %c-1_bv1 : !smt.bv<1>
-    %346 = smt.ite %345, %c-5_bv4, %342 : !smt.bv<4>
-    %347 = smt.eq %333, %c-1_bv1 : !smt.bv<1>
-    %348 = smt.ite %347, %346, %344 : !smt.bv<4>
-    %349 = smt.eq %arg3, %c-5_bv4 : !smt.bv<4>
-    %350 = smt.ite %349, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %351 = smt.eq %350, %c-1_bv1 : !smt.bv<1>
-    %352 = smt.ite %351, %c0_bv1, %319 : !smt.bv<1>
-    %353 = smt.eq %350, %c-1_bv1 : !smt.bv<1>
-    %354 = smt.ite %353, %c0_bv1, %321 : !smt.bv<1>
-    %355 = smt.eq %350, %c-1_bv1 : !smt.bv<1>
-    %356 = smt.ite %355, %c0_bv1, %323 : !smt.bv<1>
-    %357 = smt.eq %350, %c-1_bv1 : !smt.bv<1>
-    %358 = smt.ite %357, %c0_bv1, %325 : !smt.bv<1>
-    %359 = smt.eq %350, %c-1_bv1 : !smt.bv<1>
-    %360 = smt.ite %359, %c0_bv1, %327 : !smt.bv<1>
-    %361 = smt.eq %350, %c-1_bv1 : !smt.bv<1>
-    %362 = smt.ite %361, %c-1_bv1, %329 : !smt.bv<1>
-    %363 = smt.eq %350, %c-1_bv1 : !smt.bv<1>
-    %364 = smt.ite %363, %c0_bv1, %331 : !smt.bv<1>
-    %365 = smt.eq %arg3, %c-5_bv4 : !smt.bv<4>
-    %366 = smt.ite %365, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %367 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %368 = smt.eq %arg3, %c-5_bv4 : !smt.bv<4>
-    %369 = smt.ite %368, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %370 = smt.eq %arg3, %c-5_bv4 : !smt.bv<4>
-    %371 = smt.ite %370, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %372 = smt.eq %371, %c-1_bv1 : !smt.bv<1>
-    %373 = smt.ite %372, %c-5_bv4, %348 : !smt.bv<4>
-    %374 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %375 = smt.ite %374, %c-4_bv4, %c-5_bv4 : !smt.bv<4>
-    %376 = smt.eq %369, %c-1_bv1 : !smt.bv<1>
-    %377 = smt.ite %376, %375, %373 : !smt.bv<4>
-    %378 = smt.eq %367, %c-1_bv1 : !smt.bv<1>
-    %379 = smt.ite %378, %c-5_bv4, %375 : !smt.bv<4>
-    %380 = smt.eq %366, %c-1_bv1 : !smt.bv<1>
-    %381 = smt.ite %380, %379, %377 : !smt.bv<4>
-    %382 = smt.eq %arg3, %c-4_bv4 : !smt.bv<4>
-    %383 = smt.ite %382, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %384 = smt.eq %383, %c-1_bv1 : !smt.bv<1>
-    %385 = smt.ite %384, %c0_bv1, %352 : !smt.bv<1>
-    %386 = smt.eq %383, %c-1_bv1 : !smt.bv<1>
-    %387 = smt.ite %386, %c0_bv1, %354 : !smt.bv<1>
-    %388 = smt.eq %383, %c-1_bv1 : !smt.bv<1>
-    %389 = smt.ite %388, %c0_bv1, %356 : !smt.bv<1>
-    %390 = smt.eq %383, %c-1_bv1 : !smt.bv<1>
-    %391 = smt.ite %390, %c0_bv1, %358 : !smt.bv<1>
-    %392 = smt.eq %383, %c-1_bv1 : !smt.bv<1>
-    %393 = smt.ite %392, %c0_bv1, %360 : !smt.bv<1>
-    %394 = smt.eq %383, %c-1_bv1 : !smt.bv<1>
-    %395 = smt.ite %394, %c0_bv1, %362 : !smt.bv<1>
-    %396 = smt.eq %383, %c-1_bv1 : !smt.bv<1>
-    %397 = smt.ite %396, %c0_bv1, %364 : !smt.bv<1>
-    %398 = smt.eq %arg3, %c-4_bv4 : !smt.bv<4>
-    %399 = smt.ite %398, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %400 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %401 = smt.eq %arg3, %c-4_bv4 : !smt.bv<4>
-    %402 = smt.ite %401, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %403 = smt.eq %arg3, %c-4_bv4 : !smt.bv<4>
-    %404 = smt.ite %403, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %405 = smt.eq %404, %c-1_bv1 : !smt.bv<1>
-    %406 = smt.ite %405, %c-4_bv4, %381 : !smt.bv<4>
-    %407 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %408 = smt.ite %407, %c-1_bv4, %c-4_bv4 : !smt.bv<4>
-    %409 = smt.eq %402, %c-1_bv1 : !smt.bv<1>
-    %410 = smt.ite %409, %408, %406 : !smt.bv<4>
-    %411 = smt.eq %400, %c-1_bv1 : !smt.bv<1>
-    %412 = smt.ite %411, %c-3_bv4, %408 : !smt.bv<4>
-    %413 = smt.eq %399, %c-1_bv1 : !smt.bv<1>
-    %414 = smt.ite %413, %412, %410 : !smt.bv<4>
-    %415 = smt.eq %arg3, %c-3_bv4 : !smt.bv<4>
-    %416 = smt.ite %415, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %417 = smt.eq %416, %c-1_bv1 : !smt.bv<1>
-    %418 = smt.ite %417, %c0_bv1, %385 : !smt.bv<1>
-    %419 = smt.eq %416, %c-1_bv1 : !smt.bv<1>
-    %420 = smt.ite %419, %c0_bv1, %387 : !smt.bv<1>
-    %421 = smt.eq %416, %c-1_bv1 : !smt.bv<1>
-    %422 = smt.ite %421, %c0_bv1, %389 : !smt.bv<1>
-    %423 = smt.eq %416, %c-1_bv1 : !smt.bv<1>
-    %424 = smt.ite %423, %c0_bv1, %391 : !smt.bv<1>
-    %425 = smt.eq %416, %c-1_bv1 : !smt.bv<1>
-    %426 = smt.ite %425, %c0_bv1, %393 : !smt.bv<1>
-    %427 = smt.eq %416, %c-1_bv1 : !smt.bv<1>
-    %428 = smt.ite %427, %c0_bv1, %395 : !smt.bv<1>
-    %429 = smt.eq %416, %c-1_bv1 : !smt.bv<1>
-    %430 = smt.ite %429, %c0_bv1, %397 : !smt.bv<1>
-    %431 = smt.eq %arg3, %c-3_bv4 : !smt.bv<4>
-    %432 = smt.ite %431, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %433 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %434 = smt.eq %arg3, %c-3_bv4 : !smt.bv<4>
-    %435 = smt.ite %434, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %436 = smt.eq %arg3, %c-3_bv4 : !smt.bv<4>
-    %437 = smt.ite %436, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %438 = smt.eq %437, %c-1_bv1 : !smt.bv<1>
-    %439 = smt.ite %438, %c-3_bv4, %414 : !smt.bv<4>
-    %440 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %441 = smt.ite %440, %c-2_bv4, %c-3_bv4 : !smt.bv<4>
-    %442 = smt.eq %435, %c-1_bv1 : !smt.bv<1>
-    %443 = smt.ite %442, %441, %439 : !smt.bv<4>
-    %444 = smt.eq %433, %c-1_bv1 : !smt.bv<1>
-    %445 = smt.ite %444, %c-3_bv4, %441 : !smt.bv<4>
-    %446 = smt.eq %432, %c-1_bv1 : !smt.bv<1>
-    %447 = smt.ite %446, %445, %443 : !smt.bv<4>
-    %448 = smt.eq %arg3, %c-2_bv4 : !smt.bv<4>
-    %449 = smt.ite %448, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %450 = smt.eq %449, %c-1_bv1 : !smt.bv<1>
-    %451 = smt.ite %450, %c0_bv1, %418 : !smt.bv<1>
-    %452 = smt.eq %449, %c-1_bv1 : !smt.bv<1>
-    %453 = smt.ite %452, %c0_bv1, %420 : !smt.bv<1>
-    %454 = smt.eq %449, %c-1_bv1 : !smt.bv<1>
-    %455 = smt.ite %454, %c0_bv1, %422 : !smt.bv<1>
-    %456 = smt.eq %449, %c-1_bv1 : !smt.bv<1>
-    %457 = smt.ite %456, %c0_bv1, %424 : !smt.bv<1>
-    %458 = smt.eq %449, %c-1_bv1 : !smt.bv<1>
-    %459 = smt.ite %458, %c0_bv1, %426 : !smt.bv<1>
-    %460 = smt.eq %449, %c-1_bv1 : !smt.bv<1>
-    %461 = smt.ite %460, %c0_bv1, %428 : !smt.bv<1>
-    %462 = smt.eq %449, %c-1_bv1 : !smt.bv<1>
-    %463 = smt.ite %462, %c0_bv1, %430 : !smt.bv<1>
-    %464 = smt.eq %arg3, %c-2_bv4 : !smt.bv<4>
-    %465 = smt.ite %464, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %466 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %467 = smt.eq %arg3, %c-2_bv4 : !smt.bv<4>
-    %468 = smt.ite %467, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %469 = smt.eq %arg3, %c-2_bv4 : !smt.bv<4>
-    %470 = smt.ite %469, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %471 = smt.eq %470, %c-1_bv1 : !smt.bv<1>
-    %472 = smt.ite %471, %c-2_bv4, %447 : !smt.bv<4>
-    %473 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %474 = smt.ite %473, %c-1_bv4, %c-2_bv4 : !smt.bv<4>
-    %475 = smt.eq %468, %c-1_bv1 : !smt.bv<1>
-    %476 = smt.ite %475, %474, %472 : !smt.bv<4>
-    %477 = smt.eq %466, %c-1_bv1 : !smt.bv<1>
-    %478 = smt.ite %477, %c-5_bv4, %474 : !smt.bv<4>
-    %479 = smt.eq %465, %c-1_bv1 : !smt.bv<1>
-    %480 = smt.ite %479, %478, %476 : !smt.bv<4>
-    %481 = smt.eq %arg3, %c-1_bv4 : !smt.bv<4>
-    %482 = smt.ite %481, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %483 = smt.eq %482, %c-1_bv1 : !smt.bv<1>
-    %484 = smt.ite %483, %c0_bv1, %451 : !smt.bv<1>
-    %485 = smt.eq %482, %c-1_bv1 : !smt.bv<1>
-    %486 = smt.ite %485, %c0_bv1, %453 : !smt.bv<1>
-    %487 = smt.eq %482, %c-1_bv1 : !smt.bv<1>
-    %488 = smt.ite %487, %c0_bv1, %455 : !smt.bv<1>
-    %489 = smt.eq %482, %c-1_bv1 : !smt.bv<1>
-    %490 = smt.ite %489, %c0_bv1, %457 : !smt.bv<1>
-    %491 = smt.eq %482, %c-1_bv1 : !smt.bv<1>
-    %492 = smt.ite %491, %c0_bv1, %459 : !smt.bv<1>
-    %493 = smt.eq %482, %c-1_bv1 : !smt.bv<1>
-    %494 = smt.ite %493, %c0_bv1, %461 : !smt.bv<1>
-    %495 = smt.eq %482, %c-1_bv1 : !smt.bv<1>
-    %496 = smt.ite %495, %c-1_bv1, %463 : !smt.bv<1>
-    %497 = smt.eq %arg3, %c-1_bv4 : !smt.bv<4>
-    %498 = smt.ite %497, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %499 = smt.bv.xor %arg0, %c-1_bv1 : !smt.bv<1>
-    %500 = smt.eq %arg3, %c-1_bv4 : !smt.bv<4>
-    %501 = smt.ite %500, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %502 = smt.eq %arg3, %c-1_bv4 : !smt.bv<4>
-    %503 = smt.ite %502, %c-1_bv1, %c0_bv1 : !smt.bv<1>
-    %504 = smt.eq %503, %c-1_bv1 : !smt.bv<1>
-    %505 = smt.ite %504, %c-1_bv4, %480 : !smt.bv<4>
-    %506 = smt.eq %arg0, %c-1_bv1 : !smt.bv<1>
-    %507 = smt.ite %506, %c-7_bv4, %c-1_bv4 : !smt.bv<4>
-    %508 = smt.eq %501, %c-1_bv1 : !smt.bv<1>
-    %509 = smt.ite %508, %507, %505 : !smt.bv<4>
-    %510 = smt.eq %499, %c-1_bv1 : !smt.bv<1>
-    %511 = smt.ite %510, %c1_bv4, %507 : !smt.bv<4>
-    %512 = smt.eq %498, %c-1_bv1 : !smt.bv<1>
-    %513 = smt.ite %512, %511, %509 : !smt.bv<4>
-    %514 = smt.bv.add %arg4, %c1_bv32 : !smt.bv<32>
-    %obsfalse = smt.constant false
-    %obsfalse_0 = smt.constant false
-    %obsfalse_1 = smt.constant false
-    %obsfalse_2 = smt.constant false
-    %obsfalse_3 = smt.constant false
-    %obsfalse_4 = smt.constant false
-    %obsfalse_5 = smt.constant false
-    %obsF_TestLogicReset = smt.declare_fun "F_TestLogicReset" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_RunTestIdle = smt.declare_fun "F_RunTestIdle" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_SelectDrScan = smt.declare_fun "F_SelectDrScan" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_CaptureDr = smt.declare_fun "F_CaptureDr" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_ShiftDr = smt.declare_fun "F_ShiftDr" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_Exit1Dr = smt.declare_fun "F_Exit1Dr" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_PauseDr = smt.declare_fun "F_PauseDr" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_Exit2Dr = smt.declare_fun "F_Exit2Dr" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_UpdateDr = smt.declare_fun "F_UpdateDr" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_SelectIrScan = smt.declare_fun "F_SelectIrScan" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_CaptureIr = smt.declare_fun "F_CaptureIr" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_ShiftIr = smt.declare_fun "F_ShiftIr" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_Exit1Ir = smt.declare_fun "F_Exit1Ir" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_PauseIr = smt.declare_fun "F_PauseIr" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_Exit2Ir = smt.declare_fun "F_Exit2Ir" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-    %obsF_UpdateIr = smt.declare_fun "F_UpdateIr" : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+    %268 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %269 = smt.eq %267, %c-1_bv1 : !smt.bv<1>
+    %270 = smt.ite %269, %268, %263 : !smt.bv<16>
+    %271 = smt.eq %267, %c-1_bv1 : !smt.bv<1>
+    %272 = smt.ite %271, %c-25_bv6, %265 : !smt.bv<6>
+    %273 = smt.eq %arg2, %c-25_bv6 : !smt.bv<6>
+    %274 = smt.ite %273, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %275 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %276 = smt.eq %274, %c-1_bv1 : !smt.bv<1>
+    %277 = smt.ite %276, %275, %270 : !smt.bv<16>
+    %278 = smt.eq %274, %c-1_bv1 : !smt.bv<1>
+    %279 = smt.ite %278, %c-24_bv6, %272 : !smt.bv<6>
+    %280 = smt.eq %arg2, %c-24_bv6 : !smt.bv<6>
+    %281 = smt.ite %280, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %282 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %283 = smt.eq %281, %c-1_bv1 : !smt.bv<1>
+    %284 = smt.ite %283, %282, %277 : !smt.bv<16>
+    %285 = smt.eq %281, %c-1_bv1 : !smt.bv<1>
+    %286 = smt.ite %285, %c-23_bv6, %279 : !smt.bv<6>
+    %287 = smt.eq %arg2, %c-23_bv6 : !smt.bv<6>
+    %288 = smt.ite %287, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %289 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %290 = smt.eq %288, %c-1_bv1 : !smt.bv<1>
+    %291 = smt.ite %290, %289, %284 : !smt.bv<16>
+    %292 = smt.eq %288, %c-1_bv1 : !smt.bv<1>
+    %293 = smt.ite %292, %c-22_bv6, %286 : !smt.bv<6>
+    %294 = smt.eq %arg2, %c-22_bv6 : !smt.bv<6>
+    %295 = smt.ite %294, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %296 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %297 = smt.eq %295, %c-1_bv1 : !smt.bv<1>
+    %298 = smt.ite %297, %296, %291 : !smt.bv<16>
+    %299 = smt.eq %295, %c-1_bv1 : !smt.bv<1>
+    %300 = smt.ite %299, %c-21_bv6, %293 : !smt.bv<6>
+    %301 = smt.eq %arg2, %c-21_bv6 : !smt.bv<6>
+    %302 = smt.ite %301, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %303 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %304 = smt.eq %302, %c-1_bv1 : !smt.bv<1>
+    %305 = smt.ite %304, %303, %298 : !smt.bv<16>
+    %306 = smt.eq %302, %c-1_bv1 : !smt.bv<1>
+    %307 = smt.ite %306, %c-20_bv6, %300 : !smt.bv<6>
+    %308 = smt.eq %arg2, %c-20_bv6 : !smt.bv<6>
+    %309 = smt.ite %308, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %310 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %311 = smt.eq %309, %c-1_bv1 : !smt.bv<1>
+    %312 = smt.ite %311, %310, %305 : !smt.bv<16>
+    %313 = smt.eq %309, %c-1_bv1 : !smt.bv<1>
+    %314 = smt.ite %313, %c-19_bv6, %307 : !smt.bv<6>
+    %315 = smt.eq %arg2, %c-19_bv6 : !smt.bv<6>
+    %316 = smt.ite %315, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %317 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %318 = smt.eq %316, %c-1_bv1 : !smt.bv<1>
+    %319 = smt.ite %318, %317, %312 : !smt.bv<16>
+    %320 = smt.eq %316, %c-1_bv1 : !smt.bv<1>
+    %321 = smt.ite %320, %c-18_bv6, %314 : !smt.bv<6>
+    %322 = smt.eq %arg2, %c-18_bv6 : !smt.bv<6>
+    %323 = smt.ite %322, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %324 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %325 = smt.eq %323, %c-1_bv1 : !smt.bv<1>
+    %326 = smt.ite %325, %324, %319 : !smt.bv<16>
+    %327 = smt.eq %323, %c-1_bv1 : !smt.bv<1>
+    %328 = smt.ite %327, %c-17_bv6, %321 : !smt.bv<6>
+    %329 = smt.eq %arg2, %c-17_bv6 : !smt.bv<6>
+    %330 = smt.ite %329, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %331 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %332 = smt.eq %330, %c-1_bv1 : !smt.bv<1>
+    %333 = smt.ite %332, %331, %326 : !smt.bv<16>
+    %334 = smt.eq %330, %c-1_bv1 : !smt.bv<1>
+    %335 = smt.ite %334, %c-16_bv6, %328 : !smt.bv<6>
+    %336 = smt.eq %arg2, %c-16_bv6 : !smt.bv<6>
+    %337 = smt.ite %336, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %338 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %339 = smt.eq %337, %c-1_bv1 : !smt.bv<1>
+    %340 = smt.ite %339, %338, %333 : !smt.bv<16>
+    %341 = smt.eq %337, %c-1_bv1 : !smt.bv<1>
+    %342 = smt.ite %341, %c-15_bv6, %335 : !smt.bv<6>
+    %343 = smt.eq %arg2, %c-15_bv6 : !smt.bv<6>
+    %344 = smt.ite %343, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %345 = smt.bv.add %arg3, %c1_bv16 : !smt.bv<16>
+    %346 = smt.eq %344, %c-1_bv1 : !smt.bv<1>
+    %347 = smt.ite %346, %345, %340 : !smt.bv<16>
+    %348 = smt.eq %344, %c-1_bv1 : !smt.bv<1>
+    %349 = smt.ite %348, %c-14_bv6, %342 : !smt.bv<6>
+    %350 = smt.eq %arg2, %c-14_bv6 : !smt.bv<6>
+    %351 = smt.ite %350, %c-1_bv1, %c0_bv1 : !smt.bv<1>
+    %352 = smt.eq %351, %c-1_bv1 : !smt.bv<1>
+    %353 = smt.ite %352, %c-14_bv6, %349 : !smt.bv<6>
+    %354 = smt.bv.add %arg4, %c1_bv32 : !smt.bv<32>
+    %obsF__0 = smt.declare_fun "F__0" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__1 = smt.declare_fun "F__1" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__2 = smt.declare_fun "F__2" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__3 = smt.declare_fun "F__3" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__4 = smt.declare_fun "F__4" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__5 = smt.declare_fun "F__5" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__6 = smt.declare_fun "F__6" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__7 = smt.declare_fun "F__7" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__8 = smt.declare_fun "F__8" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__9 = smt.declare_fun "F__9" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__10 = smt.declare_fun "F__10" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__11 = smt.declare_fun "F__11" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__12 = smt.declare_fun "F__12" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__13 = smt.declare_fun "F__13" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__14 = smt.declare_fun "F__14" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__15 = smt.declare_fun "F__15" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__16 = smt.declare_fun "F__16" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__17 = smt.declare_fun "F__17" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__18 = smt.declare_fun "F__18" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__19 = smt.declare_fun "F__19" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__20 = smt.declare_fun "F__20" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__21 = smt.declare_fun "F__21" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__22 = smt.declare_fun "F__22" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__23 = smt.declare_fun "F__23" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__24 = smt.declare_fun "F__24" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__25 = smt.declare_fun "F__25" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__26 = smt.declare_fun "F__26" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__27 = smt.declare_fun "F__27" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__28 = smt.declare_fun "F__28" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__29 = smt.declare_fun "F__29" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__30 = smt.declare_fun "F__30" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__31 = smt.declare_fun "F__31" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__32 = smt.declare_fun "F__32" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__33 = smt.declare_fun "F__33" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__34 = smt.declare_fun "F__34" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__35 = smt.declare_fun "F__35" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__36 = smt.declare_fun "F__36" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__37 = smt.declare_fun "F__37" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__38 = smt.declare_fun "F__38" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__39 = smt.declare_fun "F__39" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__40 = smt.declare_fun "F__40" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__41 = smt.declare_fun "F__41" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__42 = smt.declare_fun "F__42" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__43 = smt.declare_fun "F__43" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__44 = smt.declare_fun "F__44" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__45 = smt.declare_fun "F__45" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__46 = smt.declare_fun "F__46" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__47 = smt.declare_fun "F__47" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__48 = smt.declare_fun "F__48" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__49 = smt.declare_fun "F__49" : !smt.func<(!smt.int, !smt.int) !smt.bool>
+    %obsF__50 = smt.declare_fun "F__50" : !smt.func<(!smt.int, !smt.int) !smt.bool>
     %obs0 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.int):
-      %obstrue = smt.constant true
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obs33 = smt.apply_func %obsF_TestLogicReset(%obsarg0, %obstrue, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsarg8) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
       %obsc0 = smt.int.constant 0
-      %obs34 = smt.eq %obsarg8, %obsc0 : !smt.int
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs34, %equivalence_check_0
-%obs35 = smt.implies %equivalence_check, %obs33
-      smt.yield %obs35 : !smt.bool
+      %obs51 = smt.apply_func %obsF__0(%obsc0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc0_0 = smt.int.constant 0
+      %obs52 = smt.eq %obsarg1, %obsc0_0 : !smt.int
+      %obs53 = smt.implies %obs52, %obs51
+      smt.yield %obs53 : !smt.bool
     }
     smt.assert %obs0
     %obs1 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_TestLogicReset(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obstrue = smt.constant true
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__0(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_TestLogicReset(%obsarg0, %obstrue, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__1(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs1
     %obs2 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_TestLogicReset(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__1(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_RunTestIdle(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__2(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs36 = smt.and %obstrue, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs2
     %obs3 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_RunTestIdle(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__2(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_RunTestIdle(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__3(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs36 = smt.and %obstrue, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs3
     %obs4 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_RunTestIdle(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__3(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_SelectDrScan(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__4(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs4
     %obs5 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_SelectDrScan(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obstrue = smt.constant true
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__4(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_CaptureDr(%obsarg0, %obsfalse_6, %obstrue, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obstrue_12 = smt.constant true
-      %obs36 = smt.and %obstrue_12, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__5(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs5
     %obs6 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_SelectDrScan(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__5(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_SelectIrScan(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__6(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs6
     %obs7 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_CaptureDr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obstrue = smt.constant true
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__6(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_ShiftDr(%obsarg0, %obsfalse_6, %obsfalse_7, %obstrue, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obstrue_12 = smt.constant true
-      %obs36 = smt.and %obstrue_12, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__7(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs7
     %obs8 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_CaptureDr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__7(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_Exit1Dr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__8(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs8
     %obs9 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_ShiftDr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obstrue = smt.constant true
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__8(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_ShiftDr(%obsarg0, %obsfalse_6, %obsfalse_7, %obstrue, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obstrue_12 = smt.constant true
-      %obs36 = smt.and %obstrue_12, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__9(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs9
     %obs10 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_ShiftDr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__9(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_Exit1Dr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__10(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs10
     %obs11 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_Exit1Dr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__10(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_PauseDr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__11(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs36 = smt.and %obstrue, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs11
     %obs12 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_Exit1Dr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obstrue = smt.constant true
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__11(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_UpdateDr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obstrue, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__12(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs12
     %obs13 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_PauseDr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__12(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_PauseDr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__13(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs36 = smt.and %obstrue, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs13
     %obs14 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_PauseDr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__13(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_Exit2Dr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__14(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs14
     %obs15 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_Exit2Dr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obstrue = smt.constant true
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__14(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_ShiftDr(%obsarg0, %obsfalse_6, %obsfalse_7, %obstrue, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obstrue_12 = smt.constant true
-      %obs36 = smt.and %obstrue_12, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__15(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs15
     %obs16 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_Exit2Dr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obstrue = smt.constant true
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__15(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_UpdateDr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obstrue, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__16(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs16
     %obs17 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_UpdateDr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__16(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_RunTestIdle(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__17(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs36 = smt.and %obstrue, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs17
     %obs18 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_UpdateDr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__17(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_SelectDrScan(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__18(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs18
     %obs19 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_SelectIrScan(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obstrue = smt.constant true
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__18(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_CaptureIr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obstrue, %obsfalse_10, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obstrue_12 = smt.constant true
-      %obs36 = smt.and %obstrue_12, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__19(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs19
     %obs20 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_SelectIrScan(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obstrue = smt.constant true
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__19(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_TestLogicReset(%obsarg0, %obstrue, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__20(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs20
     %obs21 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_CaptureIr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obstrue = smt.constant true
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__20(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_ShiftIr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obstrue, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obstrue_12 = smt.constant true
-      %obs36 = smt.and %obstrue_12, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__21(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs21
     %obs22 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_CaptureIr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__21(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_Exit1Ir(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__22(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs22
     %obs23 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_ShiftIr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obstrue = smt.constant true
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__22(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_ShiftIr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obstrue, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obstrue_12 = smt.constant true
-      %obs36 = smt.and %obstrue_12, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__23(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs23
     %obs24 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_ShiftIr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__23(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_Exit1Ir(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__24(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs24
     %obs25 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_Exit1Ir(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__24(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_PauseIr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__25(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs36 = smt.and %obstrue, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs25
     %obs26 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_Exit1Ir(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obstrue = smt.constant true
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__25(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_UpdateIr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obstrue, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__26(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs26
     %obs27 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_PauseIr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__26(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_PauseIr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__27(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs36 = smt.and %obstrue, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs27
     %obs28 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_PauseIr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__27(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_Exit2Ir(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__28(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs28
     %obs29 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_Exit2Ir(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obstrue = smt.constant true
-      %obsfalse_11 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__28(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_ShiftIr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obstrue, %obsfalse_11, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obstrue_12 = smt.constant true
-      %obs36 = smt.and %obstrue_12, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__29(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs29
     %obs30 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_Exit2Ir(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obstrue = smt.constant true
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__29(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_UpdateIr(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obstrue, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__30(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs30
     %obs31 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_UpdateIr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__30(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_RunTestIdle(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__31(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obstrue = smt.constant true
-      %obs36 = smt.and %obstrue, %obsarg1
-      %obs37 = smt.and %obs33, %obs36
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs37, %equivalence_check_0
-%obs38 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs38 : !smt.bool
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs31
     %obs32 = smt.forall {
-    ^bb0(%obsarg0: !smt.bool, %obsarg1: !smt.bool, %obsarg2: !smt.bool, %obsarg3: !smt.bool, %obsarg4: !smt.bool, %obsarg5: !smt.bool, %obsarg6: !smt.bool, %obsarg7: !smt.bool, %obsarg8: !smt.bool, %obsarg9: !smt.int):
-      %obs33 = smt.apply_func %obsF_UpdateIr(%obsarg1, %obsarg2, %obsarg3, %obsarg4, %obsarg5, %obsarg6, %obsarg7, %obsarg8, %obsarg9) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obsfalse_6 = smt.constant false
-      %obsfalse_7 = smt.constant false
-      %obsfalse_8 = smt.constant false
-      %obsfalse_9 = smt.constant false
-      %obsfalse_10 = smt.constant false
-      %obsfalse_11 = smt.constant false
-      %obsfalse_12 = smt.constant false
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__31(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
       %obsc1 = smt.int.constant 1
-      %obs34 = smt.int.add %obsarg9, %obsc1
-      %obs35 = smt.apply_func %obsF_SelectIrScan(%obsarg0, %obsfalse_6, %obsfalse_7, %obsfalse_8, %obsfalse_9, %obsfalse_10, %obsfalse_11, %obsfalse_12, %obs34) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
-      %obs36 = smt.and %obs33, %obsarg1
-%myConstOne_0 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%myConstZero_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-%obsarg0_conv = smt.ite %obsarg0, %myConstOne_0, %myConstZero_0 : !smt.bv<1>
-%equivalence_check_0 = smt.eq %obsarg0_conv, %arg0 : !smt.bv<1>
-%equivalence_check = smt.and %obs36, %equivalence_check_0
-%obs37 = smt.implies %equivalence_check, %obs35
-      smt.yield %obs37 : !smt.bool
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__32(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
     }
     smt.assert %obs32
+    %obs33 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__32(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__33(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs33
+    %obs34 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__33(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__34(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs34
+    %obs35 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__34(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__35(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs35
+    %obs36 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__35(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__36(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs36
+    %obs37 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__36(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__37(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs37
+    %obs38 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__37(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__38(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs38
+    %obs39 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__38(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__39(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs39
+    %obs40 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__39(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__40(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs40
+    %obs41 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__40(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__41(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs41
+    %obs42 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__41(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__42(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs42
+    %obs43 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__42(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__43(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs43
+    %obs44 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__43(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__44(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs44
+    %obs45 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__44(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__45(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs45
+    %obs46 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__45(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__46(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs46
+    %obs47 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__46(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__47(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs47
+    %obs48 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__47(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__48(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs48
+    %obs49 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__48(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__49(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs49
+    %obs50 = smt.forall {
+    ^bb0(%obsarg0: !smt.int, %obsarg1: !smt.int):
+      %obs51 = smt.apply_func %obsF__49(%obsarg0, %obsarg1) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obsc1 = smt.int.constant 1
+      %obs52 = smt.int.add %obsarg0, %obsc1
+      %obsc-65536 = smt.int.constant -65536
+      %obs53 = smt.int.mod %obs52, %obsc-65536
+      %obsc1_0 = smt.int.constant 1
+      %obs54 = smt.int.add %obsarg1, %obsc1_0
+      %obs55 = smt.apply_func %obsF__50(%obs53, %obs54) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+      %obstrue = smt.constant true
+      %obs56 = smt.and %obs51, %obstrue
+      %obs57 = smt.implies %obs56, %obs55
+      smt.yield %obs57 : !smt.bool
+    }
+    smt.assert %obs50
 %tvclause_0 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_TestLogicReset(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__0(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_0
 %tvclause_1 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_RunTestIdle(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__1(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_1
 %tvclause_2 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_SelectDrScan(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__2(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_2
 %tvclause_3 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_CaptureDr(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__3(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_3
 %tvclause_4 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_ShiftDr(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__4(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_4
 %tvclause_5 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_Exit1Dr(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__5(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_5
 %tvclause_6 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_PauseDr(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__6(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_6
 %tvclause_7 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_Exit2Dr(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__7(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_7
 %tvclause_8 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_UpdateDr(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__8(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_8
 %tvclause_9 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_SelectIrScan(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__9(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_9
 %tvclause_10 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_CaptureIr(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__10(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_10
 %tvclause_11 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_ShiftIr(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__11(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_11
 %tvclause_12 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_Exit1Ir(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__12(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_12
 %tvclause_13 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_PauseIr(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__13(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_13
 %tvclause_14 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_Exit2Ir(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__14(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_14
 %tvclause_15 = smt.forall{
-^bb0(%input_0: !smt.bool, %output_0: !smt.bool, %output_1: !smt.bool, %output_2: !smt.bool, %output_3: !smt.bool, %output_4: !smt.bool, %output_5: !smt.bool, %output_6: !smt.bool, %rtlTime: !smt.bv<32>):
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
 %myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
 %myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
-%input_0_int = smt.ite %input_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_0_int = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_1_int = smt.ite %output_1, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_2_int = smt.ite %output_2, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_3_int = smt.ite %output_3, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_4_int = smt.ite %output_4, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_5_int = smt.ite %output_5, %myConst1, %myConst0 : !smt.bv<1>
-
-%output_6_int = smt.ite %output_6, %myConst1, %myConst0 : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
 
 %rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
-%apply = smt.apply_func %obsF_UpdateIr(%input_0, %output_0, %output_1, %output_2, %output_3, %output_4, %output_5, %output_6, %rtlTime_int) : !smt.func<(!smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.bool, !smt.int) !smt.bool>
+%apply = smt.apply_func %obsF__15(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
 %rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
-%output_0_conv = smt.ite %output_0, %myConst1, %myConst0 : !smt.bv<1>
-%output_0_eq = smt.distinct %output_0_conv, %287 : !smt.bv<1>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
 %myFalse = smt.constant false
-%antecedent = smt.and %output_0_eq, %rightTime, %apply
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
 %impl = smt.implies %antecedent, %myFalse
 smt.yield %impl : !smt.bool
 }
 smt.assert %tvclause_15
-    return %484, %486, %488, %490, %492, %494, %496, %513, %514 : !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<4>, !smt.bv<32>
+%tvclause_16 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__16(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_16
+%tvclause_17 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__17(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_17
+%tvclause_18 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__18(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_18
+%tvclause_19 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__19(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_19
+%tvclause_20 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__20(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_20
+%tvclause_21 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__21(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_21
+%tvclause_22 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__22(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_22
+%tvclause_23 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__23(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_23
+%tvclause_24 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__24(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_24
+%tvclause_25 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__25(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_25
+%tvclause_26 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__26(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_26
+%tvclause_27 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__27(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_27
+%tvclause_28 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__28(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_28
+%tvclause_29 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__29(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_29
+%tvclause_30 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__30(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_30
+%tvclause_31 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__31(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_31
+%tvclause_32 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__32(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_32
+%tvclause_33 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__33(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_33
+%tvclause_34 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__34(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_34
+%tvclause_35 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__35(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_35
+%tvclause_36 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__36(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_36
+%tvclause_37 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__37(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_37
+%tvclause_38 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__38(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_38
+%tvclause_39 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__39(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_39
+%tvclause_40 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__40(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_40
+%tvclause_41 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__41(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_41
+%tvclause_42 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__42(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_42
+%tvclause_43 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__43(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_43
+%tvclause_44 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__44(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_44
+%tvclause_45 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__45(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_45
+%tvclause_46 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__46(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_46
+%tvclause_47 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__47(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_47
+%tvclause_48 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__48(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_48
+%tvclause_49 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__49(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_49
+%tvclause_50 = smt.forall{
+^bb0(%var_0: !smt.bv<16>, %rtlTime: !smt.bv<32>):
+%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>
+%var_0_int = smt.bv2int %var_0 : !smt.bv<16>
+
+%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>
+%apply = smt.apply_func %obsF__50(%var_0_int, %rtlTime_int) : !smt.func<(!smt.int, !smt.int) !smt.bool>
+%rightTime = smt.eq %rtlTime, %arg4 : !smt.bv<32>
+%var_0_eq = smt.distinct %var_0, %arg3 : !smt.bv<16>
+%myFalse = smt.constant false
+%antecedent = smt.and %var_0_eq, %rightTime, %apply
+%impl = smt.implies %antecedent, %myFalse
+smt.yield %impl : !smt.bool
+}
+smt.assert %tvclause_50
+    return %353, %347, %354 : !smt.bv<6>, !smt.bv<16>, !smt.bv<32>
   }
 }
 
