@@ -692,6 +692,10 @@ def ConvertHWToSMT : Pass<"convert-hw-to-smt", "mlir::ModuleOp"> {
            /*default=*/"false",
            "For each output of each hw.module operation, instantiate a"
            "constant and assert its equivalence to the output.">,
+    Option<"replaceModuleWithSolver", "replace-module-with-solver", "bool",
+           /*default=*/"false",
+           "Replace hw.module operations with smt.solver operations - this"
+           "will fail if more than one hw.module is present.">
   ];
 }
 

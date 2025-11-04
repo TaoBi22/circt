@@ -20,7 +20,8 @@ namespace circt {
 /// Get the HW to SMT conversion patterns.
 void populateHWToSMTConversionPatterns(TypeConverter &converter,
                                        RewritePatternSet &patterns,
-                                       bool assertModuleOutputs);
+                                       bool assertModuleOutputs,
+                                       bool replaceModuleWithSolver);
 
 /// Get the HW to SMT type conversions.
 void populateHWToSMTTypeConverter(TypeConverter &converter);

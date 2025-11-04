@@ -14,6 +14,7 @@
 #include "mlir/Dialect/SMT/IR/SMTOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include <iterator>
 
 namespace circt {
 #define GEN_PASS_DEF_CONVERTHWTOSMT
@@ -48,6 +49,12 @@ struct HWConstantOpConversion : OpConversionPattern<ConstantOp> {
 struct HWModuleOpConversion : OpConversionPattern<HWModuleOp> {
   using OpConversionPattern<HWModuleOp>::OpConversionPattern;
 
+  HWModuleOpConversion(TypeConverter &converter, MLIRContext *context,
+                       bool replaceModuleWithSolver)
+      : OpConversionPattern<HWModuleOp>::OpConversionPattern(converter,
+                                                             context),
+        replaceModuleWithSolver(replaceModuleWithSolver) {}
+
   LogicalResult
   matchAndRewrite(HWModuleOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -59,6 +66,25 @@ struct HWModuleOpConversion : OpConversionPattern<HWModuleOp> {
       return failure();
     if (failed(rewriter.convertRegionTypes(&op.getBody(), *typeConverter)))
       return failure();
+    if (replaceModuleWithSolver) {
+      llvm::outs() << "Starting\n";
+      op->dump();
+      rewriter.eraseOp(op.getBodyBlock()->getTerminator());
+      op->dump();
+      auto solverOp =
+          mlir::smt::SolverOp::create(rewriter, op.getLoc(), {}, {});
+      mlir::smt::YieldOp::create(rewriter, op.getLoc(), {});
+      rewriter.inlineRegionBefore(op.getBody(), solverOp.getBodyRegion(),
+                                  solverOp.getBodyRegion().end());
+      auto *solverBlock = &solverOp.getBodyRegion().front();
+      solverBlock->eraseArguments(0, solverBlock->getNumArguments());
+      rewriter.setInsertionPointToEnd(solverBlock);
+      mlir::smt::YieldOp::create(rewriter, op.getLoc(), {});
+      rewriter.eraseOp(op);
+      solverOp->dump();
+      llvm::outs() << "Finishing\n";
+      return success();
+    }
     auto funcOp = mlir::func::FuncOp::create(
         rewriter, op.getLoc(), adaptor.getSymNameAttr(),
         rewriter.getFunctionType(inputTypes, resultTypes));
@@ -66,6 +92,8 @@ struct HWModuleOpConversion : OpConversionPattern<HWModuleOp> {
     rewriter.eraseOp(op);
     return success();
   }
+
+  bool replaceModuleWithSolver;
 };
 
 /// Lower a hw::OutputOp operation to func::ReturnOp.
@@ -339,17 +367,42 @@ void circt::populateHWToSMTTypeConverter(TypeConverter &converter) {
 
 void circt::populateHWToSMTConversionPatterns(TypeConverter &converter,
                                               RewritePatternSet &patterns,
-                                              bool assertModuleOutputs) {
-  patterns.add<HWConstantOpConversion, HWModuleOpConversion,
-               InstanceOpConversion, ReplaceWithInput<seq::ToClockOp>,
+                                              bool assertModuleOutputs,
+                                              bool replaceModuleWithSolver) {
+  patterns.add<HWConstantOpConversion, InstanceOpConversion,
+               ReplaceWithInput<seq::ToClockOp>,
                ReplaceWithInput<seq::FromClockOp>, ArrayCreateOpConversion,
                ArrayGetOpConversion, ArrayInjectOpConversion>(
       converter, patterns.getContext());
   patterns.add<OutputOpConversion>(converter, patterns.getContext(),
                                    assertModuleOutputs);
+  patterns.add<HWModuleOpConversion>(converter, patterns.getContext(),
+                                     replaceModuleWithSolver);
 }
 
 void ConvertHWToSMTPass::runOnOperation() {
+  if (replaceModuleWithSolver) {
+    auto numModules = 0;
+    auto numInstances = 0;
+    getOperation().walk([&](Operation *op) {
+      if (isa<hw::HWModuleOp>(op))
+        numModules++;
+      if (isa<hw::InstanceOp>(op))
+        numInstances++;
+    });
+    // Error out if there is any module hierarchy or multiple modules
+    // Currently there's no need as this flag is intended for SMTLIB export and
+    // we can just flatten modules
+    if (numModules > 1) {
+      getOperation()->emitError("multiple hw.module operations are not "
+                                "supported with convert-module-to-solver");
+    }
+    if (numInstances > 0) {
+      getOperation()->emitError("hw.instance operations are not supported "
+                                "with convert-module-to-solver");
+    }
+  }
+
   ConversionTarget target(getContext());
   target.addIllegalDialect<hw::HWDialect>();
   target.addIllegalOp<seq::FromClockOp>();
@@ -360,7 +413,8 @@ void ConvertHWToSMTPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   TypeConverter converter;
   populateHWToSMTTypeConverter(converter);
-  populateHWToSMTConversionPatterns(converter, patterns, assertModuleOutputs);
+  populateHWToSMTConversionPatterns(converter, patterns, assertModuleOutputs,
+                                    replaceModuleWithSolver);
 
   if (failed(mlir::applyPartialConversion(getOperation(), target,
                                           std::move(patterns))))
