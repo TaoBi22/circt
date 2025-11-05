@@ -82,7 +82,7 @@ struct HWModuleOpConversion : OpConversionPattern<HWModuleOp> {
                                                       inputTypes[i]);
         solverBlock->getArgument(i).replaceAllUsesWith(symVal);
       }
-      solverBlock->eraseArguments(0, solverBlock->getNumArguments());
+      solverBlock->eraseArguments(0, inputTypes.size());
       rewriter.setInsertionPointToEnd(solverBlock);
       mlir::smt::YieldOp::create(rewriter, op.getLoc(), {});
       rewriter.eraseOp(op);
