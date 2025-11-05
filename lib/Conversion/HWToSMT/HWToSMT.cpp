@@ -69,34 +69,23 @@ struct HWModuleOpConversion : OpConversionPattern<HWModuleOp> {
     if (failed(rewriter.convertRegionTypes(&op.getBody(), *typeConverter)))
       return failure();
     if (replaceModuleWithSolver) {
-      llvm::outs() << "Starting\n";
       rewriter.eraseOp(op.getBodyBlock()->getTerminator());
-
-      // op->dump();
-      // op.getBodyBlock()->dump();
-      // op.getBodyBlock()->getTerminator()->dump();
-      // rewriter.eraseOp(op.getBodyBlock()->getTerminator());
-      // op.getBodyBlock()->getTerminator()->dump();
-      // op->dump();
       auto solverOp =
           mlir::smt::SolverOp::create(rewriter, op.getLoc(), {}, {});
-      mlir::smt::YieldOp::create(rewriter, op.getLoc(), {});
       rewriter.inlineRegionBefore(op.getBody(), solverOp.getBodyRegion(),
                                   solverOp.getBodyRegion().end());
       auto *solverBlock = &solverOp.getBodyRegion().front();
+      rewriter.setInsertionPointToStart(solverBlock);
+      for (size_t i = 0; i < inputTypes.size(); ++i) {
+        // Create a new symbolic value for each input
+        auto symVal = mlir::smt::DeclareFunOp::create(rewriter, op.getLoc(),
+                                                      inputTypes[i]);
+        solverBlock->getArgument(i).replaceAllUsesWith(symVal);
+      }
       solverBlock->eraseArguments(0, solverBlock->getNumArguments());
-      solverBlock->getTerminator()->dump();
-      for (auto oOp : solverBlock->getOps<OutputOp>()) {
-        rewriter.eraseOp(oOp);
-      }
-      for (auto rOp : solverBlock->getOps<mlir::func::ReturnOp>()) {
-        rewriter.eraseOp(rOp);
-      }
       rewriter.setInsertionPointToEnd(solverBlock);
       mlir::smt::YieldOp::create(rewriter, op.getLoc(), {});
-      // op.dump();
       rewriter.eraseOp(op);
-      // solverOp->dump();
       return success();
     }
     auto funcOp = mlir::func::FuncOp::create(
