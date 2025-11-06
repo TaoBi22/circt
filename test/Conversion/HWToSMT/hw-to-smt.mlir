@@ -1,6 +1,4 @@
 // RUN: circt-opt %s --convert-hw-to-smt | FileCheck %s
-// RUN: circt-opt %s --convert-hw-to-smt='assert-module-outputs' | FileCheck %s --check-prefix=CHECK-ASSERTOUTPUTS
-
 
 // CHECK-LABEL: func @test
 func.func @test() {
@@ -13,11 +11,6 @@ func.func @test() {
 
   return
 }
-
-// CHECK-ASSERTOUTPUTS: func.func @modA(%[[ARG0:.*]]: !smt.bv<32>) -> !smt.bv<32>
-// CHECK-ASSERTOUTPUTS-NEXT: %[[DECL:.*]] = smt.declare_fun : !smt.bv<32>
-// CHECK-ASSERTOUTPUTS-NEXT: %[[EQ:.*]] = smt.eq %[[ARG0]], %[[DECL]] : !smt.bv<32>
-// CHECK-ASSERTOUTPUTS-NEXT: smt.assert %[[EQ]]
 
 // CHECK-LABEL: func.func @modA(%{{.*}}: !smt.bv<32>) -> !smt.bv<32>
 hw.module @modA(in %in: i32, out out: i32) {

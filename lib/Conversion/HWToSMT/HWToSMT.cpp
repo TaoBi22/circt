@@ -12,6 +12,7 @@
 #include "mlir/Analysis/TopologicalSortUtils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SMT/IR/SMTOps.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/YAMLTraits.h"
@@ -52,10 +53,10 @@ struct HWModuleOpConversion : OpConversionPattern<HWModuleOp> {
   using OpConversionPattern<HWModuleOp>::OpConversionPattern;
 
   HWModuleOpConversion(TypeConverter &converter, MLIRContext *context,
-                       bool forSMTLIBExport)
+                       bool replaceWithSolver)
       : OpConversionPattern<HWModuleOp>::OpConversionPattern(converter,
                                                              context),
-        forSMTLIBExport(forSMTLIBExport) {}
+        replaceWithSolver(replaceWithSolver) {}
 
   LogicalResult
   matchAndRewrite(HWModuleOp op, OpAdaptor adaptor,
@@ -69,16 +70,9 @@ struct HWModuleOpConversion : OpConversionPattern<HWModuleOp> {
     if (failed(rewriter.convertRegionTypes(&op.getBody(), *typeConverter)))
       return failure();
     auto loc = op.getLoc();
-    if (forSMTLIBExport) {
-      // If we're exporting to SMTLIB we need to:
-      // a) move the module into an smt.solver (pre-pattern checks make sure we
-      // only have one module).
-      // b) for each input create a symbolic constant and assert its equality
-      // (so that the whole circuit appears in the export).
-      // First, drop the OutputOp (though we need its arguments later to build
-      // the assertions)
-      auto terminatorArgs = op.getBodyBlock()->getTerminator()->getOperands();
-      rewriter.eraseOp(op.getBodyBlock()->getTerminator());
+    if (replaceWithSolver) {
+      // If we're exporting to SMTLIB we need to move the module into an
+      // smt.solver op (pre-pattern checks make sure we only have one module).
       // Move everything into the solver op
       auto solverOp = mlir::smt::SolverOp::create(rewriter, loc, {}, {});
       rewriter.inlineRegionBefore(op.getBody(), solverOp.getBodyRegion(),
@@ -93,15 +87,6 @@ struct HWModuleOpConversion : OpConversionPattern<HWModuleOp> {
       }
       solverBlock->eraseArguments(0, inputTypes.size());
       rewriter.setInsertionPointToEnd(solverBlock);
-      // Create the assertions on the outputs
-      for (auto output : terminatorArgs) {
-        Value constOutput =
-            mlir::smt::DeclareFunOp::create(rewriter, loc, output.getType());
-        Value eq = mlir::smt::EqOp::create(rewriter, loc, output, constOutput);
-        mlir::smt::AssertOp::create(rewriter, loc, eq);
-      }
-      // Add an empty terminator to the solver op
-      mlir::smt::YieldOp::create(rewriter, loc, {});
       rewriter.eraseOp(op);
       return success();
     }
@@ -113,19 +98,37 @@ struct HWModuleOpConversion : OpConversionPattern<HWModuleOp> {
     return success();
   }
 
-  bool forSMTLIBExport;
+  bool replaceWithSolver;
 };
 
 /// Lower a hw::OutputOp operation to func::ReturnOp.
 struct OutputOpConversion : OpConversionPattern<OutputOp> {
   using OpConversionPattern<OutputOp>::OpConversionPattern;
 
+  OutputOpConversion(TypeConverter &converter, MLIRContext *context,
+                     bool assertModuleOutputs)
+      : OpConversionPattern<OutputOp>::OpConversionPattern(converter, context),
+        assertModuleOutputs(assertModuleOutputs) {}
+
   LogicalResult
   matchAndRewrite(OutputOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    if (assertModuleOutputs) {
+      Location loc = op.getLoc();
+      for (auto output : adaptor.getOutputs()) {
+        Value constOutput =
+            mlir::smt::DeclareFunOp::create(rewriter, loc, output.getType());
+        Value eq = mlir::smt::EqOp::create(rewriter, loc, output, constOutput);
+        mlir::smt::AssertOp::create(rewriter, loc, eq);
+      }
+      rewriter.replaceOpWithNewOp<mlir::smt::YieldOp>(op);
+      return success();
+    }
     rewriter.replaceOpWithNewOp<mlir::func::ReturnOp>(op, adaptor.getOutputs());
     return success();
   }
+
+  bool assertModuleOutputs;
 };
 
 /// Lower a hw::InstanceOp operation to func::CallOp.
@@ -379,10 +382,6 @@ void circt::populateHWToSMTConversionPatterns(TypeConverter &converter,
       converter, patterns.getContext());
   patterns.add<OutputOpConversion, HWModuleOpConversion>(
       converter, patterns.getContext(), forSMTLIBExport);
-  if (!forSMTLIBExport) {
-    // Only add these patterns if not exporting to SMTLIB
-    patterns.add<OutputOpConversion>(converter, patterns.getContext(), true);
-  }
 }
 
 void ConvertHWToSMTPass::runOnOperation() {
