@@ -2563,4 +2563,13 @@ def StringGetCOp : StringBuiltin<"getc"> {
   let assemblyFormat = "$str `[` $index `]` attr-dict";
 }
 
+def StringPutCOp : StringBuiltin<"putc"> {
+  let summary = "Put a character into a string";
+  let description = [{
+    Inserts the character at the specified index in the given string.
+  }];
+  let arguments = (ins  Arg<SpecificRefType<StringType>, "", [MemRead]>:$str, TwoValuedI32:$index, TwoValuedI8:$char);
+  let assemblyFormat = "$str `[` $index `]` `,` $char attr-dict `:` type($str)";
+}
+
 #endif // CIRCT_DIALECT_MOORE_MOOREOPS
