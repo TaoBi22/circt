@@ -153,10 +153,6 @@ StateEncoding::StateEncoding(OpBuilder &b, MachineOp machine,
   for (auto state : machine.getBody().getOps<StateOp>())
     stateNames.push_back(b.getStringAttr(state.getName()));
 
-  // Create an enum typedef for the states.
-  Type rawEnumType =
-      hw::EnumType::get(b.getContext(), b.getArrayAttr(stateNames));
-
   OpBuilder::InsertionGuard guard(b);
   b.setInsertionPointToStart(&hwModule.getBodyRegion().front());
   // If stateType is explicitly provided, use this - otherwise, calculate the
