@@ -12,7 +12,6 @@
 #include "circt/Dialect/FSM/FSMOps.h"
 #include "circt/Dialect/HW/HWOps.h"
 #include "circt/Dialect/HW/HWTypes.h"
-#include "circt/Dialect/SV/SVOps.h"
 #include "circt/Dialect/Seq/SeqOps.h"
 #include "circt/Support/BackedgeBuilder.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -107,9 +106,6 @@ public:
   // Returns the type which encodes the state values.
   Type getStateType() { return stateType; }
 
-  // Returns a case pattern which matches the provided state.
-  std::unique_ptr<sv::CasePattern> getCasePattern(StateOp state);
-
 protected:
   // Creates a constant value in the module for the given encoded state
   // and records the state value in the mappings. An inner symbol is
@@ -177,15 +173,6 @@ StateOp StateEncoding::decode(Value value) {
   auto it = valueToState.find(value);
   assert(it != valueToState.end() && "encoded state not found");
   return it->second;
-}
-
-// Returns a case pattern which matches the provided state.
-std::unique_ptr<sv::CasePattern> StateEncoding::getCasePattern(StateOp state) {
-  // Get the field attribute for the state - fetch it through the encoding.
-  auto fieldAttr =
-      cast<hw::EnumConstantOp>(valueToSrcValue[encode(state)].getDefiningOp())
-          .getFieldAttr();
-  return std::make_unique<sv::CaseEnumPattern>(fieldAttr);
 }
 
 void StateEncoding::setEncoding(StateOp state, Value v) {
