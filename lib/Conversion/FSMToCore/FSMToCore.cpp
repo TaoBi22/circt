@@ -28,8 +28,6 @@
 
 #include <memory>
 #include <optional>
-#include <variant>
-#include <vector>
 
 namespace circt {
 #define GEN_PASS_DEF_CONVERTFSMTOCORE
@@ -169,7 +167,7 @@ StateEncoding::StateEncoding(OpBuilder &b, MachineOp machine,
   // And create values for the states
   b.setInsertionPointToStart(&hwModule.getBody().front());
   for (auto state : machine.getBody().getOps<StateOp>()) {
-    auto constantOp = b.create<hw::ConstantOp>(loc, stateType, stateValue++);
+    auto constantOp = hw::ConstantOp::create(b, loc, stateType, stateValue++);
     setEncoding(state, constantOp);
   }
 }
@@ -316,7 +314,8 @@ LogicalResult MachineOpConverter::dispatch() {
   // 1) Get the port info of the machine and create a new HW module for it.
   SmallVector<hw::PortInfo, 16> ports;
   auto clkRstIdxs = getMachinePortInfo(ports, machineOp, b);
-  hwModuleOp = b.create<hw::HWModuleOp>(loc, machineOp.getSymNameAttr(), ports);
+  hwModuleOp =
+      hw::HWModuleOp::create(b, loc, machineOp.getSymNameAttr(), ports);
   b.setInsertionPointToStart(hwModuleOp.getBodyBlock());
 
   // Replace all uses of the machine arguments with the arguments of the
@@ -340,8 +339,8 @@ LogicalResult MachineOpConverter::dispatch() {
 
   Backedge nextStateWire = bb.get(stateType);
 
-  stateReg = b.create<seq::CompRegOp>(
-      loc, nextStateWire, clock, reset,
+  stateReg = seq::CompRegOp::create(
+      b, loc, nextStateWire, clock, reset,
       /*reset value=*/encoding->encode(machineOp.getInitialStateOp()),
       "state_reg",
       /*powerOn value=*/
@@ -358,9 +357,9 @@ LogicalResult MachineOpConverter::dispatch() {
     Type varType = variableOp.getType();
     auto varLoc = variableOp.getLoc();
     auto nextVariableStateWire = bb.get(varType);
-    auto varResetVal = b.create<hw::ConstantOp>(varLoc, initValueAttr);
-    auto variableReg = b.create<seq::CompRegOp>(
-        varLoc, nextVariableStateWire, clock, reset, varResetVal,
+    auto varResetVal = hw::ConstantOp::create(b, varLoc, initValueAttr);
+    auto variableReg = seq::CompRegOp::create(
+        b, varLoc, nextVariableStateWire, clock, reset, varResetVal,
         b.getStringAttr(variableOp.getName()),
         seq::createConstantInitialValue(b, varResetVal));
     variableToRegister[variableOp] = variableReg;
@@ -388,7 +387,8 @@ LogicalResult MachineOpConverter::dispatch() {
       continue;
     auto outputPortType = port.type;
 
-    auto nextOutputStateWire = b.create<hw::ConstantOp>(loc, outputPortType, 0);
+    auto nextOutputStateWire =
+        hw::ConstantOp::create(b, loc, outputPortType, 0);
     outputMuxChainOuts.push_back(nextOutputStateWire);
   }
 
@@ -418,7 +418,7 @@ LogicalResult MachineOpConverter::dispatch() {
   // b.setInsertionPointToEnd();
   b.setInsertionPointToEnd(oldOutputOp->getBlock());
   oldOutputOp->erase();
-  auto op = b.create<hw::OutputOp>(loc, outputValues);
+  hw::OutputOp::create(b, loc, outputValues);
   machineOp.erase();
   return success();
 }
@@ -429,8 +429,8 @@ MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
   Value nextState;
   llvm::MapVector<fsm::VariableOp, Value> variableUpdates;
   auto stateCmp =
-      b.create<comb::ICmpOp>(machineOp.getLoc(), comb::ICmpPredicate::eq,
-                             stateReg, encoding->encode(currentState));
+      comb::ICmpOp::create(b, machineOp.getLoc(), comb::ICmpPredicate::eq,
+                           stateReg, encoding->encode(currentState));
   if (transitions.empty()) {
     // Base case
     // State: transition to the current state.
@@ -475,25 +475,25 @@ MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
           convertTransitions(currentState, transitions.drop_front());
       if (failed(otherNextState))
         return failure();
-      comb::MuxOp nextStateMux = b.create<comb::MuxOp>(
-          transition.getLoc(), guard, nextState, *otherNextState, false);
+      comb::MuxOp nextStateMux = comb::MuxOp::create(
+          b, transition.getLoc(), guard, nextState, *otherNextState, false);
       nextState = nextStateMux;
       varUpdateCondition =
-          b.create<comb::AndOp>(machineOp.getLoc(), guard, stateCmp);
+          comb::AndOp::create(b, machineOp.getLoc(), guard, stateCmp);
     } else
       varUpdateCondition = stateCmp;
     // Handle variable updates
     for (auto variableUpdate : variableUpdates) {
       auto muxChainOut = variableToMuxChainOut[variableUpdate.first];
       auto newMuxChainOut =
-          b.create<comb::MuxOp>(machineOp.getLoc(), varUpdateCondition,
-                                variableUpdate.second, muxChainOut, false);
+          comb::MuxOp::create(b, machineOp.getLoc(), varUpdateCondition,
+                              variableUpdate.second, muxChainOut, false);
       variableToMuxChainOut[variableUpdate.first] = newMuxChainOut;
     }
   }
 
-  stateMuxChainOut = b.create<comb::MuxOp>(machineOp.getLoc(), stateCmp,
-                                           nextState, stateMuxChainOut);
+  stateMuxChainOut = comb::MuxOp::create(b, machineOp.getLoc(), stateCmp,
+                                         nextState, stateMuxChainOut);
   assert(nextState && "next state should be defined");
   return nextState;
 }
@@ -533,13 +533,13 @@ MachineOpConverter::convertState(StateOp state) {
     OutputOp outputOp = cast<fsm::OutputOp>(*outputOpRes);
     // TODO: two of these, dedup - one in convertTransitions too
     auto stateCmp =
-        b.create<comb::ICmpOp>(machineOp.getLoc(), comb::ICmpPredicate::eq,
-                               stateReg, encoding->encode(state));
+        comb::ICmpOp::create(b, machineOp.getLoc(), comb::ICmpPredicate::eq,
+                             stateReg, encoding->encode(state));
 
     for (int i = 0; i < outputOp->getNumOperands(); i++) {
       auto muxChainOut = outputMuxChainOuts[i];
-      auto muxOp = b.create<comb::MuxOp>(machineOp->getLoc(), stateCmp,
-                                         outputOp->getOperand(i), muxChainOut);
+      auto muxOp = comb::MuxOp::create(b, machineOp.getLoc(), stateCmp,
+                                       outputOp->getOperand(i), muxChainOut);
       outputMuxChainOuts[i] = muxOp;
     }
     res.outputs = outputOp.getOperands(); // 3.2
@@ -589,8 +589,8 @@ void FSMToCorePass::runOnOperation() {
     llvm::SmallVector<Value, 4> operands;
     llvm::transform(instance.getOperands(), std::back_inserter(operands),
                     [&](auto operand) { return operand; });
-    auto hwInstance = b.create<hw::InstanceOp>(
-        instance.getLoc(), fsmHWModule, b.getStringAttr(instance.getName()),
+    auto hwInstance = hw::InstanceOp::create(
+        b, instance.getLoc(), fsmHWModule, b.getStringAttr(instance.getName()),
         operands, nullptr);
     instance.replaceAllUsesWith(hwInstance);
     instance.erase();
