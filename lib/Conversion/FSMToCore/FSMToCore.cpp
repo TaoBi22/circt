@@ -14,6 +14,7 @@
 #include "circt/Dialect/HW/HWTypes.h"
 #include "circt/Dialect/Seq/SeqOps.h"
 #include "circt/Support/BackedgeBuilder.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
@@ -144,9 +145,17 @@ StateEncoding::StateEncoding(OpBuilder &b, MachineOp machine,
   b.setInsertionPointToStart(&hwModule.getBodyRegion().front());
   // If stateType is explicitly provided, use this - otherwise, calculate the
   // minimum int size that can represent all states
-  if (machine->getAttr("stateType"))
-    stateType = cast<TypeAttr>(machine->getAttr("stateType")).getValue();
-  else {
+  if (machine->getAttr("stateType")) {
+    stateType = dyn_cast<TypeAttr>(machine->getAttr("stateType")).getValue();
+    if (!stateType) {
+      machine->emitError("stateType attribute does not name a type");
+      return;
+    }
+    if (!isa<IntegerType>(stateType)) {
+      machine->emitError("stateType attribute must name an integer type");
+      return;
+    }
+  } else {
     int numOps = std::distance(machine.getBody().getOps<StateOp>().begin(),
                                machine.getBody().getOps<StateOp>().end());
     stateType =
@@ -197,7 +206,7 @@ public:
   // 3. Iterates over all states in the machine
   //  3.1. Moves all `comb` logic into the body of the HW module
   //  3.2. Records the SSA value(s) associated to the output ports in the state
-  //  3.3. iterates of the transitions of the state
+  //  3.3. Iterates over the transitions of the state
   //    3.3.1. Moves all `comb` logic in the transition guard/action regions to
   //            the body of the HW module.
   //    3.3.2. Creates a case pattern (mux chain) for the transition guard
