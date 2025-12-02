@@ -360,7 +360,6 @@ LogicalResult MachineOpConverter::dispatch() {
   // Begin mux chains for outputs
 
   auto hwPortList = hwModuleOp.getPortList();
-  size_t portIndex = 0;
   llvm::SmallVector<Backedge> outputBackedges;
   for (auto &port : hwPortList) {
     if (!port.isOutput())
@@ -516,7 +515,7 @@ MachineOpConverter::convertState(StateOp state) {
         comb::ICmpOp::create(b, machineOp.getLoc(), comb::ICmpPredicate::eq,
                              stateReg, encoding->encode(state));
 
-    for (int i = 0; i < outputOp->getNumOperands(); i++) {
+    for (size_t i = 0; i < outputOp->getNumOperands(); i++) {
       auto muxChainOut = outputMuxChainOuts[i];
       auto muxOp = comb::MuxOp::create(b, machineOp.getLoc(), stateCmp,
                                        outputOp->getOperand(i), muxChainOut);
