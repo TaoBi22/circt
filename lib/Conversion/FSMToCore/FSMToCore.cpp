@@ -385,12 +385,12 @@ LogicalResult MachineOpConverter::dispatch() {
   }
 
   nextStateWire.setValue(stateMuxChainOut);
-  for (auto varPair : variableToMuxChainOut) {
-    variableNextStateWires[varPair.first].setValue(varPair.second);
+  for (auto [variable, muxChainOut] : variableToMuxChainOut) {
+    variableNextStateWires[variable].setValue(muxChainOut);
   }
 
   // Replace variable values with their register counterparts.
-  for (auto &[variableOp, variableReg] : variableToRegister)
+  for (auto [variableOp, variableReg] : variableToRegister)
     variableOp.getResult().replaceAllUsesWith(variableReg);
 
   // Cast to values to appease builder
