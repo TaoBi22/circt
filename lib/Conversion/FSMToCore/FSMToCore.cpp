@@ -252,9 +252,6 @@ private:
   // A handle to the state encoder for this machine.
   std::unique_ptr<StateEncoding> encoding;
 
-  // A deterministic ordering of the states in this machine.
-  llvm::SmallVector<StateOp> orderedStates;
-
   // A mapping from a fsm.variable op to its register.
   llvm::MapVector<VariableOp, seq::CompRegOp> variableToRegister;
 
@@ -294,7 +291,8 @@ LogicalResult MachineOpConverter::dispatch() {
   b.setInsertionPoint(machineOp);
   auto loc = machineOp.getLoc();
   if (machineOp.getNumStates() < 2)
-    return machineOp.emitOpError() << "expected at least 2 states.";
+    return machineOp.emitOpError()
+           << "Only FSMs with 2 or more state are currently supported.";
 
   // Clone all referenced constants into the machine body - constants may have
   // been moved to the machine parent due to the lack of IsolationFromAbove.
