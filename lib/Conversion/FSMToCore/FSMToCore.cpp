@@ -306,11 +306,10 @@ LogicalResult MachineOpConverter::dispatch() {
   b.setInsertionPointToStart(hwModuleOp.getBodyBlock());
 
   // Replace all uses of the machine arguments with the arguments of the
-  // new created HW module.
-  for (auto args : llvm::zip(machineOp.getArguments(),
-                             hwModuleOp.getBodyBlock()->getArguments())) {
-    auto machineArg = std::get<0>(args);
-    auto hwModuleArg = std::get<1>(args);
+  // newly created HW module.
+  for (auto [machineArg, hwModuleArg] :
+       llvm::zip(machineOp.getArguments(),
+                 hwModuleOp.getBodyBlock()->getArguments())) {
     machineArg.replaceAllUsesWith(hwModuleArg);
   }
 
@@ -326,13 +325,13 @@ LogicalResult MachineOpConverter::dispatch() {
 
   Backedge nextStateWire = bb.get(stateType);
 
+  auto initialStateOp = machineOp.getInitialStateOp();
   stateReg = seq::CompRegOp::create(
       b, loc, nextStateWire, clock, reset,
-      /*reset value=*/encoding->encode(machineOp.getInitialStateOp()),
-      "state_reg",
+      /*reset value=*/encoding->encode(initialStateOp), "state_reg",
       /*powerOn value=*/
       seq::createConstantInitialValue(
-          b, encoding->encode(machineOp.getInitialStateOp()).getDefiningOp()));
+          b, encoding->encode(initialStateOp).getDefiningOp()));
   stateMuxChainOut = stateReg;
 
   llvm::DenseMap<VariableOp, Backedge> variableNextStateWires;
@@ -365,7 +364,6 @@ LogicalResult MachineOpConverter::dispatch() {
     return failure();
 
   // Begin mux chains for outputs
-
   auto hwPortList = hwModuleOp.getPortList();
   llvm::SmallVector<Backedge> outputBackedges;
   for (auto &port : hwPortList) {
