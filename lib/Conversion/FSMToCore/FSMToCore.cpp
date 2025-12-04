@@ -196,7 +196,8 @@ namespace {
 class MachineOpConverter {
 public:
   MachineOpConverter(OpBuilder &builder, MachineOp machineOp)
-      : machineOp(machineOp), b(builder) {}
+      : machineOp(machineOp), b(builder),
+        bb(BackedgeBuilder(builder, machineOp->getLoc())) {}
 
   // Converts the machine op to a hardware module.
   // 1. Creates a HWModuleOp for the machine op, with the same I/O as the FSM +
@@ -284,6 +285,8 @@ private:
   OpBuilder &b;
 
   mlir::Value stateMuxChainOut;
+
+  BackedgeBuilder bb;
 };
 } // namespace
 
@@ -320,8 +323,6 @@ LogicalResult MachineOpConverter::dispatch() {
 
   encoding = std::make_unique<StateEncoding>(b, machineOp, hwModuleOp);
   auto stateType = encoding->getStateType();
-
-  BackedgeBuilder bb(b, loc);
 
   Backedge nextStateWire = bb.get(stateType);
 
@@ -480,11 +481,13 @@ MachineOpConverter::moveOps(Block *block,
                             llvm::function_ref<bool(Operation *)> exclude) {
   for (auto &op : llvm::make_early_inc_range(*block)) {
     if (!isa<comb::CombDialect, hw::HWDialect, fsm::FSMDialect>(
-            op.getDialect()))
+            op.getDialect())) {
+      // Avoid giving unrelated errors about unbound backedges.
+      bb.abandon();
       return op.emitOpError()
              << "is unsupported (op from the "
              << op.getDialect()->getNamespace() << " dialect).";
-
+    }
     if (exclude && exclude(&op))
       continue;
 
