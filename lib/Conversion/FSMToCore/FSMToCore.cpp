@@ -399,7 +399,6 @@ LogicalResult MachineOpConverter::dispatch() {
     outputValues.push_back(backedge);
   }
   auto *oldOutputOp = hwModuleOp.getBodyBlock()->getTerminator();
-  // b.setInsertionPointToEnd();
   b.setInsertionPointToEnd(oldOutputOp->getBlock());
   oldOutputOp->erase();
   hw::OutputOp::create(b, loc, outputValues);
