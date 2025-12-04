@@ -366,15 +366,9 @@ LogicalResult MachineOpConverter::dispatch() {
   // Begin mux chains for outputs
   auto hwPortList = hwModuleOp.getPortList();
   llvm::SmallVector<Backedge> outputBackedges;
-  for (auto &port : hwPortList) {
-    if (!port.isOutput())
-      continue;
-    auto outputPortType = port.type;
-
-    auto nextOutputStateWire =
-        hw::ConstantOp::create(b, loc, outputPortType, 0);
-    outputMuxChainOuts.push_back(nextOutputStateWire);
-  }
+  for (auto &port : hwPortList)
+    if (port.isOutput())
+      outputMuxChainOuts.push_back(Value());
 
   // 3) Convert states and record their next-state value assignments.
   StateConversionResults stateConvResults;
@@ -519,10 +513,16 @@ MachineOpConverter::convertState(StateOp state) {
         comb::ICmpOp::create(b, machineOp.getLoc(), comb::ICmpPredicate::eq,
                              stateReg, encoding->encode(state));
 
-    for (size_t i = 0; i < outputOp->getNumOperands(); i++) {
+    for (auto [i, operand] : llvm::enumerate(outputOp.getOperands())) {
       auto muxChainOut = outputMuxChainOuts[i];
-      auto muxOp = comb::MuxOp::create(b, machineOp.getLoc(), stateCmp,
-                                       outputOp->getOperand(i), muxChainOut);
+      // If this is the first node in the mux chain, just use this value
+      // directly as the default
+      if (!muxChainOut) {
+        outputMuxChainOuts[i] = operand;
+        continue;
+      }
+      auto muxOp = comb::MuxOp::create(b, machineOp.getLoc(), stateCmp, operand,
+                                       muxChainOut);
       outputMuxChainOuts[i] = muxOp;
     }
     res.outputs = outputOp.getOperands(); // 3.2
