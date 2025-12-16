@@ -22,17 +22,6 @@ target_link_libraries(circt-opt
   CIRCTAnalysisTestPasses
   CIRCTBMCTransforms
   CIRCTExportVerilog
-  CIRCTFIRRTL
-  CIRCTFIRRTLToHW
-  CIRCTFIRRTLTransforms
-  CIRCTFSM
-  CIRCTFSMTransforms
-  CIRCTFSMToCore
-  CIRCTFSMToSV
-  CIRCTHandshake
-  CIRCTHandshakeToDC
-  CIRCTHandshakeToHW
-  CIRCTHandshakeTransforms
   CIRCTLECTransforms
   CIRCTTransforms
 
