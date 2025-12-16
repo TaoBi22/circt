@@ -31,14 +31,13 @@ using namespace mlir;
 using namespace circt;
 using namespace fsm;
 
-/// Get the port info of a FSM machine. Clock and reset port are also added.
 namespace {
 struct ClkRstIdxs {
   size_t clockIdx;
   size_t resetIdx;
 };
 
-// Clones constants implicitly captured by the region, into the region.
+/// Clones constants implicitly captured by the region, into the region.
 static void cloneConstantsIntoRegion(Region &region, OpBuilder &builder) {
   // Values implicitly captured by the region.
   llvm::SetVector<Value> captures;
@@ -98,33 +97,25 @@ class StateEncoding {
 public:
   StateEncoding(OpBuilder &b, MachineOp machine, hw::HWModuleOp hwModule);
 
-  // Get the encoded value for a state.
+  /// Get the encoded value for a state.
   Value encode(StateOp state);
-  // Get the state corresponding to an encoded value.
+  /// Get the state corresponding to an encoded value.
   StateOp decode(Value value);
 
-  // Returns the type which encodes the state values.
+  /// Returns the type which encodes the state values.
   Type getStateType() { return stateType; }
 
 protected:
-  // Creates a constant value in the module for the given encoded state
-  // and records the state value in the mappings. An inner symbol is
-  // attached to the wire to avoid it being optimized away.
-  // The constant can optionally be assigned behind a sv wire - doing so at this
-  // point ensures that constants don't end up behind "_GEN#" wires in the
-  // module.
+  /// Creates a constant value in the module for the given encoded state
+  /// and records the state value in the mappings.
   void setEncoding(StateOp state, Value v);
 
-  // A mapping between a StateOp and its corresponding encoded value.
+  /// A mapping between a StateOp and its corresponding encoded value.
   SmallDenseMap<StateOp, Value> stateToValue;
 
-  // A mapping between an encoded value and its corresponding StateOp.
+  /// A mapping between an encoded value and its corresponding StateOp.
   SmallDenseMap<Value, StateOp> valueToState;
 
-  // A mapping between an encoded value and the source value in the IR.
-  SmallDenseMap<Value, Value> valueToSrcValue;
-
-  // The enum type for the states.
   Type stateType;
 
   OpBuilder &b;
@@ -136,10 +127,6 @@ StateEncoding::StateEncoding(OpBuilder &b, MachineOp machine,
                              hw::HWModuleOp hwModule)
     : b(b), machine(machine), hwModule(hwModule) {
   Location loc = machine.getLoc();
-  llvm::SmallVector<Attribute> stateNames;
-
-  for (auto state : machine.getBody().getOps<StateOp>())
-    stateNames.push_back(b.getStringAttr(state.getName()));
 
   OpBuilder::InsertionGuard guard(b);
   b.setInsertionPointToStart(&hwModule.getBodyRegion().front());
@@ -182,7 +169,6 @@ void StateEncoding::setEncoding(StateOp state, Value v) {
          "state already encoded");
   stateToValue[state] = v;
   valueToState[v] = state;
-  valueToSrcValue[v] = v;
 }
 } // namespace
 
@@ -207,10 +193,8 @@ public:
   //    3.3.2. Creates a case pattern (mux chain) for the transition guard
   //  3.4. Creates a next-state value for the state based on the transition
   //  guards.
-  // 4. Assigns next-state values for the states in a case statement on the
-  // state reg.
-  // 5. Assigns the current-state outputs for the states in a case statement
-  // on the state reg.
+  // 4. Assigns next-state values for the states in a mux chain.
+  // 5. Assigns the current-state outputs for the states in a mux chain.
   LogicalResult dispatch();
 
 private:
@@ -505,7 +489,6 @@ MachineOpConverter::convertState(StateOp state) {
       return failure();
 
     OutputOp outputOp = cast<fsm::OutputOp>(*outputOpRes);
-    // TODO: two of these, dedup - one in convertTransitions too
     auto stateCmp =
         comb::ICmpOp::create(b, machineOp.getLoc(), comb::ICmpPredicate::eq,
                              stateReg, encoding->encode(state));
