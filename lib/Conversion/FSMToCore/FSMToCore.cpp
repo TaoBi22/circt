@@ -286,12 +286,7 @@ LogicalResult MachineOpConverter::dispatch() {
 
   llvm::DenseMap<VariableOp, Backedge> variableNextStateWires;
   for (auto variableOp : machineOp.front().getOps<fsm::VariableOp>()) {
-    auto initValueAttr = dyn_cast<IntegerAttr>(variableOp.getInitValueAttr());
-    if (!initValueAttr) {
-      bb.abandon();
-      return variableOp.emitOpError()
-             << "only integer initial values are supported.";
-    }
+    auto initValueAttr = cast<IntegerAttr>(variableOp.getInitValueAttr());
     Type varType = variableOp.getType();
     auto varLoc = variableOp.getLoc();
     auto nextVariableStateWire = bb.get(varType);
@@ -496,7 +491,7 @@ void FSMToCorePass::runOnOperation() {
   // Traverse all machines and convert.
   for (auto machine : llvm::make_early_inc_range(module.getOps<MachineOp>())) {
 
-    // Check validity of stateType attribute while we can still easily error out
+    // Check validity of the FSM while we can still easily error out
     if (machine->getAttr("stateType")) {
       auto stateType = dyn_cast<TypeAttr>(machine->getAttr("stateType"));
       if (!stateType) {
@@ -506,6 +501,14 @@ void FSMToCorePass::runOnOperation() {
       }
       if (!isa<IntegerType>(stateType.getValue())) {
         machine->emitError("stateType attribute must name an integer type");
+        signalPassFailure();
+        return;
+      }
+    }
+    for (auto variableOp : machine.front().getOps<fsm::VariableOp>()) {
+      if (!isa<IntegerType>(variableOp.getType())) {
+        variableOp.emitOpError(
+            "only integer variables are currently supported");
         signalPassFailure();
         return;
       }
