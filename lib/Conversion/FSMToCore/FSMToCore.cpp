@@ -176,12 +176,6 @@ Value StateEncoding::encode(StateOp state) {
   assert(it != stateToValue.end() && "state not found");
   return it->second;
 }
-// Get the state corresponding to an encoded value.
-StateOp StateEncoding::decode(Value value) {
-  auto it = valueToState.find(value);
-  assert(it != valueToState.end() && "encoded state not found");
-  return it->second;
-}
 
 void StateEncoding::setEncoding(StateOp state, Value v) {
   assert(stateToValue.find(state) == stateToValue.end() &&
