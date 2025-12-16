@@ -252,9 +252,6 @@ private:
 LogicalResult MachineOpConverter::dispatch() {
   b.setInsertionPoint(machineOp);
   auto loc = machineOp.getLoc();
-  if (machineOp.getNumStates() < 2)
-    return machineOp.emitOpError()
-           << "Only FSMs with 2 or more state are currently supported.";
 
   // Clone all referenced constants into the machine body - constants may have
   // been moved to the machine parent due to the lack of IsolationFromAbove.
