@@ -133,15 +133,8 @@ StateEncoding::StateEncoding(OpBuilder &b, MachineOp machine,
   // If stateType is explicitly provided, use this - otherwise, calculate the
   // minimum int size that can represent all states
   if (machine->getAttr("stateType")) {
-    stateType = dyn_cast<TypeAttr>(machine->getAttr("stateType")).getValue();
-    if (!stateType) {
-      machine->emitError("stateType attribute does not name a type");
-      return;
-    }
-    if (!isa<IntegerType>(stateType)) {
-      machine->emitError("stateType attribute must name an integer type");
-      return;
-    }
+    // We already checked that a static cast is valid
+    stateType = cast<TypeAttr>(machine->getAttr("stateType")).getValue();
   } else {
     int numOps = std::distance(machine.getBody().getOps<StateOp>().begin(),
                                machine.getBody().getOps<StateOp>().end());
@@ -500,6 +493,22 @@ void FSMToCorePass::runOnOperation() {
   b.setInsertionPointToStart(module.getBody());
   // Traverse all machines and convert.
   for (auto machine : llvm::make_early_inc_range(module.getOps<MachineOp>())) {
+
+    // Check validity of stateType attribute while we can still easily error out
+    if (machine->getAttr("stateType")) {
+      auto stateType = dyn_cast<TypeAttr>(machine->getAttr("stateType"));
+      if (!stateType) {
+        machine->emitError("stateType attribute does not name a type");
+        signalPassFailure();
+        return;
+      }
+      if (!isa<IntegerType>(stateType.getValue())) {
+        machine->emitError("stateType attribute must name an integer type");
+        signalPassFailure();
+        return;
+      }
+    }
+
     MachineOpConverter converter(b, machine);
 
     if (failed(converter.dispatch())) {
