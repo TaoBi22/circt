@@ -198,18 +198,9 @@ public:
   LogicalResult dispatch();
 
 private:
-  struct StateConversionResult {
-    // Value of the next state output signal of the converted state.
-    Value nextState;
-    // Value of the output signals of the converted state.
-    llvm::SmallVector<Value> outputs;
-  };
-
-  using StateConversionResults = DenseMap<StateOp, StateConversionResult>;
-
   // Converts a StateOp within this machine, and returns the value corresponding
   // to the next-state output of the op.
-  FailureOr<StateConversionResult> convertState(StateOp state);
+  LogicalResult convertState(StateOp state);
 
   // Converts the outgoing transitions of a state and returns the value
   // corresponding to the next-state output of the op.
@@ -350,7 +341,6 @@ LogicalResult MachineOpConverter::dispatch() {
       outputMuxChainOuts.push_back(Value());
 
   // 3) Convert states and record their next-state value assignments.
-  StateConversionResults stateConvResults;
   for (auto state : machineOp.getBody().getOps<StateOp>()) {
     auto stateConvRes = convertState(state);
     if (failed(stateConvRes))
@@ -477,10 +467,7 @@ MachineOpConverter::moveOps(Block *block,
   return nullptr;
 }
 
-FailureOr<MachineOpConverter::StateConversionResult>
-MachineOpConverter::convertState(StateOp state) {
-  MachineOpConverter::StateConversionResult res;
-
+LogicalResult MachineOpConverter::convertState(StateOp state) {
   // 3.1) Convert the output region by moving the operations into the module
   // scope and gathering the operands of the output op.
   if (!state.getOutput().empty()) {
@@ -505,7 +492,6 @@ MachineOpConverter::convertState(StateOp state) {
                                        muxChainOut);
       outputMuxChainOuts[i] = muxOp;
     }
-    res.outputs = outputOp.getOperands(); // 3.2
   }
 
   auto transitions = llvm::SmallVector<TransitionOp>(
@@ -515,8 +501,7 @@ MachineOpConverter::convertState(StateOp state) {
   auto nextStateRes = convertTransitions(state, transitions);
   if (failed(nextStateRes))
     return failure();
-  res.nextState = *nextStateRes;
-  return res;
+  return success();
 }
 namespace {
 struct FSMToCorePass : public circt::impl::ConvertFSMToCoreBase<FSMToCorePass> {
