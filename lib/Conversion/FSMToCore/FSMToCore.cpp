@@ -232,16 +232,6 @@ private:
   // Mapping from a hw port to
   llvm::SmallVector<mlir::Value> outputMuxChainOuts;
 
-  // A mapping from a state to variable updates performed during outgoing state
-  // transitions.
-  llvm::SmallDenseMap<
-      /*currentState*/ StateOp,
-      llvm::SmallDenseMap<
-          /*targetState*/ StateOp,
-          llvm::MapVector</*targetVariable*/ VariableOp,
-                          /*targetValue*/ Value>>>
-      stateToVariableUpdates;
-
   // A handle to the MachineOp being converted.
   MachineOp machineOp;
 
@@ -401,9 +391,6 @@ MachineOpConverter::convertTransitions( // NOLINT(misc-no-recursion)
         VariableOp variableOp = updateOp.getVariableOp();
         variableUpdates[variableOp] = updateOp.getValue();
       }
-
-      stateToVariableUpdates[currentState][transition.getNextStateOp()] =
-          variableUpdates;
     }
 
     // Guard conversion
