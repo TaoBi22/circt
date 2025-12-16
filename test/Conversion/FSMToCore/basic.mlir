@@ -1,4 +1,4 @@
-// RUN: circt-opt -split-input-file -convert-fsm-to-core %s | FileCheck %s
+// RUN: circt-opt -convert-fsm-to-core %s | FileCheck %s
 
 // CHECK-LABEL: hw.module @alternating(
 // CHECK-SAME: out {{.+}} : i8
