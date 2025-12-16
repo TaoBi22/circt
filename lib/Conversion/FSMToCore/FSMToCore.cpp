@@ -287,9 +287,11 @@ LogicalResult MachineOpConverter::dispatch() {
   llvm::DenseMap<VariableOp, Backedge> variableNextStateWires;
   for (auto variableOp : machineOp.front().getOps<fsm::VariableOp>()) {
     auto initValueAttr = dyn_cast<IntegerAttr>(variableOp.getInitValueAttr());
-    if (!initValueAttr)
-      return variableOp.emitOpError() << "expected an integer attribute "
-                                         "for the initial value.";
+    if (!initValueAttr) {
+      bb.abandon();
+      return variableOp.emitOpError()
+             << "only integer initial values are supported.";
+    }
     Type varType = variableOp.getType();
     auto varLoc = variableOp.getLoc();
     auto nextVariableStateWire = bb.get(varType);

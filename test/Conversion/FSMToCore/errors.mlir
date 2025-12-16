@@ -30,3 +30,13 @@ fsm.machine @foo(%arg0: i1) -> (i1) attributes {initialState = "A", stateType = 
   } transitions {
   }
 }
+
+// -----
+
+fsm.machine @foo() -> () attributes {initialState = "A"} {
+  // expected-error @below {{only integer initial values are supported.}}
+  %var = fsm.variable "var" {initValue = 0.0 : f32} : f32
+  fsm.state @A output  {
+  } transitions {
+  }
+}
