@@ -179,15 +179,14 @@ public:
   // machine.
   // 3. Iterates over all states in the machine
   //  3.1. Moves all `comb` logic into the body of the HW module
-  //  3.2. Records the SSA value(s) associated to the output ports in the state
+  //  3.2. Extend the output logic mux chains with cases for this state
   //  3.3. Iterates over the transitions of the state
   //    3.3.1. Moves all `comb` logic in the transition guard/action regions to
   //            the body of the HW module.
-  //    3.3.2. Creates a case pattern (mux chain) for the transition guard
-  //  3.4. Creates a next-state value for the state based on the transition
-  //  guards.
-  // 4. Assigns next-state values for the states in a mux chain.
-  // 5. Assigns the current-state outputs for the states in a mux chain.
+  //    3.3.2. Extends the next state mux chain with an optionally guarded case
+  //    for this transition.
+  // 4. Connect the state and variable mux chain outputs to the corresponding
+  // register inputs.
   LogicalResult dispatch();
 
 private:
@@ -324,6 +323,8 @@ LogicalResult MachineOpConverter::dispatch() {
       return failure();
   }
 
+  // 4) Set the input of the state and variable registers to the output of their
+  // mux chains.
   nextStateWire.setValue(stateMuxChainOut);
   for (auto [variable, muxChainOut] : variableToMuxChainOut) {
     variableNextStateWires[variable].setValue(muxChainOut);
@@ -449,6 +450,7 @@ LogicalResult MachineOpConverter::convertState(StateOp state) {
     if (failed(outputOpRes))
       return failure();
 
+    // 3.2) Extend the output mux chains with a comparison on this state
     OutputOp outputOp = cast<fsm::OutputOp>(*outputOpRes);
     auto stateCmp =
         comb::ICmpOp::create(b, machineOp.getLoc(), comb::ICmpPredicate::eq,
@@ -470,8 +472,8 @@ LogicalResult MachineOpConverter::convertState(StateOp state) {
 
   auto transitions = llvm::SmallVector<TransitionOp>(
       state.getTransitions().getOps<TransitionOp>());
-  // 3.3, 3.4) Convert the transitions and record the next-state value
-  // derived from the transitions being selected in a priority-encoded manner.
+  // 3.3) Convert the transitions and add a case to the next-state mux
+  // chain for each
   auto nextStateRes = convertTransitions(state, transitions);
   if (failed(nextStateRes))
     return failure();
