@@ -7,7 +7,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "ImportVerilogInternals.h"
+#include "circt/Dialect/Moore/MooreOps.h"
 #include "circt/Dialect/Moore/MooreTypes.h"
+#include "circt/Support/LLVM.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "slang/ast/EvalContext.h"
@@ -2340,6 +2342,12 @@ Value Context::convertToSimpleBitVector(Value value) {
     return {};
   if (isa<moore::IntType>(value.getType()))
     return value;
+  if (isa<mlir::IntegerType>(value.getType()))
+    return materializeConversion(
+        moore::IntType::get(getContext(),
+                            cast<mlir::IntegerType>(value.getType()).getWidth(),
+                            moore::Domain::FourValued),
+        value, false, value.getLoc());
 
   // Some operations in Slang's AST, for example bitwise or `|`, don't cast
   // packed struct/array operands to simple bit vectors but directly operate
@@ -2621,6 +2629,14 @@ Value Context::materializeConversion(Type type, Value value, bool isSigned,
       isa<moore::ClassHandleType>(value.getType()))
     return maybeUpcastHandle(*this, value, cast<moore::ClassHandleType>(type));
 
+  // Handle builtin int to Moore int
+  if (auto intType = dyn_cast<moore::IntType>(type);
+      intType && isa<mlir::IntegerType>(value.getType())) {
+    auto mooreInt = builder.createOrFold<moore::FromBuiltinIntOp>(loc, value);
+    return intType.getDomain() == moore::Domain::FourValued
+               ? builder.createOrFold<moore::IntToLogicOp>(loc, mooreInt)
+               : mooreInt;
+  }
   // TODO: Handle other conversions with dedicated ops.
   if (value.getType() != type)
     value = moore::ConversionOp::create(builder, loc, type, value);

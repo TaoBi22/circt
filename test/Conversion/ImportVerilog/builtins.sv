@@ -415,6 +415,8 @@ module SampleValueBuiltins #() (
   // CHECK-NEXT: [[CURRENT:%.+]] = moore.to_builtin_int [[C2_INT]] : i1
   // CHECK-NEXT: [[PAST:%.+]] = ltl.past [[CURRENT]], 1 : i1
   past_clk: assert property (@(posedge clk_i) clk_i |=> $past(clk_i));
+  // Check LTL/non-LTL mixing
+  mixed_ltl: assert property (@(posedge clk_i) clk_i == $past(clk_i));
 
 endmodule
 
