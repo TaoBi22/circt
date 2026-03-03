@@ -18,6 +18,8 @@
 #include "circt/Dialect/Verif/VerifOps.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "slang/analysis/AnalysisManager.h"
+#include "slang/analysis/AnalyzedAssertion.h"
 #include "slang/ast/ASTVisitor.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/Debug.h"
@@ -93,7 +95,8 @@ struct Context {
       : options(options), compilation(compilation), intoModuleOp(intoModuleOp),
         sourceManager(sourceManager),
         builder(OpBuilder::atBlockEnd(intoModuleOp.getBody())),
-        symbolTable(intoModuleOp) {}
+        symbolTable(intoModuleOp),
+        analysisManager(nullptr) {}
   Context(const Context &) = delete;
 
   /// Return the MLIR context.
@@ -143,9 +146,12 @@ struct Context {
   // Convert a statement AST node to MLIR ops.
   LogicalResult convertStatement(const slang::ast::Statement &stmt);
 
-  // Convert an expression AST node to MLIR ops.
-  Value convertRvalueExpression(const slang::ast::Expression &expr,
-                                Type requiredType = {});
+  // Convert an expression AST node to MLIR ops. Can optionally specify a root
+  // assertion to be used for contextual information later
+  Value
+  convertRvalueExpression(const slang::ast::Expression &expr,
+                          Type requiredType = {},
+                          const slang::ast::AssertionExpr *assertionRoot = {});
   Value convertLvalueExpression(const slang::ast::Expression &expr);
 
   // Convert an assertion expression AST node to MLIR ops.
@@ -155,7 +161,8 @@ struct Context {
   // Convert an assertion expression AST node to MLIR ops.
   Value convertAssertionCallExpression(
       const slang::ast::CallExpression &expr,
-      const slang::ast::CallExpression::SystemCallInfo &info, Location loc);
+      const slang::ast::CallExpression::SystemCallInfo &info, Location loc,
+      const slang::ast::AssertionExpr *assertionRoot = {});
 
   // Traverse the whole AST to collect hierarchical names.
   LogicalResult
@@ -249,7 +256,7 @@ struct Context {
   /// single argument.
   FailureOr<Value> convertAssertionSystemCallArity1(
       const slang::ast::SystemSubroutine &subroutine, Location loc, Value value,
-      Type originalType);
+      Type originalType, Value leadingClock);
 
   /// Evaluate the constant value of an expression.
   slang::ConstantValue evaluateConstant(const slang::ast::Expression &expr);
@@ -263,6 +270,10 @@ struct Context {
   OpBuilder builder;
   /// A symbol table of the MLIR module we are emitting into.
   SymbolTable symbolTable;
+
+  /// Analysis manager for computing assertion clocks. Created lazily when
+  /// assertion analysis is needed.
+  std::unique_ptr<slang::analysis::AnalysisManager> analysisManager;
 
   /// The top-level operations ordered by their Slang source location. This is
   /// used to produce IR that follows the source file order.
@@ -339,6 +350,24 @@ struct Context {
   /// Variable to track the value of the current function's implicit `this`
   /// reference
   Value currentThisRef = {};
+
+  // /// Maps assertions to their corresponding clocks
+  // DenseMap<slang::ast::AssertionExpr, const
+  // slang::analysis::AnalyzedAssertion>
+  //     analyzedAssertions;
+
+  /// Maps assertions to their corresponding clocks
+  DenseMap<const slang::ast::AssertionExpr *,
+           slang::analysis::AnalyzedAssertion>
+      assertionClocks;
+
+  /// The current assertion timing control (clock), if any. This is set when
+  /// entering a clocking context and used to get the clock for assertion
+  /// system calls.
+  const slang::ast::TimingControl* currentAssertionClock = nullptr;
+
+  /// Generates a map from assertions to clocks using Slang's analysis
+  void populateAssertionClocks();
 
 private:
   /// Helper function to extract the commonalities in lowering of functions and

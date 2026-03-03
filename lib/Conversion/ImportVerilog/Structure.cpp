@@ -677,6 +677,8 @@ struct ModuleVisitor : public BaseVisitor {
 LogicalResult Context::convertCompilation() {
   const auto &root = compilation.getRoot();
 
+  populateAssertionClocks();
+
   // Keep track of the local time scale. `getTimeScale` automatically looks
   // through parent scopes to find the time scale effective locally.
   auto prevTimeScale = timeScale;

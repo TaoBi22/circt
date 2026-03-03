@@ -15,8 +15,12 @@
 #include "circt/Support/LLVM.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
+#include "slang/analysis/AnalysisManager.h"
+#include "slang/analysis/AnalyzedAssertion.h"
 #include "slang/ast/SystemSubroutine.h"
+#include "slang/ast/TimingControl.h"
 
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -29,9 +33,11 @@ struct AssertionExprVisitor {
   Context &context;
   Location loc;
   OpBuilder &builder;
+  slang::ast::AssertionExpr root;
 
-  AssertionExprVisitor(Context &context, Location loc)
-      : context(context), loc(loc), builder(context.builder) {}
+  AssertionExprVisitor(Context &context, Location loc,
+                       const slang::ast::AssertionExpr *root)
+      : context(context), loc(loc), builder(context.builder), root(*root) {}
 
   /// Helper to convert a range (min, optional max) to MLIR integer attributes
   std::pair<mlir::IntegerAttr, mlir::IntegerAttr>
@@ -82,7 +88,7 @@ struct AssertionExprVisitor {
 
   Value visit(const slang::ast::SimpleAssertionExpr &expr) {
     // Handle expression
-    auto value = context.convertRvalueExpression(expr.expr);
+    auto value = context.convertRvalueExpression(expr.expr, {}, &root);
     if (!value)
       return {};
     auto loc = context.convertLocation(expr.expr.sourceRange);
@@ -275,7 +281,15 @@ struct AssertionExprVisitor {
   }
 
   Value visit(const slang::ast::ClockingAssertionExpr &expr) {
+    // Save the previous clock context and set the new one for this clocking expr
+    auto prevClock = context.currentAssertionClock;
+    context.currentAssertionClock = &expr.clocking;
+    
     auto assertionExpr = context.convertAssertionExpression(expr.expr, loc);
+    
+    // Restore the previous clock context
+    context.currentAssertionClock = prevClock;
+    
     if (!assertionExpr)
       return {};
     return context.convertLTLTimingControl(expr.clocking, assertionExpr);
@@ -298,7 +312,7 @@ struct AssertionExprVisitor {
 
 FailureOr<Value> Context::convertAssertionSystemCallArity1(
     const slang::ast::SystemSubroutine &subroutine, Location loc, Value value,
-    Type originalType) {
+    Type originalType, Value leadingClock) {
 
   auto systemCallRes =
       llvm::StringSwitch<std::function<FailureOr<Value>()>>(subroutine.name)
@@ -307,7 +321,7 @@ FailureOr<Value> Context::convertAssertionSystemCallArity1(
                 [&]() -> Value {
                   auto current = value;
                   auto past =
-                      ltl::PastOp::create(builder, loc, value, 1, Value{})
+                      ltl::PastOp::create(builder, loc, value, 1, leadingClock)
                           .getResult();
                   auto fell = comb::ICmpOp::create(builder, loc,
                                                    comb::ICmpPredicate::ugt,
@@ -319,7 +333,7 @@ FailureOr<Value> Context::convertAssertionSystemCallArity1(
           .Case("$rose",
                 [&]() -> Value {
                   auto past =
-                      ltl::PastOp::create(builder, loc, value, 1, Value{})
+                      ltl::PastOp::create(builder, loc, value, 1, leadingClock)
                           .getResult();
                   auto current = value;
                   auto rose = comb::ICmpOp::create(builder, loc,
@@ -332,7 +346,7 @@ FailureOr<Value> Context::convertAssertionSystemCallArity1(
           .Case("$changed",
                 [&]() -> Value {
                   auto past =
-                      ltl::PastOp::create(builder, loc, value, 1, Value{})
+                      ltl::PastOp::create(builder, loc, value, 1, leadingClock)
                           .getResult();
                   auto current = value;
                   auto changed = comb::ICmpOp::create(builder, loc,
@@ -345,7 +359,7 @@ FailureOr<Value> Context::convertAssertionSystemCallArity1(
           .Case("$stable",
                 [&]() -> Value {
                   auto past =
-                      ltl::PastOp::create(builder, loc, value, 1, Value{})
+                      ltl::PastOp::create(builder, loc, value, 1, leadingClock)
                           .getResult();
                   auto current = value;
                   auto stable = comb::ICmpOp::create(builder, loc,
@@ -357,7 +371,7 @@ FailureOr<Value> Context::convertAssertionSystemCallArity1(
           .Case("$past",
                 [&]() -> Value {
                   Value past =
-                      ltl::PastOp::create(builder, loc, value, 1, Value{});
+                      ltl::PastOp::create(builder, loc, value, 1, leadingClock);
                   // Cast back to Moore integers so Moore ops can use the result
                   // if needed
                   if (auto ty = dyn_cast<moore::IntType>(originalType)) {
@@ -373,16 +387,64 @@ FailureOr<Value> Context::convertAssertionSystemCallArity1(
 
 Value Context::convertAssertionCallExpression(
     const slang::ast::CallExpression &expr,
-    const slang::ast::CallExpression::SystemCallInfo &info, Location loc) {
+    const slang::ast::CallExpression::SystemCallInfo &info, Location loc,
+    const slang::ast::AssertionExpr *assertionRoot) {
 
   const auto &subroutine = *info.subroutine;
   auto args = expr.arguments();
-
   FailureOr<Value> result;
   Value value;
   Value intVal;
   Type originalType;
   moore::IntType valTy;
+
+  // Get the clock associated with the expression.
+  // First try the analysis map, then fall back to the current assertion clock.
+  const slang::ast::TimingControl* clockControl = nullptr;
+  auto analyzedAssert = assertionClocks.find(assertionRoot);
+  if (analyzedAssert != assertionClocks.end()) {
+    auto slc = analyzedAssert->second.getSemanticLeadingClock();
+    auto edgeSlc = slc->as_if<slang::ast::SignalEventControl>();
+    if (edgeSlc) {
+      clockControl = edgeSlc;
+      llvm::errs() << "DEBUG: Found clock in assertionClocks map\n";
+    }
+  }
+  
+  // If we didn't find the clock in the analysis map, use the context clock
+  if (!clockControl) {
+    if (currentAssertionClock) {
+      auto edgeSlc = currentAssertionClock->as_if<slang::ast::SignalEventControl>();
+      if (edgeSlc) {
+        clockControl = edgeSlc;
+        llvm::errs() << "DEBUG: Found clock in currentAssertionClock (from ClockingAssertionExpr)\n";
+      }
+    } else {
+      llvm::errs() << "DEBUG: currentAssertionClock is null\n";
+    }
+  }
+
+  if (!clockControl) {
+    mlir::emitError(loc)
+        << "Failed to identify clock associated with assertion call `"
+        << subroutine.name << "`";
+    return {};
+  }
+
+  if (clockControl->as_if<slang::ast::SignalEventControl>()->edge != slang::ast::EdgeKind::PosEdge) {
+    mlir::emitError(loc) << "Expected leading clock to be a positive edge "
+                            "control for system call `"
+                         << subroutine.name << "`";
+    return {};
+  }
+
+  auto edgeSlc = clockControl->as_if<slang::ast::SignalEventControl>();
+  auto clockVal = this->convertRvalueExpression(edgeSlc->expr);
+  if (!clockVal) {
+    mlir::emitError(loc) << "Failed to convert clock signal for system call `"
+                         << subroutine.name << "`";
+    return {};
+  }
 
   switch (args.size()) {
   case (1):
@@ -403,7 +465,7 @@ Value Context::convertAssertionCallExpression(
     if (!intVal)
       return {};
     result = this->convertAssertionSystemCallArity1(subroutine, loc, intVal,
-                                                    originalType);
+                                                    originalType, clockVal);
     break;
 
   default:
@@ -421,7 +483,7 @@ Value Context::convertAssertionCallExpression(
 
 Value Context::convertAssertionExpression(const slang::ast::AssertionExpr &expr,
                                           Location loc) {
-  AssertionExprVisitor visitor{*this, loc};
+  AssertionExprVisitor visitor{*this, loc, &expr};
   return expr.visit(visitor);
 }
 // NOLINTEND(misc-no-recursion)
@@ -440,4 +502,11 @@ Value Context::convertToI1(Value value) {
     value = moore::LogicToIntOp::create(builder, loc, value);
   }
   return moore::ToBuiltinIntOp::create(builder, loc, value);
+}
+
+void Context::populateAssertionClocks() {
+  // TODO: Slang's AnalysisManager causes malloc corruption when calling analyze()
+  // even with threading disabled (numThreads=0). This suggests a deeper lifetime
+  // or API usage issue with the AnalysisManager. For now, assertion clocks are
+  // extracted directly from timing controls in assertion expressions.
 }

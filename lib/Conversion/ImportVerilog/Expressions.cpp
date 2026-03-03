@@ -12,6 +12,7 @@
 #include "mlir/IR/Value.h"
 #include "slang/ast/EvalContext.h"
 #include "slang/ast/SystemSubroutine.h"
+#include "slang/ast/expressions/AssertionExpr.h"
 #include "slang/ast/types/AllTypes.h"
 #include "slang/syntax/AllSyntax.h"
 #include "llvm/ADT/ScopeExit.h"
@@ -561,9 +562,14 @@ struct ExprVisitor {
 // NOLINTBEGIN(misc-no-recursion)
 namespace {
 struct RvalueExprVisitor : public ExprVisitor {
-  RvalueExprVisitor(Context &context, Location loc)
-      : ExprVisitor(context, loc, /*isLvalue=*/false) {}
+  RvalueExprVisitor(Context &context, Location loc,
+                    const slang::ast::AssertionExpr *root = {})
+      : ExprVisitor(context, loc, /*isLvalue=*/false), assertionRoot(root) {}
   using ExprVisitor::visit;
+
+  /// If this is an assertion, we need to keep track of the root assertion to
+  /// get clocking information
+  const slang::ast::AssertionExpr *assertionRoot;
 
   // Handle references to the left-hand side of a parent assignment.
   Value visit(const slang::ast::LValueReferenceExpression &expr) {
@@ -1599,7 +1605,8 @@ struct RvalueExprVisitor : public ExprVisitor {
             .Default(false);
 
     if (isAssertionCall)
-      return context.convertAssertionCallExpression(expr, info, loc);
+      return context.convertAssertionCallExpression(expr, info, loc,
+                                                    this->assertionRoot);
 
     auto args = expr.arguments();
 
@@ -2160,10 +2167,11 @@ struct LvalueExprVisitor : public ExprVisitor {
 // Entry Points
 //===----------------------------------------------------------------------===//
 
-Value Context::convertRvalueExpression(const slang::ast::Expression &expr,
-                                       Type requiredType) {
+Value Context::convertRvalueExpression(
+    const slang::ast::Expression &expr, Type requiredType,
+    const slang::ast::AssertionExpr *assertionRoot) {
   auto loc = convertLocation(expr.sourceRange);
-  auto value = expr.visit(RvalueExprVisitor(*this, loc));
+  auto value = expr.visit(RvalueExprVisitor(*this, loc, assertionRoot));
   if (value && requiredType)
     value =
         materializeConversion(requiredType, value, expr.type->isSigned(), loc);

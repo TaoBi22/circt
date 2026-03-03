@@ -286,6 +286,7 @@ LogicalResult ImportDriver::importVerilog(ModuleOp module) {
                     debug::DebugDialect>();
   auto conversionTimer = ts.nest("Verilog to dialect mapping");
   Context context(options, *compilation, module, driver.sourceManager);
+  context.populateAssertionClocks();
   if (failed(context.convertCompilation()))
     return failure();
   conversionTimer.stop();
