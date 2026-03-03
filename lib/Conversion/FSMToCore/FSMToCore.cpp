@@ -27,11 +27,6 @@ namespace circt {
 #include "circt/Conversion/Passes.h.inc"
 } // namespace circt
 
-namespace circt {
-#define GEN_PASS_DEF_CONVERTFSMTOCORE
-#include "circt/Conversion/Passes.h.inc"
-} // namespace circt
-
 using namespace mlir;
 using namespace circt;
 using namespace fsm;
