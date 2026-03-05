@@ -2,8 +2,6 @@
 
 import sys, re, os
 
-FSMTRoot = "../../paper-evals/fsm-mc-benchmarking/fsm-circt/"
-
 if len(sys.argv) < 3:
     print("Usage: ./run_tv.py <FSM mlir file> <bound>")
     sys.exit(-1)
@@ -107,8 +105,8 @@ print("Output names:", outputNames)
 os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module={moduleName} bound={bound} rising-clocks-only\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt=\"rising-clocks-only\" --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
 
 # FSM files
-os.system(f"{FSMTRoot}/build/bin/circt-opt --convert-fsm-to-smt-safety=\"with-time\" {fsmFile} > {builddir}/safety.mlir")
-os.system(f"{FSMTRoot}/build/bin/circt-opt --convert-fsm-to-smt-safety {fsmFile} > {builddir}/liveness.mlir")
+os.system(f"../build/bin/circt-opt --convert-fsm-to-smt=\"with-time\" {fsmFile} > {builddir}/safety.mlir")
+os.system(f"../build/bin/circt-opt --convert-fsm-to-smt {fsmFile} > {builddir}/liveness.mlir")
 
 # modify names in FSM files to avoid name conflicts
 os.system(f"sed -i \"s/%/%obs/g\" {builddir}/safety.mlir")
