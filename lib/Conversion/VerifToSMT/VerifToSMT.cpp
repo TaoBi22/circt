@@ -767,7 +767,7 @@ void ConvertVerifToSMTPass::runOnOperation() {
           if (numAssertions == 0) {
             op->emitWarning("no property provided to check in module - will "
                             "trivially find no violations.");
-            propertylessBMCOps.push_back(bmcOp);
+            // propertylessBMCOps.push_back(bmcOp);
           }
           if (numAssertions > 1) {
             op->emitError(
