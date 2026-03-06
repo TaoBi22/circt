@@ -80,12 +80,12 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
     del[text[-1]]
     # Timer circuit has to be last reg in module so we know where it'll appear in circuit signature
     text += [    "    %timer_init = seq.initial() {\n",
-      "%c0_i16_0_in = hw.constant 0 : i32\n",
-      "seq.yield %c0_i16_0_in : i32\n",
-    "} : () -> !seq.immutable<i32>\n",
-    "%mySpecialConstant = hw.constant 1 : i32\n",
-    "%time_reg = seq.compreg sym @time_reg %added, %clk initial %timer_init : i32\n",
-    "%added = comb.add %time_reg, %mySpecialConstant : i32\n"]
+      "%c0_i8_0_in = hw.constant 0 : i8\n",
+      "seq.yield %c0_i8_0_in : i8\n",
+    "} : () -> !seq.immutable<i8>\n",
+    "%mySpecialConstant = hw.constant 1 : i8\n",
+    "%time_reg = seq.compreg sym @time_reg %added, %clk initial %timer_init : i8\n",
+    "%added = comb.add %time_reg, %mySpecialConstant : i8\n"]
     text.append(terminator)
     text += ["}"]*2
     with open(f"{builddir}/rtl.mlir", "w+") as newFile:
@@ -136,7 +136,6 @@ for i, invariant in enumerate(invariants):
     propertyStr += "^bb0("
     applicationStr = ""
     signatureStr = "!smt.func<("
-    bv2Ints = []
     # if 1 in inputWidths:
     #     bv2Ints.append(f"%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
     #     bv2Ints.append(f"%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
@@ -145,44 +144,36 @@ for i, invariant in enumerate(invariants):
             propertyStr += f"%input_{j}: !smt.bool, "
             applicationStr += f"%input_{j}, "
             signatureStr += f"!smt.bool, "
-            bv2Ints.append(f"%input_{j}_int = smt.ite %input_{j}, %myConst1, %myConst0 : !smt.bv<{inputWidth}>\n")
         else:
             propertyStr += f"%input_{j}: !smt.bv<{inputWidth}>, "
-            applicationStr += f"%input_{j}_int, "
-            signatureStr += f"!smt.int, "
-            bv2Ints.append(f"%input_{j}_int = smt.bv2int %input_{j} : !smt.bv<{inputWidth}>\n")
+            applicationStr += f"%input_{j}, "
+            signatureStr += f"!smt.bv<{inputWidth}>, "
     for j, outputWidth in enumerate(outputWidths):
         if outputWidth == 1:
             propertyStr += f"%output_{j}: !smt.bool, "
             applicationStr += f"%output_{j}, "
             signatureStr += f"!smt.bool, "
-            bv2Ints.append(f"%output_{j}_int = smt.ite %output_{j}, %myConst1, %myConst0 : !smt.bv<{outputWidth}>\n")
         else:
             propertyStr += f"%output_{j}: !smt.bv<{outputWidth}>, "
-            applicationStr += f"%output_{j}_int, "
-            signatureStr += f"!smt.int, "
-            bv2Ints.append(f"%output_{j}_int = smt.bv2int %output_{j} : !smt.bv<{outputWidth}>\n")
+            applicationStr += f"%output_{j}, "
+            signatureStr += f"!smt.bv<{outputWidth}>, "
     for j, varWidth in enumerate(varWidths):
         if varWidth == 1:
             propertyStr += f"%var_{j}: !smt.bool, "
             applicationStr += f"%var_{j}, "
             signatureStr += f"!smt.bool, "
-            bv2Ints.append(f"%var_{j}_int = smt.ite %var_{j}, %myConst1, %myConst0 : !smt.bv<{varWidth}>\n")
         else:
             propertyStr += f"%var_{j}: !smt.bv<{varWidth}>, "
-            applicationStr += f"%var_{j}_int, "
-            signatureStr += f"!smt.int, "
-            bv2Ints.append(f"%var_{j}_int = smt.bv2int %var_{j} : !smt.bv<{varWidth}>\n")
-    propertyStr += "%rtlTime: !smt.bv<32>):\n"
+            applicationStr += f"%var_{j}, "
+            signatureStr += f"!smt.bv<{varWidth}>, "
+    propertyStr += "%rtlTime: !smt.bv<8>):\n"
     propertyStr += (f"%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
     propertyStr += (f"%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
-    applicationStr += "%rtlTime_int"
-    signatureStr += "!smt.int) !smt.bool>"
-    bv2Ints.append(f"%rtlTime_int = smt.bv2int %rtlTime : !smt.bv<32>\n")
-    propertyStr += "\n".join(bv2Ints)
+    applicationStr += "%rtlTime"
+    signatureStr += "!smt.bv<8>) !smt.bool>"
     propertyStr += f"%apply = smt.apply_func {invariant}({applicationStr}) : {signatureStr}\n"
     # Make sure that the times match
-    propertyStr += f"%rightTime = smt.eq %rtlTime, %{timeRegName} : !smt.bv<32>\n"
+    propertyStr += f"%rightTime = smt.eq %rtlTime, %{timeRegName} : !smt.bv<8>\n"
     # propertyStr += f"%antecedent = smt.and %apply, %rightTime\n"
 
     # Our form should be: F(I, V, O, T) and T = timeReg and or(V_n != var_n forall n) => false
@@ -301,8 +292,7 @@ for line in textToInsert:
                     thisType = f"bv<{inputWidth}>"
                 # We should already have our desired inputs further up in the SMTLIB but in scope here
                     equivalenceChecks.append(f"%equivalence_check_{i}")
-                    fsmTextWithGuards.append(f"%obsarg{i}_conv = smt.int2bv %obsarg{i} : !smt.bv<{inputWidth}>\n")
-                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}_conv, {inputNames[i]} : !smt.{thisType}\n")
+                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}, {inputNames[i]} : !smt.{thisType}\n")
             fsmTextWithGuards.append(f"%equivalence_check = smt.and %{originalAntecedent}, " + ", ".join(equivalenceChecks) + "\n")
             fsmTextWithGuards.append(f"%{originalCondition} = smt.implies %equivalence_check, %{match.group(3)}\n")
             continue
