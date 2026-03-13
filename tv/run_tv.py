@@ -123,7 +123,7 @@ for line in textToInsert:
 # Declare a function that maps timestep to input
 inputFuncDecls = ""
 for i, inputWidth in enumerate(inputWidths):
-    if inputWidth == 1 and False:
+    if inputWidth == 1 :
         thisType = "bool"
     else:
         thisType = f"bv<{inputWidth}>"
@@ -136,13 +136,11 @@ for i, invariant in enumerate(invariants):
     propertyStr += "^bb0("
     applicationStr = ""
     signatureStr = "!smt.func<("
-    print(inputWidths)
-    print(varWidths)
     # if 1 in inputWidths:
     #     bv2Ints.append(f"%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
     #     bv2Ints.append(f"%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
     # for j, inputWidth in enumerate(inputWidths):
-    #     if inputWidth == 1 and False:
+    #     if inputWidth == 1 :
     #         propertyStr += f"%input_{j}: !smt.bool, "
     #         applicationStr += f"%input_{j}, "
     #         signatureStr += f"!smt.bool, "
@@ -151,7 +149,7 @@ for i, invariant in enumerate(invariants):
     #         applicationStr += f"%input_{j}, "
     #         signatureStr += f"!smt.bv<{inputWidth}>, "
     for j, outputWidth in enumerate(outputWidths):
-        if outputWidth == 1 and False:
+        if outputWidth == 1 :
             propertyStr += f"%output_{j}: !smt.bool, "
             applicationStr += f"%output_{j}, "
             signatureStr += f"!smt.bool, "
@@ -160,7 +158,7 @@ for i, invariant in enumerate(invariants):
             applicationStr += f"%output_{j}, "
             signatureStr += f"!smt.bv<{outputWidth}>, "
     for j, varWidth in enumerate(varWidths):
-        if varWidth == 1 and False:
+        if varWidth == 1 :
             propertyStr += f"%var_{j}: !smt.bool, "
             applicationStr += f"%var_{j}, "
             signatureStr += f"!smt.bool, "
@@ -184,9 +182,8 @@ for i, invariant in enumerate(invariants):
 
     # Check equivalence of variables:
     inputChecks = []
-    print(varNames)
     for j, varName in enumerate(varNames):
-        if varWidths[j] == 1 and False:
+        if varWidths[j] == 1 :
             propertyStr += f"%var_{j}_conv = smt.ite %var_{j}, %myConst1, %myConst0 : !smt.bv<1>\n"
             propertyStr += f"%var_{j}_eq = smt.distinct %var_{j}_conv, %{varName} : !smt.bv<1>\n"
         else:
