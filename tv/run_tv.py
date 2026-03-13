@@ -123,7 +123,7 @@ for line in textToInsert:
 # Declare a function that maps timestep to input
 inputFuncDecls = ""
 for i, inputWidth in enumerate(inputWidths):
-    if inputWidth == 1:
+    if inputWidth == 1 and False:
         thisType = "bool"
     else:
         thisType = f"bv<{inputWidth}>"
@@ -136,20 +136,22 @@ for i, invariant in enumerate(invariants):
     propertyStr += "^bb0("
     applicationStr = ""
     signatureStr = "!smt.func<("
+    print(inputWidths)
+    print(varWidths)
     # if 1 in inputWidths:
     #     bv2Ints.append(f"%myConst0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
     #     bv2Ints.append(f"%myConst1 = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
-    for j, inputWidth in enumerate(inputWidths):
-        if inputWidth == 1:
-            propertyStr += f"%input_{j}: !smt.bool, "
-            applicationStr += f"%input_{j}, "
-            signatureStr += f"!smt.bool, "
-        else:
-            propertyStr += f"%input_{j}: !smt.bv<{inputWidth}>, "
-            applicationStr += f"%input_{j}, "
-            signatureStr += f"!smt.bv<{inputWidth}>, "
+    # for j, inputWidth in enumerate(inputWidths):
+    #     if inputWidth == 1 and False:
+    #         propertyStr += f"%input_{j}: !smt.bool, "
+    #         applicationStr += f"%input_{j}, "
+    #         signatureStr += f"!smt.bool, "
+    #     else:
+    #         propertyStr += f"%input_{j}: !smt.bv<{inputWidth}>, "
+    #         applicationStr += f"%input_{j}, "
+    #         signatureStr += f"!smt.bv<{inputWidth}>, "
     for j, outputWidth in enumerate(outputWidths):
-        if outputWidth == 1:
+        if outputWidth == 1 and False:
             propertyStr += f"%output_{j}: !smt.bool, "
             applicationStr += f"%output_{j}, "
             signatureStr += f"!smt.bool, "
@@ -158,7 +160,7 @@ for i, invariant in enumerate(invariants):
             applicationStr += f"%output_{j}, "
             signatureStr += f"!smt.bv<{outputWidth}>, "
     for j, varWidth in enumerate(varWidths):
-        if varWidth == 1:
+        if varWidth == 1 and False:
             propertyStr += f"%var_{j}: !smt.bool, "
             applicationStr += f"%var_{j}, "
             signatureStr += f"!smt.bool, "
@@ -182,8 +184,9 @@ for i, invariant in enumerate(invariants):
 
     # Check equivalence of variables:
     inputChecks = []
+    print(varNames)
     for j, varName in enumerate(varNames):
-        if varWidths[j] == 1:
+        if varWidths[j] == 1 and False:
             propertyStr += f"%var_{j}_conv = smt.ite %var_{j}, %myConst1, %myConst0 : !smt.bv<1>\n"
             propertyStr += f"%var_{j}_eq = smt.distinct %var_{j}_conv, %{varName} : !smt.bv<1>\n"
         else:
@@ -193,10 +196,10 @@ for i, invariant in enumerate(invariants):
     # Check equivalence of outputs:
     for j, outputName in enumerate(outputNames):
         if outputWidths[j] == 1:
-            propertyStr += f"%output_{j}_conv = smt.ite %output_{j}, %myConst1, %myConst0 : !smt.bv<1>\n"
-            propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}_conv, {outputName} : !smt.bv<1>\n"
+            propertyStr += f"%output_{j}_arg_conv = smt.ite {outputName}, %myConst1, %myConst0 : !smt.bv<1>\n"
+            propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}_arg_conv, %output_{j} : !smt.bv<1>\n"
         else:
-            propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}, %{outputName} : !smt.bv<{outputWidths[j]}>\n"
+            propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}, {outputName} : !smt.bv<{outputWidths[j]}>\n"
         inputChecks.append(f"%output_{j}_eq")
     
     propertyStr += f"%myFalse = smt.constant false\n"
@@ -280,19 +283,20 @@ for line in textToInsert:
             originalCondition = match.group(1)
             originalAntecedent = match.group(2)
             equivalenceChecks = []
+            print(inputWidths)
             for i, inputWidth in enumerate(inputWidths):
-                if inputWidth == 1:
-                    fsmTextWithGuards.append(f"%myConstOne_{i} = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
-                    fsmTextWithGuards.append(f"%myConstZero_{i} = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
-                    thisType = "bv<1>"
-                    fsmTextWithGuards.append(f"%obsarg{i}_conv = smt.ite %obsarg{i}, %myConstOne_{i}, %myConstZero_{i} : !smt.bv<1>\n")
-                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}_conv, {inputNames[i]} : !smt.{thisType}\n")
-                    equivalenceChecks.append(f"%equivalence_check_{i}")
-                else:
+                # if inputWidth == 1:
+                #     fsmTextWithGuards.append(f"%myConstOne_{i} = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
+                #     fsmTextWithGuards.append(f"%myConstZero_{i} = smt.bv.constant #smt.bv<0> : !smt.bv<1>\n")
+                #     thisType = "bv<1>"
+                #     fsmTextWithGuards.append(f"%obsarg{i}_conv = smt.ite %obsarg{i}, %myConstOne_{i}, %myConstZero_{i} : !smt.bv<1>\n")
+                #     fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}_conv, {inputNames[i]} : !smt.{thisType}\n")
+                #     equivalenceChecks.append(f"%equivalence_check_{i}")
+                # else:
                     thisType = f"bv<{inputWidth}>"
                 # We should already have our desired inputs further up in the SMTLIB but in scope here
                     equivalenceChecks.append(f"%equivalence_check_{i}")
-                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i}, {inputNames[i]} : !smt.{thisType}\n")
+                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i + len(varWidths)}, {inputNames[i]} : !smt.{thisType}\n")
             fsmTextWithGuards.append(f"%equivalence_check = smt.and %{originalAntecedent}, " + ", ".join(equivalenceChecks) + "\n")
             fsmTextWithGuards.append(f"%{originalCondition} = smt.implies %equivalence_check, %{match.group(3)}\n")
             continue
