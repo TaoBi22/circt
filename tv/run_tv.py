@@ -150,7 +150,7 @@ for i, invariant in enumerate(invariants):
     #         applicationStr += f"%input_{j}, "
     #         signatureStr += f"!smt.bv<{inputWidth}>, "
     for j, outputWidth in enumerate(outputWidths):
-        if outputWidth == 1 :
+        if outputWidth == 1 and False:
             propertyStr += f"%output_{j}: !smt.bool, "
             applicationStr += f"%output_{j}, "
             signatureStr += f"!smt.bool, "
@@ -159,7 +159,7 @@ for i, invariant in enumerate(invariants):
             applicationStr += f"%output_{j}, "
             signatureStr += f"!smt.bv<{outputWidth}>, "
     for j, varWidth in enumerate(varWidths):
-        if varWidth == 1 :
+        if varWidth == 1 and False:
             propertyStr += f"%var_{j}: !smt.bool, "
             applicationStr += f"%var_{j}, "
             signatureStr += f"!smt.bool, "
@@ -184,7 +184,7 @@ for i, invariant in enumerate(invariants):
     # Check equivalence of variables:
     inputChecks = []
     for j, varName in enumerate(varNames):
-        if varWidths[j] == 1 :
+        if varWidths[j] == 1 and False:
             propertyStr += f"%var_{j}_conv = smt.ite %var_{j}, %myConst1, %myConst0 : !smt.bv<1>\n"
             propertyStr += f"%var_{j}_eq = smt.distinct %var_{j}_conv, %{varName} : !smt.bv<1>\n"
         else:
