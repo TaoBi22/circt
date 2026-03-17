@@ -280,7 +280,6 @@ for line in textToInsert:
             originalCondition = match.group(1)
             originalAntecedent = match.group(2)
             equivalenceChecks = []
-            print(inputWidths)
             for i, inputWidth in enumerate(inputWidths):
                 # if inputWidth == 1:
                 #     fsmTextWithGuards.append(f"%myConstOne_{i} = smt.bv.constant #smt.bv<1> : !smt.bv<1>\n")
