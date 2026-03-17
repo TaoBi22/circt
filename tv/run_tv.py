@@ -86,6 +86,7 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
     "%mySpecialConstant = hw.constant 1 : i8\n",
     "%time_reg = seq.compreg sym @time_reg %added, %clk initial %timer_init : i8\n",
     "%added = comb.add %time_reg, %mySpecialConstant : i8\n"]
+    timeRegWidth = 8
     text.append(terminator)
     text += ["}"]*2
     with open(f"{builddir}/rtl.mlir", "w+") as newFile:
@@ -123,11 +124,11 @@ for line in textToInsert:
 # Declare a function that maps timestep to input
 inputFuncDecls = ""
 for i, inputWidth in enumerate(inputWidths):
-    if inputWidth == 1 :
-        thisType = "bool"
-    else:
-        thisType = f"bv<{inputWidth}>"
-    inputFuncDecls += f"%input_{i}_func = smt.declare_fun \"input_{i}_func\" : !smt.func<(!smt.bv<32>) !smt.{thisType}>\n"
+    # if inputWidth == 1 :
+    #     thisType = "bool"
+    # else:
+    thisType = f"bv<{inputWidth}>"
+    inputFuncDecls += f"%input_{i}_func = smt.declare_fun \"input_{i}_func\" : !smt.func<(!smt.bv<{timeRegWidth}>) !smt.{thisType}>\n"
 
 # Add properties that check equivalence
 properties = []
@@ -266,6 +267,14 @@ for i, invariant in enumerate(invariants):
 #     properties.append(propertyStr)
 
 # TODO: need to add guards to stay in line with the inputs of the RTL
+# Force function to map time to inputs:
+for i, inputWidth in enumerate(inputWidths):
+    rtlInput = inputNames[i]
+    inputFunc = f"%input_{i}_func"
+    propertyStr += f"%funcOutput_{i} = smt.apply_func {inputFunc}(%{timeRegName}) : !smt.func<(!smt.bv<{timeRegWidth}>) !smt.bv<{inputWidth}>>\n"
+    propertyStr += f"%input_eq_{i} = smt.eq %funcOutput_{i}, {rtlInput} : !smt.bv<{inputWidth}>\n"
+    propertyStr += f"smt.assert %input_eq_{i}\n"
+
 
 # We need to insert some extra guards into the FSM file to make sure we only take transitions if they're consistent with our expected inputs
 fsmTextWithGuards = []
@@ -292,7 +301,10 @@ for line in textToInsert:
                     thisType = f"bv<{inputWidth}>"
                 # We should already have our desired inputs further up in the SMTLIB but in scope here
                     equivalenceChecks.append(f"%equivalence_check_{i}")
-                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i + len(varWidths)}, {inputNames[i]} : !smt.{thisType}\n")
+                    #fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %obsarg{i + len(varWidths)}, {inputNames[i]} : !smt.{thisType}\n")
+                    fsmTextWithGuards.append(f"%inputFuncResult_{i} = smt.apply_func %input_{i}_func(%{timeRegName}) : !smt.func<(!smt.bv<{timeRegWidth}>) !smt.{thisType}>\n")
+                    fsmTextWithGuards.append(f"%equivalence_check_{i} = smt.eq %inputFuncResult_{i}, {inputNames[i]} : !smt.{thisType}\n")
+            # And combine all the equivalence checks with an AND
             fsmTextWithGuards.append(f"%equivalence_check = smt.and %{originalAntecedent}, " + ", ".join(equivalenceChecks) + "\n")
             fsmTextWithGuards.append(f"%{originalCondition} = smt.implies %equivalence_check, %{match.group(3)}\n")
             continue
