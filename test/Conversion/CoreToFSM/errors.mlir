@@ -111,3 +111,12 @@ hw.module @regs_without_reset(in %clk : !seq.clock) {
     // expected-warning @below {{Assuming register with no reset starts with value 0}}
     %var = seq.compreg name "var" %state, %clk : i1
 }
+
+// -----
+
+hw.module @multiclock(in %clk : !seq.clock, in %clk2 : !seq.clock, in %rst : i1) {
+    %c0_i1 = hw.constant false
+    %state = seq.compreg name "state" %state, %clk reset %rst, %c0_i1 : i1
+    // expected-error @below {{All clocks must have the same clock signal.}}
+    %var = seq.compreg name "var" %state, %clk2 reset %rst, %c0_i1 : i1
+}

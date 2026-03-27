@@ -626,7 +626,16 @@ public:
   LogicalResult run() {
     SmallVector<seq::CompRegOp> stateRegs;
     SmallVector<seq::CompRegOp> variableRegs;
+    Value foundClock = nullptr;
     WalkResult walkResult = moduleOp.walk([&](seq::CompRegOp reg) {
+      if (foundClock) {
+        if (reg.getClk() != foundClock) {
+          reg.emitError("All clocks must have the same clock signal.");
+          return WalkResult::interrupt();
+        }
+      } else {
+        foundClock = reg.getClk();
+      }
       // Check that the register type is an integer.
       if (!isa<IntegerType>(reg.getType())) {
         reg.emitError("FSM extraction only supports integer-typed registers");
