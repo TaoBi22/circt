@@ -116,3 +116,45 @@ endmodule
 module SubF;
   logic [7:0] x;
 endmodule
+
+// -----
+
+// CHECK-LABEL: moore.module @GenerateHier(out w : !moore.l4)
+// CHECK: [[C0:%.+]] = moore.constant 0 : l8
+// CHECK: [[VAL0:%.+]] = moore.net wire [[C0]] : <l8>
+// CHECK: [[C3:%.+]] = moore.constant 3 : l8
+// CHECK: [[VAL3:%.+]] = moore.net wire [[C3]] : <l8>
+module GenerateHier(output [3:0] w);
+  genvar i;
+  generate
+    for (i = 0; i < 4; i = i + 1) begin : gen_loop
+      localparam MY_VAL = i;
+      assign w[i] = MY_VAL;
+    end
+  endgenerate
+
+  wire [7:0] val0 = gen_loop[0].MY_VAL;
+  wire [7:0] val3 = gen_loop[3].MY_VAL;
+endmodule
+
+// -----
+
+module GenLeaf;
+  genvar i;
+  generate
+    for (i = 0; i < 4; i = i + 1) begin : gen_loop
+      localparam MY_VAL = i;
+    end
+  endgenerate
+endmodule
+
+// CHECK-LABEL: moore.module @CrossModuleGenerateHier()
+// CHECK: [[C0:%.+]] = moore.constant 0 : l8
+// CHECK: [[V0:%.+]] = moore.net wire [[C0]] : <l8>
+// CHECK: [[C3:%.+]] = moore.constant 3 : l8
+// CHECK: [[V3:%.+]] = moore.net wire [[C3]] : <l8>
+module CrossModuleGenerateHier;
+  GenLeaf leaf();
+  wire [7:0] val0 = leaf.gen_loop[0].MY_VAL;
+  wire [7:0] val3 = leaf.gen_loop[3].MY_VAL;
+endmodule

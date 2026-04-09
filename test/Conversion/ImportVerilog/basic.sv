@@ -212,43 +212,37 @@ function void dummyF(integer a); endfunction
 
 // CHECK-LABEL: moore.module @Parameters(
 module Parameters;
-  // CHECK: [[TMP:%.+]] = moore.constant 1 : l32
-  // CHECK: dbg.variable "p1", [[TMP]] : !moore.l32
+  // CHECK: [[TMP0:%.+]] = moore.constant 1 : l32
+  // CHECK: dbg.variable "p1", [[TMP0]] : !moore.l32
   parameter p1 = 1;
 
-  // CHECK: [[TMP:%.+]] = moore.constant 1 : l32
-  // CHECK: dbg.variable "p2", [[TMP]] : !moore.l32
+  // CHECK: [[TMP1:%.+]] = moore.constant 1 : l32
+  // CHECK: dbg.variable "p2", [[TMP1]] : !moore.l32
   parameter p2 = p1;
 
-  // CHECK: [[TMP:%.+]] = moore.constant 2 : l32
-  // CHECK: dbg.variable "lp1", [[TMP]] : !moore.l32
+  // CHECK: [[TMP2:%.+]] = moore.constant 2 : l32
+  // CHECK: dbg.variable "lp1", [[TMP2]] : !moore.l32
   localparam lp1 = 2;
 
-  // CHECK: [[TMP:%.+]] = moore.constant 2 : l32
-  // CHECK: dbg.variable "lp2", [[TMP]] : !moore.l32
+  // CHECK: [[TMP3:%.+]] = moore.constant 2 : l32
+  // CHECK: dbg.variable "lp2", [[TMP3]] : !moore.l32
   localparam lp2 = lp1;
 
-  // CHECK: [[TMP:%.+]] = moore.constant 3 : l32
-  // CHECK: dbg.variable "sp1", [[TMP]] : !moore.l32
+  // CHECK: [[TMP4:%.+]] = moore.constant 3 : l32
+  // CHECK: dbg.variable "sp1", [[TMP4]] : !moore.l32
   specparam sp1 = 3;
 
-  // CHECK: [[TMP:%.+]] = moore.constant 3 : l32
-  // CHECK: dbg.variable "sp2", [[TMP]] : !moore.l32
+  // CHECK: [[TMP5:%.+]] = moore.constant 3 : l32
+  // CHECK: dbg.variable "sp2", [[TMP5]] : !moore.l32
   specparam sp2 = sp1;
 
   initial begin
-    // CHECK: [[TMP:%.+]] = moore.constant 1 : l32
-    // CHECK: func.call @dummyF([[TMP]])
-    // CHECK: [[TMP:%.+]] = moore.constant 1 : l32
-    // CHECK: func.call @dummyF([[TMP]])
-    // CHECK: [[TMP:%.+]] = moore.constant 2 : l32
-    // CHECK: func.call @dummyF([[TMP]])
-    // CHECK: [[TMP:%.+]] = moore.constant 2 : l32
-    // CHECK: func.call @dummyF([[TMP]])
-    // CHECK: [[TMP:%.+]] = moore.constant 3 : l32
-    // CHECK: func.call @dummyF([[TMP]])
-    // CHECK: [[TMP:%.+]] = moore.constant 3 : l32
-    // CHECK: func.call @dummyF([[TMP]])
+    // CHECK: func.call @dummyF([[TMP0]])
+    // CHECK: func.call @dummyF([[TMP1]])
+    // CHECK: func.call @dummyF([[TMP2]])
+    // CHECK: func.call @dummyF([[TMP3]])
+    // CHECK: func.call @dummyF([[TMP4]])
+    // CHECK: func.call @dummyF([[TMP5]])
     dummyF(p1);
     dummyF(p2);
     dummyF(lp1);
@@ -2002,11 +1996,9 @@ module GenerateConstructs;
   generate
     // CHECK: [[TMP:%.+]] = moore.constant 0
     // CHECK: dbg.variable "i", [[TMP]]
-    // CHECK: [[TMP:%.+]] = moore.constant 0
     // CHECK: %genblk1_0.g1 = moore.variable [[TMP]]
     // CHECK: [[TMP:%.+]] = moore.constant 1
     // CHECK: dbg.variable "i", [[TMP]]
-    // CHECK: [[TMP:%.+]] = moore.constant 1
     // CHECK: %genblk1_1.g1 = moore.variable [[TMP]]
     for (i = 0; i < 2; i = i + 1) begin
       integer g1 = i;

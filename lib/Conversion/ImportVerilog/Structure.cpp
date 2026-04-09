@@ -107,14 +107,17 @@ struct BaseVisitor {
 
   template <class Node>
   void visitParameter(const Node &param) {
+    auto value =
+        context.materializeConstant(param.getValue(), param.getType(), loc);
+    if (!value)
+      return;
+    if (context.valueSymbols.getCurScope())
+      context.valueSymbols.insert(&param, value);
+
     // If debug info is enabled, try to materialize the parameter's constant
     // value on a best-effort basis and create a `dbg.variable` to track the
     // value.
     if (!context.options.debugInfo)
-      return;
-    auto value =
-        context.materializeConstant(param.getValue(), param.getType(), loc);
-    if (!value)
       return;
     if (builder.getInsertionBlock()->getParentOp() == context.intoModuleOp)
       context.orderedRootOps.insert({param.location, value.getDefiningOp()});
