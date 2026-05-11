@@ -373,4 +373,4 @@ with open(f"{builddir}/safety-tv.mlir", "w+") as f:
 # print(f"../build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
 # print(f"../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e fsm10 -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
 os.system(f"../build/bin/circt-opt --lower-smt-to-z3-llvm {builddir}/safety-tv.mlir --reconcile-unrealized-casts > {builddir}/exec.mlir")
-os.system(f"time ../llvm/build/bin/mlir-cpu-runner {builddir}/exec.mlir -e {moduleName} -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
+os.system(f"time ..//build/bin/mlir-runner {builddir}/exec.mlir -e {moduleName} -shared-libs=/usr/lib/x86_64-linux-gnu/libz3.so -entry-point-result=void")
