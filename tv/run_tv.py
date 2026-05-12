@@ -48,6 +48,8 @@ with open(fsmFile, "r") as f:
             # varNames.append(search.group(1))
             varWidths.append(int(search.group(2)))
 
+print("Output widths:", outputWidths)
+
 # We can do another naughty hack by working out the RTL names of our variables (since they're externalized so just function args)
 
 # The first few args to the circuit function are inputs, then variables, then the time reg, so we can just work out the names
@@ -92,18 +94,19 @@ with open(f"{builddir}/untimed_rtl.mlir") as file:
     with open(f"{builddir}/rtl.mlir", "w+") as newFile:
         newFile.writelines(text)
 
-    # Since we have this text knocking around anyway, we might as well grab the output SSA names
-    # First check we actually have outputs
-    if terminator.strip() != "hw.output":
-        print(terminator)
-        x = re.search(r"hw.output[\s]?(%[A-Za-z0-9_]+)?(, %[A-Za-z0-9_]+)+ :", terminator)
-        outputNames.append(x.group(0))
-        if x.group(1):
-            outputNames = x.group(1).split(",")
-
-print("Output names:", outputNames)
-
 os.system(f"../build/bin/circt-opt --externalize-registers --lower-to-bmc=\"top-module={moduleName} bound={bound} rising-clocks-only\" --convert-hw-to-smt --convert-comb-to-smt --convert-verif-to-smt=\"rising-clocks-only\" --canonicalize {builddir}/rtl.mlir > {builddir}/bmc.mlir")
+
+# SSA names from hw.output in rtl.mlir don't survive the lowering passes, so extract
+# the actual output names from the return statement of @bmc_circuit in the generated bmc.mlir.
+in_bmc_circuit = False
+with open(f"{builddir}/bmc.mlir") as f:
+    for line in f:
+        if "func.func @bmc_circuit" in line:
+            in_bmc_circuit = True
+        if in_bmc_circuit and re.match(r'\s*return ', line):
+            outputNames = re.findall(r'%[A-Za-z0-9_]+', line)[:len(outputWidths)]
+            break
+print("Output names:", outputNames)
 
 # FSM files
 os.system(f"../build/bin/circt-opt --convert-fsm-to-smt=\"with-time\" --convert-comb-to-smt --convert-hw-to-smt --reconcile-unrealized-casts {fsmFile} > {builddir}/safety.mlir")
@@ -115,7 +118,7 @@ os.system(f"sed -i \"s/%/%obs/g\" {builddir}/liveness.mlir")
 
 # setup safety
 # os.system(f"cp {builddir}/bmc.mlir {builddir}/safety-tv.mlir")
-textToInsert = open(builddir+"/safety.mlir").readlines()[2:-3]
+textToInsert = open(builddir+"/safety.mlir").readlines()[3:-3]
 invariants = []
 for line in textToInsert:
     if result := re.search(r"(%[a-zA-Z0-9\-_]+) = smt.declare_fun", line):
@@ -193,11 +196,7 @@ for i, invariant in enumerate(invariants):
 
     # Check equivalence of outputs:
     for j, outputName in enumerate(outputNames):
-        if outputWidths[j] == 1:
-            propertyStr += f"%output_{j}_arg_conv = smt.ite {outputName}, %myConst1, %myConst0 : !smt.bv<1>\n"
-            propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}_arg_conv, %output_{j} : !smt.bv<1>\n"
-        else:
-            propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}, {outputName} : !smt.bv<{outputWidths[j]}>\n"
+        propertyStr += f"%output_{j}_eq = smt.distinct %output_{j}, {outputName} : !smt.bv<{outputWidths[j]}>\n"
         inputChecks.append(f"%output_{j}_eq")
     
     propertyStr += f"%myFalse = smt.constant false\n"
