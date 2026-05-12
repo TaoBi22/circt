@@ -184,6 +184,13 @@ for i, invariant in enumerate(invariants):
 
     # The ones we made before are in a different scope
 
+    # Ensure our inputs all agree with the input function:
+    inputFuncChecks = []
+    for j, inputWidth in enumerate(inputWidths):
+        propertyStr += f"%inputFuncOutput_{j} = smt.apply_func %input_{j}_func(%{timeRegName}) : !smt.func<(!smt.bv<{timeRegWidth}>) !smt.bv<{inputWidth}>>\n"
+        propertyStr += f"%inputFuncCheck_{j} = smt.eq %inputFuncOutput_{j}, {inputNames[j]} : !smt.bv<{inputWidth}>\n"         
+        inputFuncChecks.append(f"%inputFuncCheck_{j}")
+
     # Check equivalence of variables:
     inputChecks = []
     for j, varName in enumerate(varNames):
@@ -201,13 +208,14 @@ for i, invariant in enumerate(invariants):
     
     propertyStr += f"%myFalse = smt.constant false\n"
     if (len(inputChecks) == 1):
-        propertyStr += f"%antecedent = smt.and {inputChecks[0]}, %rightTime, %apply\n"
+        propertyStr += f"%antecedent = smt.and {inputChecks[0]}, {inputFuncChecks[0]}, %rightTime, %apply\n"
         # Find the implication
         propertyStr += f"%impl = smt.implies %antecedent, %myFalse\n"
     else:
         # AND all our checks
         propertyStr += f"%oredChecks = smt.or " + ", ".join(inputChecks) + "\n"
-        propertyStr += f"%antecedent = smt.and %oredChecks, %rightTime, %apply\n"
+        propertyStr += f"%oredFuncChecks = smt.or " + ", ".join(inputFuncChecks) + "\n"
+        propertyStr += f"%antecedent = smt.and %oredChecks, %oredFuncChecks, %rightTime, %apply\n"
 
         # Find the implication
 

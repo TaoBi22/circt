@@ -1,1618 +1,1129 @@
 module {
+  %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
   smt.solver() : () -> () {
-    %obsc1_bv16 = smt.bv.constant #smt.bv<1> : !smt.bv<16>
-    %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-    %obsc0_bv16 = smt.bv.constant #smt.bv<0> : !smt.bv<16>
-    %obsF__0 = smt.declare_fun "F__0" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__1 = smt.declare_fun "F__1" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__2 = smt.declare_fun "F__2" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__3 = smt.declare_fun "F__3" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__4 = smt.declare_fun "F__4" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__5 = smt.declare_fun "F__5" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__6 = smt.declare_fun "F__6" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__7 = smt.declare_fun "F__7" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__8 = smt.declare_fun "F__8" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__9 = smt.declare_fun "F__9" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__10 = smt.declare_fun "F__10" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__11 = smt.declare_fun "F__11" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__12 = smt.declare_fun "F__12" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__13 = smt.declare_fun "F__13" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__14 = smt.declare_fun "F__14" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__15 = smt.declare_fun "F__15" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__16 = smt.declare_fun "F__16" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__17 = smt.declare_fun "F__17" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__18 = smt.declare_fun "F__18" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__19 = smt.declare_fun "F__19" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__20 = smt.declare_fun "F__20" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__21 = smt.declare_fun "F__21" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__22 = smt.declare_fun "F__22" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__23 = smt.declare_fun "F__23" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__24 = smt.declare_fun "F__24" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__25 = smt.declare_fun "F__25" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__26 = smt.declare_fun "F__26" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__27 = smt.declare_fun "F__27" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__28 = smt.declare_fun "F__28" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__29 = smt.declare_fun "F__29" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__30 = smt.declare_fun "F__30" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__31 = smt.declare_fun "F__31" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__32 = smt.declare_fun "F__32" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__33 = smt.declare_fun "F__33" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__34 = smt.declare_fun "F__34" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__35 = smt.declare_fun "F__35" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__36 = smt.declare_fun "F__36" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__37 = smt.declare_fun "F__37" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__38 = smt.declare_fun "F__38" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__39 = smt.declare_fun "F__39" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF__40 = smt.declare_fun "F__40" : !smt.func<(!smt.bv<16>) !smt.bool>
-    %obsF_ERR = smt.declare_fun "F_ERR" : !smt.func<(!smt.bv<16>) !smt.bool>
+    %obsc0_bv1_0 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+    %obsF_state_0 = smt.declare_fun "F_state_0" : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+    %obsF_state_3 = smt.declare_fun "F_state_3" : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+    %obsF_state_4 = smt.declare_fun "F_state_4" : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+    %obsF_state_5 = smt.declare_fun "F_state_5" : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
     %obs0 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<16>):
-      %obsc0_bv16_0 = smt.bv.constant #smt.bv<0> : !smt.bv<16>
-      %obsc0_bv16_1 = smt.bv.constant #smt.bv<0> : !smt.bv<16>
-      %obs81 = smt.apply_func %obsF__0(%obsc0_bv16_1) : !smt.func<(!smt.bv<16>) !smt.bool>
-      smt.yield %obs81 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>):
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-3_bv3 = smt.bv.constant #smt.bv<-3> : !smt.bv<3>
+      %obsc0_bv3 = smt.bv.constant #smt.bv<0> : !smt.bv<3>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs14 = smt.bv.and %obsarg1, %obsarg6 : !smt.bv<1>
+      %obs15 = smt.bv.or %obsarg3, %obsarg4 : !smt.bv<1>
+      %obs16 = smt.bv.or %obs15, %obsarg2 : !smt.bv<1>
+      %obs17 = smt.bv.or %obs14, %obs16 : !smt.bv<1>
+      %obs18 = smt.bv.xor %obs16, %obsc-1_bv1 : !smt.bv<1>
+      %obs19 = smt.bv.and %obsarg1, %obsarg6 : !smt.bv<1>
+      %obs20 = smt.bv.xor %obsarg3, %obsc-1_bv1 : !smt.bv<1>
+      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs21 = smt.eq %obs20, %obsc-1_bv1_4 : !smt.bv<1>
+      %obs22 = smt.ite %obs21, %obsarg4, %obsarg5 : !smt.bv<1>
+      %obsc-1_bv1_5 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs23 = smt.eq %obs20, %obsc-1_bv1_5 : !smt.bv<1>
+      %obs24 = smt.ite %obs23, %obsc-3_bv3, %obsc0_bv3 : !smt.bv<3>
+      %obs25 = smt.bv.xor %obs19, %obsc-1_bv1 : !smt.bv<1>
+      %obs26 = smt.bv.or %obsarg3, %obs25 : !smt.bv<1>
+      %obs27 = smt.bv.xor %obsarg2, %obsc-1_bv1 : !smt.bv<1>
+      %obs28 = smt.bv.and %obs20, %obs27 : !smt.bv<1>
+      %obs29 = smt.bv.xor %obs28, %obsc-1_bv1 : !smt.bv<1>
+      %obs30 = smt.bv.and %obs27, %obsarg3 : !smt.bv<1>
+      %obs31 = smt.bv.xor %obs30, %obsc-1_bv1 : !smt.bv<1>
+      %obs32 = smt.bv.and %obs27, %obs31 : !smt.bv<1>
+      %obs33 = smt.bv.and %obs32, %obs29 : !smt.bv<1>
+      %obsc-1_bv1_6 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs34 = smt.bv.extract %obs24 from 2 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs35 = smt.bv.extract %obs24 from 0 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs36 = smt.bv.concat %obs34, %obs35 : !smt.bv<1>, !smt.bv<1>
+      %obsc-1_bv2 = smt.bv.constant #smt.bv<-1> : !smt.bv<2>
+      %obs37 = smt.eq %obs36, %obsc-1_bv2 : !smt.bv<2>
+      %obsc0_bv1_7 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_8 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs38 = smt.ite %obs37, %obsc-1_bv1_8, %obsc0_bv1_7 : !smt.bv<1>
+      %obsc-1_bv1_9 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs39 = smt.bv.xor %obs30, %obsc-1_bv1_9 : !smt.bv<1>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs40 = smt.bv.xor %obsarg2, %obsc-1_bv1_10 : !smt.bv<1>
+      %obs41 = smt.bv.and %obs40, %obs39 : !smt.bv<1>
+      %obs42 = smt.bv.and %obs41, %obs28 : !smt.bv<1>
+      %obs43 = smt.bv.and %obs42, %obs22 : !smt.bv<1>
+      %obs44 = smt.bv.and %obs43, %obs38 : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs45 = smt.bv.xor %obs26, %obsc-1_bv1_11 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs46 = smt.bv.xor %obs22, %obsc-1_bv1_12 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs47 = smt.bv.xor %obs30, %obsc-1_bv1_13 : !smt.bv<1>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs48 = smt.bv.xor %obsarg2, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs49 = smt.bv.and %obs48, %obs47 : !smt.bv<1>
+      %obs50 = smt.bv.and %obs49, %obs28 : !smt.bv<1>
+      %obs51 = smt.bv.and %obs50, %obs46 : !smt.bv<1>
+      %obs52 = smt.bv.and %obs51, %obs45 : !smt.bv<1>
+      %obsc0_bv1_15 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs53 = smt.apply_func %obsF_state_0(%obsarg1, %obsc0_bv1_1, %obsc0_bv1_2, %obsc0_bv1_3, %obs17, %obs18, %obs52, %obs44, %obs33, %obsc0_bv1_15) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      smt.yield %obs53 : !smt.bool
     }
     smt.assert %obs0
     %obs1 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__0(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__1(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_0(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_5 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_6 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_7 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs16 = smt.bv.or %obs15, %obsarg5 : !smt.bv<1>
+      %obs17 = smt.bv.xor %obs16, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc0_bv1_8 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs18 = smt.bv.xor %obsc0_bv1_1, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc0_bv1_9 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs19 = smt.apply_func %obsF_state_5(%obsc0_bv1_3, %obsc0_bv1_4, %obsc0_bv1_5, %obsc-1_bv1_6, %obs16, %obs17, %obsc0_bv1_9, %obsc0_bv1_7, %obsc0_bv1_8, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs20 = smt.bv.xor %obsarg6, %obsc-1_bv1_10 : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs21 = smt.eq %obs20, %obsc-1_bv1_11 : !smt.bv<1>
+      %obs22 = smt.ite %obs21, %obsarg8, %obsarg10 : !smt.bv<1>
+      %obs23 = smt.bv.xor %obsarg4, %obsc-1_bv1_10 : !smt.bv<1>
+      %obs24 = smt.bv.and %obs23, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs25 = smt.bv.xor %obs24, %obsc-1_bv1_13 : !smt.bv<1>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs26 = smt.bv.xor %obsarg4, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs27 = smt.bv.and %obs26, %obs25 : !smt.bv<1>
+      %obs28 = smt.bv.and %obs27, %obs23 : !smt.bv<1>
+      %obs29 = smt.bv.and %obs28, %obs22 : !smt.bv<1>
+      %obs30 = smt.bv.and %obs29, %obs20 : !smt.bv<1>
+      %obsc-1_bv1_15 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs31 = smt.eq %obs30, %obsc-1_bv1_15 : !smt.bv<1>
+      %obs32 = smt.and %obs14, %obs31
+      %obs33 = smt.implies %obs32, %obs19
+      smt.yield %obs33 : !smt.bool
     }
     smt.assert %obs1
     %obs2 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__0(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_0(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv3 = smt.bv.constant #smt.bv<0> : !smt.bv<3>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_5 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_6 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs16 = smt.bv.or %obs15, %obsarg5 : !smt.bv<1>
+      %obs17 = smt.bv.xor %obs16, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc-2_bv2 = smt.bv.constant #smt.bv<-2> : !smt.bv<2>
+      %obs18 = smt.bv.concat %obsc-2_bv2, %obsarg9 : !smt.bv<2>, !smt.bv<1>
+      %obsc-1_bv1_7 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs19 = smt.eq %obsarg5, %obsc-1_bv1_7 : !smt.bv<1>
+      %obs20 = smt.ite %obs19, %obsc0_bv3, %obs18 : !smt.bv<3>
+      %obsc0_bv1_8 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs21 = smt.bv.xor %obsc0_bv1_1, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs22 = smt.bv.extract %obs20 from 2 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs23 = smt.bv.extract %obs20 from 0 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs24 = smt.bv.concat %obs22, %obs23 : !smt.bv<1>, !smt.bv<1>
+      %obsc-1_bv2 = smt.bv.constant #smt.bv<-1> : !smt.bv<2>
+      %obs25 = smt.eq %obs24, %obsc-1_bv2 : !smt.bv<2>
+      %obsc0_bv1_9 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs26 = smt.ite %obs25, %obsc-1_bv1_10, %obsc0_bv1_9 : !smt.bv<1>
+      %obsc0_bv1_11 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs27 = smt.apply_func %obsF_state_4(%obsc0_bv1_3, %obsc0_bv1_4, %obsc0_bv1_5, %obsc0_bv1_6, %obs16, %obs17, %obsc0_bv1_11, %obs26, %obsc0_bv1_8, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs28 = smt.bv.xor %obsarg4, %obsc-1_bv1_12 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs29 = smt.bv.xor %obsarg4, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs30 = smt.bv.and %obs29, %obs28 : !smt.bv<1>
+      %obs31 = smt.bv.and %obs30, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_15 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs32 = smt.eq %obs31, %obsc-1_bv1_15 : !smt.bv<1>
+      %obsc-1_bv1_16 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs33 = smt.bv.xor %obsarg6, %obsc-1_bv1_16 : !smt.bv<1>
+      %obsc-1_bv1_17 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs34 = smt.eq %obs33, %obsc-1_bv1_17 : !smt.bv<1>
+      %obs35 = smt.ite %obs34, %obsarg8, %obsarg10 : !smt.bv<1>
+      %obs36 = smt.bv.xor %obsarg4, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs37 = smt.bv.and %obs36, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_18 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_19 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs38 = smt.bv.xor %obs37, %obsc-1_bv1_19 : !smt.bv<1>
+      %obsc-1_bv1_20 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs39 = smt.bv.xor %obsarg4, %obsc-1_bv1_20 : !smt.bv<1>
+      %obs40 = smt.bv.and %obs39, %obs38 : !smt.bv<1>
+      %obs41 = smt.bv.and %obs40, %obs36 : !smt.bv<1>
+      %obs42 = smt.bv.and %obs41, %obs35 : !smt.bv<1>
+      %obs43 = smt.bv.and %obs42, %obs33 : !smt.bv<1>
+      %obsc-1_bv1_21 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs44 = smt.eq %obs43, %obsc-1_bv1_21 : !smt.bv<1>
+      %obs45 = smt.not %obs44
+      %obs46 = smt.and %obs32, %obs45
+      %obs47 = smt.and %obs14, %obs46
+      %obs48 = smt.implies %obs47, %obs27
+      smt.yield %obs48 : !smt.bool
     }
     smt.assert %obs2
     %obs3 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__1(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__2(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_0(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-4_bv3 = smt.bv.constant #smt.bv<-4> : !smt.bv<3>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-3_bv3 = smt.bv.constant #smt.bv<-3> : !smt.bv<3>
+      %obsc0_bv3 = smt.bv.constant #smt.bv<0> : !smt.bv<3>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_5 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_6 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_7 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs16 = smt.bv.or %obs15, %obsarg5 : !smt.bv<1>
+      %obs17 = smt.bv.or %obs16, %obsarg11 : !smt.bv<1>
+      %obs18 = smt.bv.xor %obs17, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs19 = smt.bv.xor %obsarg7, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs20 = smt.bv.xor %obsarg5, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs21 = smt.bv.and %obs19, %obs20 : !smt.bv<1>
+      %obs22 = smt.bv.and %obs21, %obsarg9 : !smt.bv<1>
+      %obsc-1_bv1_8 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs23 = smt.eq %obs22, %obsc-1_bv1_8 : !smt.bv<1>
+      %obs24 = smt.ite %obs23, %obsc-3_bv3, %obsc0_bv3 : !smt.bv<3>
+      %obs25 = smt.bv.xor %obs22, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs26 = smt.bv.and %obs20, %obsarg7 : !smt.bv<1>
+      %obsc-1_bv1_9 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs27 = smt.eq %obs26, %obsc-1_bv1_9 : !smt.bv<1>
+      %obs28 = smt.ite %obs27, %obsc-4_bv3, %obs24 : !smt.bv<3>
+      %obs29 = smt.bv.xor %obs26, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs30 = smt.bv.xor %obsarg9, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs31 = smt.bv.and %obs30, %obs21 : !smt.bv<1>
+      %obs32 = smt.bv.xor %obs31, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs33 = smt.bv.and %obs20, %obs32 : !smt.bv<1>
+      %obs34 = smt.bv.and %obs33, %obs29 : !smt.bv<1>
+      %obs35 = smt.bv.and %obs34, %obs25 : !smt.bv<1>
+      %obs36 = smt.bv.xor %obsc0_bv1_1, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs37 = smt.bv.extract %obs28 from 2 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs38 = smt.bv.extract %obs28 from 0 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs39 = smt.bv.concat %obs37, %obs38 : !smt.bv<1>, !smt.bv<1>
+      %obsc-1_bv2 = smt.bv.constant #smt.bv<-1> : !smt.bv<2>
+      %obs40 = smt.eq %obs39, %obsc-1_bv2 : !smt.bv<2>
+      %obsc0_bv1_10 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs41 = smt.ite %obs40, %obsc-1_bv1_11, %obsc0_bv1_10 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs42 = smt.bv.xor %obs31, %obsc-1_bv1_12 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs43 = smt.bv.xor %obsarg5, %obsc-1_bv1_13 : !smt.bv<1>
+      %obs44 = smt.bv.and %obs43, %obs42 : !smt.bv<1>
+      %obs45 = smt.bv.and %obs44, %obs41 : !smt.bv<1>
+      %obs46 = smt.apply_func %obsF_state_3(%obsc0_bv1_3, %obsc0_bv1_4, %obsc-1_bv1_5, %obsc0_bv1_6, %obs17, %obs18, %obsc0_bv1_7, %obs45, %obs35, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs47 = smt.bv.and %obsarg2, %obsarg12 : !smt.bv<1>
+      %obs48 = smt.bv.xor %obsarg6, %obsc-1_bv1_14 : !smt.bv<1>
+      %obsc-1_bv1_15 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs49 = smt.eq %obs48, %obsc-1_bv1_15 : !smt.bv<1>
+      %obs50 = smt.ite %obs49, %obsarg8, %obsarg10 : !smt.bv<1>
+      %obs51 = smt.bv.xor %obs47, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs52 = smt.bv.or %obsarg6, %obs51 : !smt.bv<1>
+      %obs53 = smt.bv.xor %obsarg4, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs54 = smt.bv.and %obs53, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_16 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_17 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs55 = smt.bv.xor %obs52, %obsc-1_bv1_17 : !smt.bv<1>
+      %obsc-1_bv1_18 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs56 = smt.bv.xor %obs50, %obsc-1_bv1_18 : !smt.bv<1>
+      %obsc-1_bv1_19 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs57 = smt.bv.xor %obs54, %obsc-1_bv1_19 : !smt.bv<1>
+      %obsc-1_bv1_20 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs58 = smt.bv.xor %obsarg4, %obsc-1_bv1_20 : !smt.bv<1>
+      %obs59 = smt.bv.and %obs58, %obs57 : !smt.bv<1>
+      %obs60 = smt.bv.and %obs59, %obs48 : !smt.bv<1>
+      %obs61 = smt.bv.and %obs60, %obs53 : !smt.bv<1>
+      %obs62 = smt.bv.and %obs61, %obs56 : !smt.bv<1>
+      %obs63 = smt.bv.and %obs62, %obs55 : !smt.bv<1>
+      %obsc-1_bv1_21 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs64 = smt.eq %obs63, %obsc-1_bv1_21 : !smt.bv<1>
+      %obsc-1_bv1_22 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs65 = smt.bv.xor %obsarg6, %obsc-1_bv1_22 : !smt.bv<1>
+      %obsc-1_bv1_23 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs66 = smt.eq %obs65, %obsc-1_bv1_23 : !smt.bv<1>
+      %obs67 = smt.ite %obs66, %obsarg8, %obsarg10 : !smt.bv<1>
+      %obs68 = smt.bv.xor %obsarg4, %obsc-1_bv1_22 : !smt.bv<1>
+      %obs69 = smt.bv.and %obs68, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_24 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_25 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs70 = smt.bv.xor %obs69, %obsc-1_bv1_25 : !smt.bv<1>
+      %obsc-1_bv1_26 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs71 = smt.bv.xor %obsarg4, %obsc-1_bv1_26 : !smt.bv<1>
+      %obs72 = smt.bv.and %obs71, %obs70 : !smt.bv<1>
+      %obs73 = smt.bv.and %obs72, %obs68 : !smt.bv<1>
+      %obs74 = smt.bv.and %obs73, %obs67 : !smt.bv<1>
+      %obs75 = smt.bv.and %obs74, %obs65 : !smt.bv<1>
+      %obsc-1_bv1_27 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs76 = smt.eq %obs75, %obsc-1_bv1_27 : !smt.bv<1>
+      %obs77 = smt.not %obs76
+      %obs78 = smt.and %obs64, %obs77
+      %obsc-1_bv1_28 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs79 = smt.bv.xor %obsarg4, %obsc-1_bv1_28 : !smt.bv<1>
+      %obsc-1_bv1_29 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_30 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs80 = smt.bv.xor %obsarg4, %obsc-1_bv1_30 : !smt.bv<1>
+      %obs81 = smt.bv.and %obs80, %obs79 : !smt.bv<1>
+      %obs82 = smt.bv.and %obs81, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_31 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs83 = smt.eq %obs82, %obsc-1_bv1_31 : !smt.bv<1>
+      %obs84 = smt.not %obs83
+      %obs85 = smt.and %obs78, %obs84
+      %obs86 = smt.and %obs14, %obs85
+      %obs87 = smt.implies %obs86, %obs46
+      smt.yield %obs87 : !smt.bool
     }
     smt.assert %obs3
     %obs4 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__1(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_0(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-3_bv3 = smt.bv.constant #smt.bv<-3> : !smt.bv<3>
+      %obsc0_bv3 = smt.bv.constant #smt.bv<0> : !smt.bv<3>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_5 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.and %obsarg3, %obsarg13 : !smt.bv<1>
+      %obs16 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs17 = smt.bv.or %obs16, %obsarg5 : !smt.bv<1>
+      %obs18 = smt.bv.or %obs15, %obs17 : !smt.bv<1>
+      %obs19 = smt.bv.xor %obs17, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs20 = smt.bv.and %obsarg3, %obsarg13 : !smt.bv<1>
+      %obs21 = smt.bv.xor %obsarg7, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc-1_bv1_6 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs22 = smt.eq %obs21, %obsc-1_bv1_6 : !smt.bv<1>
+      %obs23 = smt.ite %obs22, %obsarg9, %obsarg11 : !smt.bv<1>
+      %obsc-1_bv1_7 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs24 = smt.eq %obs21, %obsc-1_bv1_7 : !smt.bv<1>
+      %obs25 = smt.ite %obs24, %obsc-3_bv3, %obsc0_bv3 : !smt.bv<3>
+      %obs26 = smt.bv.xor %obs20, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs27 = smt.bv.or %obsarg7, %obs26 : !smt.bv<1>
+      %obs28 = smt.bv.xor %obsarg5, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs29 = smt.bv.and %obs21, %obs28 : !smt.bv<1>
+      %obs30 = smt.bv.xor %obs29, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs31 = smt.bv.and %obs28, %obsarg7 : !smt.bv<1>
+      %obs32 = smt.bv.xor %obs31, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs33 = smt.bv.and %obs28, %obs32 : !smt.bv<1>
+      %obs34 = smt.bv.and %obs33, %obs30 : !smt.bv<1>
+      %obsc-1_bv1_8 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs35 = smt.bv.extract %obs25 from 2 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs36 = smt.bv.extract %obs25 from 0 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs37 = smt.bv.concat %obs35, %obs36 : !smt.bv<1>, !smt.bv<1>
+      %obsc-1_bv2 = smt.bv.constant #smt.bv<-1> : !smt.bv<2>
+      %obs38 = smt.eq %obs37, %obsc-1_bv2 : !smt.bv<2>
+      %obsc0_bv1_9 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs39 = smt.ite %obs38, %obsc-1_bv1_10, %obsc0_bv1_9 : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs40 = smt.bv.xor %obs31, %obsc-1_bv1_11 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs41 = smt.bv.xor %obsarg5, %obsc-1_bv1_12 : !smt.bv<1>
+      %obs42 = smt.bv.and %obs41, %obs40 : !smt.bv<1>
+      %obs43 = smt.bv.and %obs42, %obs29 : !smt.bv<1>
+      %obs44 = smt.bv.and %obs43, %obs23 : !smt.bv<1>
+      %obs45 = smt.bv.and %obs44, %obs39 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs46 = smt.bv.xor %obs27, %obsc-1_bv1_13 : !smt.bv<1>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs47 = smt.bv.xor %obs23, %obsc-1_bv1_14 : !smt.bv<1>
+      %obsc-1_bv1_15 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs48 = smt.bv.xor %obs31, %obsc-1_bv1_15 : !smt.bv<1>
+      %obsc-1_bv1_16 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs49 = smt.bv.xor %obsarg5, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs50 = smt.bv.and %obs49, %obs48 : !smt.bv<1>
+      %obs51 = smt.bv.and %obs50, %obs29 : !smt.bv<1>
+      %obs52 = smt.bv.and %obs51, %obs47 : !smt.bv<1>
+      %obs53 = smt.bv.and %obs52, %obs46 : !smt.bv<1>
+      %obs54 = smt.apply_func %obsF_state_0(%obsarg3, %obsc0_bv1_3, %obsc0_bv1_4, %obsc0_bv1_5, %obs18, %obs19, %obs53, %obs45, %obs34, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_17 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs55 = smt.bv.and %obsarg2, %obsarg12 : !smt.bv<1>
+      %obs56 = smt.bv.xor %obsarg6, %obsc-1_bv1_17 : !smt.bv<1>
+      %obsc-1_bv1_18 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs57 = smt.eq %obs56, %obsc-1_bv1_18 : !smt.bv<1>
+      %obs58 = smt.ite %obs57, %obsarg8, %obsarg10 : !smt.bv<1>
+      %obs59 = smt.bv.xor %obs55, %obsc-1_bv1_17 : !smt.bv<1>
+      %obs60 = smt.bv.xor %obsarg4, %obsc-1_bv1_17 : !smt.bv<1>
+      %obs61 = smt.bv.and %obs56, %obs60 : !smt.bv<1>
+      %obs62 = smt.bv.and %obs60, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_19 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_20 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs63 = smt.bv.xor %obs58, %obsc-1_bv1_20 : !smt.bv<1>
+      %obs64 = smt.bv.and %obs63, %obs59 : !smt.bv<1>
+      %obsc-1_bv1_21 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs65 = smt.bv.xor %obs61, %obsc-1_bv1_21 : !smt.bv<1>
+      %obs66 = smt.bv.or %obs65, %obs64 : !smt.bv<1>
+      %obs67 = smt.bv.or %obs66, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_22 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs68 = smt.bv.xor %obs62, %obsc-1_bv1_22 : !smt.bv<1>
+      %obs69 = smt.bv.and %obs68, %obs67 : !smt.bv<1>
+      %obs70 = smt.bv.or %obsarg4, %obs69 : !smt.bv<1>
+      %obsc-1_bv1_23 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs71 = smt.eq %obs70, %obsc-1_bv1_23 : !smt.bv<1>
+      %obsc-1_bv1_24 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs72 = smt.bv.xor %obsarg6, %obsc-1_bv1_24 : !smt.bv<1>
+      %obsc-1_bv1_25 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs73 = smt.eq %obs72, %obsc-1_bv1_25 : !smt.bv<1>
+      %obs74 = smt.ite %obs73, %obsarg8, %obsarg10 : !smt.bv<1>
+      %obs75 = smt.bv.xor %obsarg4, %obsc-1_bv1_24 : !smt.bv<1>
+      %obs76 = smt.bv.and %obs75, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_26 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_27 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs77 = smt.bv.xor %obs76, %obsc-1_bv1_27 : !smt.bv<1>
+      %obsc-1_bv1_28 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs78 = smt.bv.xor %obsarg4, %obsc-1_bv1_28 : !smt.bv<1>
+      %obs79 = smt.bv.and %obs78, %obs77 : !smt.bv<1>
+      %obs80 = smt.bv.and %obs79, %obs75 : !smt.bv<1>
+      %obs81 = smt.bv.and %obs80, %obs74 : !smt.bv<1>
+      %obs82 = smt.bv.and %obs81, %obs72 : !smt.bv<1>
+      %obsc-1_bv1_29 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs83 = smt.eq %obs82, %obsc-1_bv1_29 : !smt.bv<1>
+      %obs84 = smt.not %obs83
+      %obs85 = smt.and %obs71, %obs84
+      %obsc-1_bv1_30 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs86 = smt.bv.xor %obsarg4, %obsc-1_bv1_30 : !smt.bv<1>
+      %obsc-1_bv1_31 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_32 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs87 = smt.bv.xor %obsarg4, %obsc-1_bv1_32 : !smt.bv<1>
+      %obs88 = smt.bv.and %obs87, %obs86 : !smt.bv<1>
+      %obs89 = smt.bv.and %obs88, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_33 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs90 = smt.eq %obs89, %obsc-1_bv1_33 : !smt.bv<1>
+      %obs91 = smt.not %obs90
+      %obs92 = smt.and %obs85, %obs91
+      %obsc-1_bv1_34 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs93 = smt.bv.and %obsarg2, %obsarg12 : !smt.bv<1>
+      %obs94 = smt.bv.xor %obsarg6, %obsc-1_bv1_34 : !smt.bv<1>
+      %obsc-1_bv1_35 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs95 = smt.eq %obs94, %obsc-1_bv1_35 : !smt.bv<1>
+      %obs96 = smt.ite %obs95, %obsarg8, %obsarg10 : !smt.bv<1>
+      %obs97 = smt.bv.xor %obs93, %obsc-1_bv1_34 : !smt.bv<1>
+      %obs98 = smt.bv.or %obsarg6, %obs97 : !smt.bv<1>
+      %obs99 = smt.bv.xor %obsarg4, %obsc-1_bv1_34 : !smt.bv<1>
+      %obs100 = smt.bv.and %obs99, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_36 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-1_bv1_37 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs101 = smt.bv.xor %obs98, %obsc-1_bv1_37 : !smt.bv<1>
+      %obsc-1_bv1_38 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs102 = smt.bv.xor %obs96, %obsc-1_bv1_38 : !smt.bv<1>
+      %obsc-1_bv1_39 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs103 = smt.bv.xor %obs100, %obsc-1_bv1_39 : !smt.bv<1>
+      %obsc-1_bv1_40 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs104 = smt.bv.xor %obsarg4, %obsc-1_bv1_40 : !smt.bv<1>
+      %obs105 = smt.bv.and %obs104, %obs103 : !smt.bv<1>
+      %obs106 = smt.bv.and %obs105, %obs94 : !smt.bv<1>
+      %obs107 = smt.bv.and %obs106, %obs99 : !smt.bv<1>
+      %obs108 = smt.bv.and %obs107, %obs102 : !smt.bv<1>
+      %obs109 = smt.bv.and %obs108, %obs101 : !smt.bv<1>
+      %obsc-1_bv1_41 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs110 = smt.eq %obs109, %obsc-1_bv1_41 : !smt.bv<1>
+      %obs111 = smt.not %obs110
+      %obs112 = smt.and %obs92, %obs111
+      %obs113 = smt.and %obs14, %obs112
+      %obs114 = smt.implies %obs113, %obs54
+      smt.yield %obs114 : !smt.bool
     }
     smt.assert %obs4
     %obs5 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__2(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__3(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_3(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.xor %obsarg27, %obsc-1_bv1 : !smt.bv<1>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_5 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_6 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_7 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs16 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs17 = smt.bv.or %obs16, %obsarg5 : !smt.bv<1>
+      %obs18 = smt.bv.xor %obs17, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc0_bv1_8 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs19 = smt.bv.xor %obsc0_bv1_1, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc0_bv1_9 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs20 = smt.apply_func %obsF_state_5(%obsc0_bv1_3, %obsc0_bv1_4, %obsc0_bv1_5, %obsc-1_bv1_6, %obs17, %obs18, %obsc0_bv1_9, %obsc0_bv1_7, %obsc0_bv1_8, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs21 = smt.bv.xor %obsarg6, %obsc-1_bv1_10 : !smt.bv<1>
+      %obs22 = smt.bv.xor %obsarg4, %obsc-1_bv1_10 : !smt.bv<1>
+      %obs23 = smt.bv.and %obs21, %obs22 : !smt.bv<1>
+      %obs24 = smt.bv.and %obs22, %obsarg6 : !smt.bv<1>
+      %obs25 = smt.bv.xor %obsarg8, %obsc-1_bv1_10 : !smt.bv<1>
+      %obs26 = smt.bv.and %obs25, %obs23 : !smt.bv<1>
+      %obs27 = smt.bv.xor %obsarg27, %obsc-1_bv1_10 : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs28 = smt.bv.xor %obs24, %obsc-1_bv1_11 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs29 = smt.bv.xor %obs26, %obsc-1_bv1_12 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs30 = smt.bv.xor %obsarg4, %obsc-1_bv1_13 : !smt.bv<1>
+      %obs31 = smt.bv.and %obs30, %obs29 : !smt.bv<1>
+      %obs32 = smt.bv.and %obs31, %obs28 : !smt.bv<1>
+      %obs33 = smt.bv.and %obs32, %obs23 : !smt.bv<1>
+      %obs34 = smt.bv.and %obs33, %obsarg8 : !smt.bv<1>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs35 = smt.eq %obs34, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs36 = smt.and %obs14, %obs35
+      %obs37 = smt.implies %obs36, %obs20
+      smt.yield %obs37 : !smt.bool
     }
     smt.assert %obs5
     %obs6 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__2(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_3(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.xor %obsarg27, %obsc-1_bv1 : !smt.bv<1>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv3 = smt.bv.constant #smt.bv<0> : !smt.bv<3>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_5 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_6 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs16 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs17 = smt.bv.or %obs16, %obsarg5 : !smt.bv<1>
+      %obs18 = smt.bv.xor %obs17, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc-2_bv2 = smt.bv.constant #smt.bv<-2> : !smt.bv<2>
+      %obs19 = smt.bv.concat %obsc-2_bv2, %obsarg9 : !smt.bv<2>, !smt.bv<1>
+      %obsc-1_bv1_7 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs20 = smt.eq %obsarg5, %obsc-1_bv1_7 : !smt.bv<1>
+      %obs21 = smt.ite %obs20, %obsc0_bv3, %obs19 : !smt.bv<3>
+      %obsc0_bv1_8 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs22 = smt.bv.xor %obsc0_bv1_1, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs23 = smt.bv.extract %obs21 from 2 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs24 = smt.bv.extract %obs21 from 0 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs25 = smt.bv.concat %obs23, %obs24 : !smt.bv<1>, !smt.bv<1>
+      %obsc-1_bv2 = smt.bv.constant #smt.bv<-1> : !smt.bv<2>
+      %obs26 = smt.eq %obs25, %obsc-1_bv2 : !smt.bv<2>
+      %obsc0_bv1_9 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs27 = smt.ite %obs26, %obsc-1_bv1_10, %obsc0_bv1_9 : !smt.bv<1>
+      %obsc0_bv1_11 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs28 = smt.apply_func %obsF_state_4(%obsc0_bv1_3, %obsc0_bv1_4, %obsc0_bv1_5, %obsc0_bv1_6, %obs17, %obs18, %obsc0_bv1_11, %obs27, %obsc0_bv1_8, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs29 = smt.bv.xor %obsarg6, %obsc-1_bv1_12 : !smt.bv<1>
+      %obs30 = smt.bv.xor %obsarg4, %obsc-1_bv1_12 : !smt.bv<1>
+      %obs31 = smt.bv.xor %obsarg8, %obsc-1_bv1_12 : !smt.bv<1>
+      %obs32 = smt.bv.and %obs31, %obs29 : !smt.bv<1>
+      %obs33 = smt.bv.and %obs32, %obs30 : !smt.bv<1>
+      %obs34 = smt.bv.xor %obsarg27, %obsc-1_bv1_12 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs35 = smt.bv.xor %obs33, %obsc-1_bv1_13 : !smt.bv<1>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs36 = smt.bv.xor %obsarg4, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs37 = smt.bv.and %obs36, %obs35 : !smt.bv<1>
+      %obs38 = smt.bv.and %obs37, %obs30 : !smt.bv<1>
+      %obs39 = smt.bv.and %obs38, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_15 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs40 = smt.eq %obs39, %obsc-1_bv1_15 : !smt.bv<1>
+      %obsc-1_bv1_16 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs41 = smt.bv.xor %obsarg6, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs42 = smt.bv.xor %obsarg4, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs43 = smt.bv.and %obs41, %obs42 : !smt.bv<1>
+      %obs44 = smt.bv.and %obs42, %obsarg6 : !smt.bv<1>
+      %obs45 = smt.bv.xor %obsarg8, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs46 = smt.bv.and %obs45, %obs43 : !smt.bv<1>
+      %obs47 = smt.bv.xor %obsarg27, %obsc-1_bv1_16 : !smt.bv<1>
+      %obsc-1_bv1_17 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs48 = smt.bv.xor %obs44, %obsc-1_bv1_17 : !smt.bv<1>
+      %obsc-1_bv1_18 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs49 = smt.bv.xor %obs46, %obsc-1_bv1_18 : !smt.bv<1>
+      %obsc-1_bv1_19 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs50 = smt.bv.xor %obsarg4, %obsc-1_bv1_19 : !smt.bv<1>
+      %obs51 = smt.bv.and %obs50, %obs49 : !smt.bv<1>
+      %obs52 = smt.bv.and %obs51, %obs48 : !smt.bv<1>
+      %obs53 = smt.bv.and %obs52, %obs43 : !smt.bv<1>
+      %obs54 = smt.bv.and %obs53, %obsarg8 : !smt.bv<1>
+      %obsc-1_bv1_20 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs55 = smt.eq %obs54, %obsc-1_bv1_20 : !smt.bv<1>
+      %obs56 = smt.not %obs55
+      %obs57 = smt.and %obs40, %obs56
+      %obs58 = smt.and %obs14, %obs57
+      %obs59 = smt.implies %obs58, %obs28
+      smt.yield %obs59 : !smt.bool
     }
     smt.assert %obs6
     %obs7 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__3(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__4(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_3(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.xor %obsarg27, %obsc-1_bv1 : !smt.bv<1>
+      %obsc-4_bv3 = smt.bv.constant #smt.bv<-4> : !smt.bv<3>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-3_bv3 = smt.bv.constant #smt.bv<-3> : !smt.bv<3>
+      %obsc0_bv3 = smt.bv.constant #smt.bv<0> : !smt.bv<3>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_5 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_6 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_7 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs16 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs17 = smt.bv.or %obs16, %obsarg5 : !smt.bv<1>
+      %obs18 = smt.bv.or %obs17, %obsarg11 : !smt.bv<1>
+      %obs19 = smt.bv.xor %obs18, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs20 = smt.bv.xor %obsarg7, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs21 = smt.bv.xor %obsarg5, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs22 = smt.bv.and %obs20, %obs21 : !smt.bv<1>
+      %obs23 = smt.bv.and %obs22, %obsarg9 : !smt.bv<1>
+      %obsc-1_bv1_8 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs24 = smt.eq %obs23, %obsc-1_bv1_8 : !smt.bv<1>
+      %obs25 = smt.ite %obs24, %obsc-3_bv3, %obsc0_bv3 : !smt.bv<3>
+      %obs26 = smt.bv.xor %obs23, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs27 = smt.bv.and %obs21, %obsarg7 : !smt.bv<1>
+      %obsc-1_bv1_9 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs28 = smt.eq %obs27, %obsc-1_bv1_9 : !smt.bv<1>
+      %obs29 = smt.ite %obs28, %obsc-4_bv3, %obs25 : !smt.bv<3>
+      %obs30 = smt.bv.xor %obs27, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs31 = smt.bv.xor %obsarg9, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs32 = smt.bv.and %obs31, %obs22 : !smt.bv<1>
+      %obs33 = smt.bv.xor %obs32, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs34 = smt.bv.and %obs21, %obs33 : !smt.bv<1>
+      %obs35 = smt.bv.and %obs34, %obs30 : !smt.bv<1>
+      %obs36 = smt.bv.and %obs35, %obs26 : !smt.bv<1>
+      %obs37 = smt.bv.xor %obsc0_bv1_1, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs38 = smt.bv.extract %obs29 from 2 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs39 = smt.bv.extract %obs29 from 0 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs40 = smt.bv.concat %obs38, %obs39 : !smt.bv<1>, !smt.bv<1>
+      %obsc-1_bv2 = smt.bv.constant #smt.bv<-1> : !smt.bv<2>
+      %obs41 = smt.eq %obs40, %obsc-1_bv2 : !smt.bv<2>
+      %obsc0_bv1_10 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs42 = smt.ite %obs41, %obsc-1_bv1_11, %obsc0_bv1_10 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs43 = smt.bv.xor %obs32, %obsc-1_bv1_12 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs44 = smt.bv.xor %obsarg5, %obsc-1_bv1_13 : !smt.bv<1>
+      %obs45 = smt.bv.and %obs44, %obs43 : !smt.bv<1>
+      %obs46 = smt.bv.and %obs45, %obs42 : !smt.bv<1>
+      %obs47 = smt.apply_func %obsF_state_3(%obsc0_bv1_3, %obsc0_bv1_4, %obsc-1_bv1_5, %obsc0_bv1_6, %obs18, %obs19, %obsc0_bv1_7, %obs46, %obs36, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs48 = smt.bv.xor %obsarg6, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs49 = smt.bv.xor %obsarg4, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs50 = smt.bv.xor %obsarg8, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs51 = smt.bv.xor %obsarg27, %obsc-1_bv1_14 : !smt.bv<1>
+      %obsc-1_bv1_15 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs52 = smt.bv.xor %obsarg10, %obsc-1_bv1_15 : !smt.bv<1>
+      %obsc-1_bv1_16 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs53 = smt.bv.xor %obsarg4, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs54 = smt.bv.and %obs53, %obs50 : !smt.bv<1>
+      %obs55 = smt.bv.and %obs54, %obs48 : !smt.bv<1>
+      %obs56 = smt.bv.and %obs55, %obs49 : !smt.bv<1>
+      %obs57 = smt.bv.and %obs56, %obs52 : !smt.bv<1>
+      %obsc-1_bv1_17 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs58 = smt.eq %obs57, %obsc-1_bv1_17 : !smt.bv<1>
+      %obsc-1_bv1_18 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs59 = smt.bv.xor %obsarg6, %obsc-1_bv1_18 : !smt.bv<1>
+      %obs60 = smt.bv.xor %obsarg4, %obsc-1_bv1_18 : !smt.bv<1>
+      %obs61 = smt.bv.and %obs59, %obs60 : !smt.bv<1>
+      %obs62 = smt.bv.and %obs60, %obsarg6 : !smt.bv<1>
+      %obs63 = smt.bv.xor %obsarg8, %obsc-1_bv1_18 : !smt.bv<1>
+      %obs64 = smt.bv.and %obs63, %obs61 : !smt.bv<1>
+      %obs65 = smt.bv.xor %obsarg27, %obsc-1_bv1_18 : !smt.bv<1>
+      %obsc-1_bv1_19 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs66 = smt.bv.xor %obs62, %obsc-1_bv1_19 : !smt.bv<1>
+      %obsc-1_bv1_20 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs67 = smt.bv.xor %obs64, %obsc-1_bv1_20 : !smt.bv<1>
+      %obsc-1_bv1_21 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs68 = smt.bv.xor %obsarg4, %obsc-1_bv1_21 : !smt.bv<1>
+      %obs69 = smt.bv.and %obs68, %obs67 : !smt.bv<1>
+      %obs70 = smt.bv.and %obs69, %obs66 : !smt.bv<1>
+      %obs71 = smt.bv.and %obs70, %obs61 : !smt.bv<1>
+      %obs72 = smt.bv.and %obs71, %obsarg8 : !smt.bv<1>
+      %obsc-1_bv1_22 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs73 = smt.eq %obs72, %obsc-1_bv1_22 : !smt.bv<1>
+      %obs74 = smt.not %obs73
+      %obs75 = smt.and %obs58, %obs74
+      %obsc-1_bv1_23 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs76 = smt.bv.xor %obsarg6, %obsc-1_bv1_23 : !smt.bv<1>
+      %obs77 = smt.bv.xor %obsarg4, %obsc-1_bv1_23 : !smt.bv<1>
+      %obs78 = smt.bv.xor %obsarg8, %obsc-1_bv1_23 : !smt.bv<1>
+      %obs79 = smt.bv.and %obs78, %obs76 : !smt.bv<1>
+      %obs80 = smt.bv.and %obs79, %obs77 : !smt.bv<1>
+      %obs81 = smt.bv.xor %obsarg27, %obsc-1_bv1_23 : !smt.bv<1>
+      %obsc-1_bv1_24 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs82 = smt.bv.xor %obs80, %obsc-1_bv1_24 : !smt.bv<1>
+      %obsc-1_bv1_25 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs83 = smt.bv.xor %obsarg4, %obsc-1_bv1_25 : !smt.bv<1>
+      %obs84 = smt.bv.and %obs83, %obs82 : !smt.bv<1>
+      %obs85 = smt.bv.and %obs84, %obs77 : !smt.bv<1>
+      %obs86 = smt.bv.and %obs85, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_26 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs87 = smt.eq %obs86, %obsc-1_bv1_26 : !smt.bv<1>
+      %obs88 = smt.not %obs87
+      %obs89 = smt.and %obs75, %obs88
+      %obs90 = smt.and %obs14, %obs89
+      %obs91 = smt.implies %obs90, %obs47
+      smt.yield %obs91 : !smt.bool
     }
     smt.assert %obs7
     %obs8 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__3(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_3(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs15 = smt.bv.xor %obsarg6, %obsc-1_bv1 : !smt.bv<1>
+      %obs16 = smt.bv.xor %obsarg8, %obsc-1_bv1 : !smt.bv<1>
+      %obs17 = smt.bv.and %obs15, %obs16 : !smt.bv<1>
+      %obs18 = smt.bv.and %obs17, %obsarg10 : !smt.bv<1>
+      %obs19 = smt.bv.xor %obsarg27, %obsc-1_bv1 : !smt.bv<1>
       %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
+      %obsc-3_bv3 = smt.bv.constant #smt.bv<-3> : !smt.bv<3>
+      %obsc0_bv3 = smt.bv.constant #smt.bv<0> : !smt.bv<3>
       %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs20 = smt.bv.and %obsarg3, %obsarg13 : !smt.bv<1>
+      %obs21 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs22 = smt.bv.or %obs21, %obsarg5 : !smt.bv<1>
+      %obs23 = smt.bv.or %obs20, %obs22 : !smt.bv<1>
+      %obs24 = smt.bv.xor %obs22, %obsc-1_bv1_1 : !smt.bv<1>
+      %obs25 = smt.bv.and %obsarg3, %obsarg13 : !smt.bv<1>
+      %obs26 = smt.bv.xor %obsarg7, %obsc-1_bv1_1 : !smt.bv<1>
+      %obsc-1_bv1_5 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs27 = smt.eq %obs26, %obsc-1_bv1_5 : !smt.bv<1>
+      %obs28 = smt.ite %obs27, %obsarg9, %obsarg11 : !smt.bv<1>
+      %obsc-1_bv1_6 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs29 = smt.eq %obs26, %obsc-1_bv1_6 : !smt.bv<1>
+      %obs30 = smt.ite %obs29, %obsc-3_bv3, %obsc0_bv3 : !smt.bv<3>
+      %obs31 = smt.bv.xor %obs25, %obsc-1_bv1_1 : !smt.bv<1>
+      %obs32 = smt.bv.or %obsarg7, %obs31 : !smt.bv<1>
+      %obs33 = smt.bv.xor %obsarg5, %obsc-1_bv1_1 : !smt.bv<1>
+      %obs34 = smt.bv.and %obs26, %obs33 : !smt.bv<1>
+      %obs35 = smt.bv.xor %obs34, %obsc-1_bv1_1 : !smt.bv<1>
+      %obs36 = smt.bv.and %obs33, %obsarg7 : !smt.bv<1>
+      %obs37 = smt.bv.xor %obs36, %obsc-1_bv1_1 : !smt.bv<1>
+      %obs38 = smt.bv.and %obs33, %obs37 : !smt.bv<1>
+      %obs39 = smt.bv.and %obs38, %obs35 : !smt.bv<1>
+      %obsc-1_bv1_7 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs40 = smt.bv.extract %obs30 from 2 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs41 = smt.bv.extract %obs30 from 0 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs42 = smt.bv.concat %obs40, %obs41 : !smt.bv<1>, !smt.bv<1>
+      %obsc-1_bv2 = smt.bv.constant #smt.bv<-1> : !smt.bv<2>
+      %obs43 = smt.eq %obs42, %obsc-1_bv2 : !smt.bv<2>
+      %obsc0_bv1_8 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_9 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs44 = smt.ite %obs43, %obsc-1_bv1_9, %obsc0_bv1_8 : !smt.bv<1>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs45 = smt.bv.xor %obs36, %obsc-1_bv1_10 : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs46 = smt.bv.xor %obsarg5, %obsc-1_bv1_11 : !smt.bv<1>
+      %obs47 = smt.bv.and %obs46, %obs45 : !smt.bv<1>
+      %obs48 = smt.bv.and %obs47, %obs34 : !smt.bv<1>
+      %obs49 = smt.bv.and %obs48, %obs28 : !smt.bv<1>
+      %obs50 = smt.bv.and %obs49, %obs44 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs51 = smt.bv.xor %obs32, %obsc-1_bv1_12 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs52 = smt.bv.xor %obs28, %obsc-1_bv1_13 : !smt.bv<1>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs53 = smt.bv.xor %obs36, %obsc-1_bv1_14 : !smt.bv<1>
+      %obsc-1_bv1_15 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs54 = smt.bv.xor %obsarg5, %obsc-1_bv1_15 : !smt.bv<1>
+      %obs55 = smt.bv.and %obs54, %obs53 : !smt.bv<1>
+      %obs56 = smt.bv.and %obs55, %obs34 : !smt.bv<1>
+      %obs57 = smt.bv.and %obs56, %obs52 : !smt.bv<1>
+      %obs58 = smt.bv.and %obs57, %obs51 : !smt.bv<1>
+      %obs59 = smt.apply_func %obsF_state_0(%obsarg3, %obsc0_bv1_2, %obsc0_bv1_3, %obsc0_bv1_4, %obs23, %obs24, %obs58, %obs50, %obs39, %obs18) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_16 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs60 = smt.bv.xor %obsarg6, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs61 = smt.bv.xor %obsarg4, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs62 = smt.bv.and %obs60, %obs61 : !smt.bv<1>
+      %obs63 = smt.bv.and %obs62, %obsarg8 : !smt.bv<1>
+      %obs64 = smt.bv.and %obs61, %obsarg6 : !smt.bv<1>
+      %obs65 = smt.bv.xor %obsarg8, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs66 = smt.bv.and %obs65, %obs62 : !smt.bv<1>
+      %obs67 = smt.bv.xor %obsarg27, %obsc-1_bv1_16 : !smt.bv<1>
+      %obsc-1_bv1_17 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs68 = smt.bv.xor %obs63, %obsc-1_bv1_17 : !smt.bv<1>
+      %obsc-1_bv1_18 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs69 = smt.bv.xor %obs64, %obsc-1_bv1_18 : !smt.bv<1>
+      %obs70 = smt.bv.and %obs69, %obs68 : !smt.bv<1>
+      %obsc-1_bv1_19 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs71 = smt.eq %obs66, %obsc-1_bv1_19 : !smt.bv<1>
+      %obs72 = smt.ite %obs71, %obsarg10, %obs70 : !smt.bv<1>
+      %obs73 = smt.bv.or %obsarg4, %obs72 : !smt.bv<1>
+      %obsc-1_bv1_20 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs74 = smt.eq %obs73, %obsc-1_bv1_20 : !smt.bv<1>
+      %obsc-1_bv1_21 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs75 = smt.bv.xor %obsarg6, %obsc-1_bv1_21 : !smt.bv<1>
+      %obs76 = smt.bv.xor %obsarg4, %obsc-1_bv1_21 : !smt.bv<1>
+      %obs77 = smt.bv.and %obs75, %obs76 : !smt.bv<1>
+      %obs78 = smt.bv.and %obs76, %obsarg6 : !smt.bv<1>
+      %obs79 = smt.bv.xor %obsarg8, %obsc-1_bv1_21 : !smt.bv<1>
+      %obs80 = smt.bv.and %obs79, %obs77 : !smt.bv<1>
+      %obs81 = smt.bv.xor %obsarg27, %obsc-1_bv1_21 : !smt.bv<1>
+      %obsc-1_bv1_22 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs82 = smt.bv.xor %obs78, %obsc-1_bv1_22 : !smt.bv<1>
+      %obsc-1_bv1_23 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs83 = smt.bv.xor %obs80, %obsc-1_bv1_23 : !smt.bv<1>
+      %obsc-1_bv1_24 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs84 = smt.bv.xor %obsarg4, %obsc-1_bv1_24 : !smt.bv<1>
+      %obs85 = smt.bv.and %obs84, %obs83 : !smt.bv<1>
+      %obs86 = smt.bv.and %obs85, %obs82 : !smt.bv<1>
+      %obs87 = smt.bv.and %obs86, %obs77 : !smt.bv<1>
+      %obs88 = smt.bv.and %obs87, %obsarg8 : !smt.bv<1>
+      %obsc-1_bv1_25 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs89 = smt.eq %obs88, %obsc-1_bv1_25 : !smt.bv<1>
+      %obs90 = smt.not %obs89
+      %obs91 = smt.and %obs74, %obs90
+      %obsc-1_bv1_26 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs92 = smt.bv.xor %obsarg6, %obsc-1_bv1_26 : !smt.bv<1>
+      %obs93 = smt.bv.xor %obsarg4, %obsc-1_bv1_26 : !smt.bv<1>
+      %obs94 = smt.bv.xor %obsarg8, %obsc-1_bv1_26 : !smt.bv<1>
+      %obs95 = smt.bv.and %obs94, %obs92 : !smt.bv<1>
+      %obs96 = smt.bv.and %obs95, %obs93 : !smt.bv<1>
+      %obs97 = smt.bv.xor %obsarg27, %obsc-1_bv1_26 : !smt.bv<1>
+      %obsc-1_bv1_27 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs98 = smt.bv.xor %obs96, %obsc-1_bv1_27 : !smt.bv<1>
+      %obsc-1_bv1_28 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs99 = smt.bv.xor %obsarg4, %obsc-1_bv1_28 : !smt.bv<1>
+      %obs100 = smt.bv.and %obs99, %obs98 : !smt.bv<1>
+      %obs101 = smt.bv.and %obs100, %obs93 : !smt.bv<1>
+      %obs102 = smt.bv.and %obs101, %obsarg6 : !smt.bv<1>
+      %obsc-1_bv1_29 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs103 = smt.eq %obs102, %obsc-1_bv1_29 : !smt.bv<1>
+      %obs104 = smt.not %obs103
+      %obs105 = smt.and %obs91, %obs104
+      %obsc-1_bv1_30 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs106 = smt.bv.xor %obsarg6, %obsc-1_bv1_30 : !smt.bv<1>
+      %obs107 = smt.bv.xor %obsarg4, %obsc-1_bv1_30 : !smt.bv<1>
+      %obs108 = smt.bv.xor %obsarg8, %obsc-1_bv1_30 : !smt.bv<1>
+      %obs109 = smt.bv.xor %obsarg27, %obsc-1_bv1_30 : !smt.bv<1>
+      %obsc-1_bv1_31 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs110 = smt.bv.xor %obsarg10, %obsc-1_bv1_31 : !smt.bv<1>
+      %obsc-1_bv1_32 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs111 = smt.bv.xor %obsarg4, %obsc-1_bv1_32 : !smt.bv<1>
+      %obs112 = smt.bv.and %obs111, %obs108 : !smt.bv<1>
+      %obs113 = smt.bv.and %obs112, %obs106 : !smt.bv<1>
+      %obs114 = smt.bv.and %obs113, %obs107 : !smt.bv<1>
+      %obs115 = smt.bv.and %obs114, %obs110 : !smt.bv<1>
+      %obsc-1_bv1_33 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs116 = smt.eq %obs115, %obsc-1_bv1_33 : !smt.bv<1>
+      %obs117 = smt.not %obs116
+      %obs118 = smt.and %obs105, %obs117
+      %obs119 = smt.and %obs14, %obs118
+      %obs120 = smt.implies %obs119, %obs59
+      smt.yield %obs120 : !smt.bool
     }
     smt.assert %obs8
     %obs9 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__4(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__5(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_4(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.xor %obsarg27, %obsc-1_bv1 : !smt.bv<1>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_5 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_6 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_7 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs16 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs17 = smt.bv.or %obs16, %obsarg5 : !smt.bv<1>
+      %obs18 = smt.bv.xor %obs17, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc0_bv1_8 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs19 = smt.bv.xor %obsc0_bv1_1, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc0_bv1_9 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs20 = smt.apply_func %obsF_state_5(%obsc0_bv1_3, %obsc0_bv1_4, %obsc0_bv1_5, %obsc-1_bv1_6, %obs17, %obs18, %obsc0_bv1_9, %obsc0_bv1_7, %obsc0_bv1_8, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs21 = smt.bv.xor %obsarg4, %obsc-1_bv1_10 : !smt.bv<1>
+      %obs22 = smt.bv.xor %obsarg27, %obsc-1_bv1_10 : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs23 = smt.bv.xor %obsarg4, %obsc-1_bv1_11 : !smt.bv<1>
+      %obs24 = smt.bv.and %obs23, %obs21 : !smt.bv<1>
+      %obs25 = smt.bv.and %obs24, %obsarg8 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs26 = smt.eq %obs25, %obsc-1_bv1_12 : !smt.bv<1>
+      %obs27 = smt.and %obs14, %obs26
+      %obs28 = smt.implies %obs27, %obs20
+      smt.yield %obs28 : !smt.bool
     }
     smt.assert %obs9
     %obs10 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__4(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_4(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.xor %obsarg27, %obsc-1_bv1 : !smt.bv<1>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv3 = smt.bv.constant #smt.bv<0> : !smt.bv<3>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_5 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_6 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs16 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs17 = smt.bv.or %obs16, %obsarg5 : !smt.bv<1>
+      %obs18 = smt.bv.xor %obs17, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc-2_bv2 = smt.bv.constant #smt.bv<-2> : !smt.bv<2>
+      %obs19 = smt.bv.concat %obsc-2_bv2, %obsarg9 : !smt.bv<2>, !smt.bv<1>
+      %obsc-1_bv1_7 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs20 = smt.eq %obsarg5, %obsc-1_bv1_7 : !smt.bv<1>
+      %obs21 = smt.ite %obs20, %obsc0_bv3, %obs19 : !smt.bv<3>
+      %obsc0_bv1_8 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs22 = smt.bv.xor %obsc0_bv1_1, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs23 = smt.bv.extract %obs21 from 2 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs24 = smt.bv.extract %obs21 from 0 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs25 = smt.bv.concat %obs23, %obs24 : !smt.bv<1>, !smt.bv<1>
+      %obsc-1_bv2 = smt.bv.constant #smt.bv<-1> : !smt.bv<2>
+      %obs26 = smt.eq %obs25, %obsc-1_bv2 : !smt.bv<2>
+      %obsc0_bv1_9 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs27 = smt.ite %obs26, %obsc-1_bv1_10, %obsc0_bv1_9 : !smt.bv<1>
+      %obsc0_bv1_11 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs28 = smt.apply_func %obsF_state_4(%obsc0_bv1_3, %obsc0_bv1_4, %obsc0_bv1_5, %obsc0_bv1_6, %obs17, %obs18, %obsc0_bv1_11, %obs27, %obsc0_bv1_8, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs29 = smt.bv.xor %obsarg4, %obsc-1_bv1_12 : !smt.bv<1>
+      %obs30 = smt.bv.xor %obsarg27, %obsc-1_bv1_12 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs31 = smt.bv.xor %obsarg8, %obsc-1_bv1_13 : !smt.bv<1>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs32 = smt.bv.xor %obsarg4, %obsc-1_bv1_14 : !smt.bv<1>
+      %obs33 = smt.bv.and %obs32, %obs29 : !smt.bv<1>
+      %obs34 = smt.bv.and %obs33, %obs31 : !smt.bv<1>
+      %obsc-1_bv1_15 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs35 = smt.eq %obs34, %obsc-1_bv1_15 : !smt.bv<1>
+      %obsc-1_bv1_16 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs36 = smt.bv.xor %obsarg4, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs37 = smt.bv.xor %obsarg27, %obsc-1_bv1_16 : !smt.bv<1>
+      %obsc-1_bv1_17 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs38 = smt.bv.xor %obsarg4, %obsc-1_bv1_17 : !smt.bv<1>
+      %obs39 = smt.bv.and %obs38, %obs36 : !smt.bv<1>
+      %obs40 = smt.bv.and %obs39, %obsarg8 : !smt.bv<1>
+      %obsc-1_bv1_18 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs41 = smt.eq %obs40, %obsc-1_bv1_18 : !smt.bv<1>
+      %obs42 = smt.not %obs41
+      %obs43 = smt.and %obs35, %obs42
+      %obs44 = smt.and %obs14, %obs43
+      %obs45 = smt.implies %obs44, %obs28
+      smt.yield %obs45 : !smt.bool
     }
     smt.assert %obs10
     %obs11 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__5(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__6(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_4(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.xor %obsarg27, %obsc-1_bv1 : !smt.bv<1>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-3_bv3 = smt.bv.constant #smt.bv<-3> : !smt.bv<3>
+      %obsc0_bv3 = smt.bv.constant #smt.bv<0> : !smt.bv<3>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_5 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs16 = smt.bv.and %obsarg3, %obsarg13 : !smt.bv<1>
+      %obs17 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs18 = smt.bv.or %obs17, %obsarg5 : !smt.bv<1>
+      %obs19 = smt.bv.or %obs16, %obs18 : !smt.bv<1>
+      %obs20 = smt.bv.xor %obs18, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs21 = smt.bv.and %obsarg3, %obsarg13 : !smt.bv<1>
+      %obs22 = smt.bv.xor %obsarg7, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc-1_bv1_6 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs23 = smt.eq %obs22, %obsc-1_bv1_6 : !smt.bv<1>
+      %obs24 = smt.ite %obs23, %obsarg9, %obsarg11 : !smt.bv<1>
+      %obsc-1_bv1_7 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs25 = smt.eq %obs22, %obsc-1_bv1_7 : !smt.bv<1>
+      %obs26 = smt.ite %obs25, %obsc-3_bv3, %obsc0_bv3 : !smt.bv<3>
+      %obs27 = smt.bv.xor %obs21, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs28 = smt.bv.or %obsarg7, %obs27 : !smt.bv<1>
+      %obs29 = smt.bv.xor %obsarg5, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs30 = smt.bv.and %obs22, %obs29 : !smt.bv<1>
+      %obs31 = smt.bv.xor %obs30, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs32 = smt.bv.and %obs29, %obsarg7 : !smt.bv<1>
+      %obs33 = smt.bv.xor %obs32, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs34 = smt.bv.and %obs29, %obs33 : !smt.bv<1>
+      %obs35 = smt.bv.and %obs34, %obs31 : !smt.bv<1>
+      %obsc-1_bv1_8 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs36 = smt.bv.extract %obs26 from 2 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs37 = smt.bv.extract %obs26 from 0 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs38 = smt.bv.concat %obs36, %obs37 : !smt.bv<1>, !smt.bv<1>
+      %obsc-1_bv2 = smt.bv.constant #smt.bv<-1> : !smt.bv<2>
+      %obs39 = smt.eq %obs38, %obsc-1_bv2 : !smt.bv<2>
+      %obsc0_bv1_9 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs40 = smt.ite %obs39, %obsc-1_bv1_10, %obsc0_bv1_9 : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs41 = smt.bv.xor %obs32, %obsc-1_bv1_11 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs42 = smt.bv.xor %obsarg5, %obsc-1_bv1_12 : !smt.bv<1>
+      %obs43 = smt.bv.and %obs42, %obs41 : !smt.bv<1>
+      %obs44 = smt.bv.and %obs43, %obs30 : !smt.bv<1>
+      %obs45 = smt.bv.and %obs44, %obs24 : !smt.bv<1>
+      %obs46 = smt.bv.and %obs45, %obs40 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs47 = smt.bv.xor %obs28, %obsc-1_bv1_13 : !smt.bv<1>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs48 = smt.bv.xor %obs24, %obsc-1_bv1_14 : !smt.bv<1>
+      %obsc-1_bv1_15 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs49 = smt.bv.xor %obs32, %obsc-1_bv1_15 : !smt.bv<1>
+      %obsc-1_bv1_16 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs50 = smt.bv.xor %obsarg5, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs51 = smt.bv.and %obs50, %obs49 : !smt.bv<1>
+      %obs52 = smt.bv.and %obs51, %obs30 : !smt.bv<1>
+      %obs53 = smt.bv.and %obs52, %obs48 : !smt.bv<1>
+      %obs54 = smt.bv.and %obs53, %obs47 : !smt.bv<1>
+      %obs55 = smt.apply_func %obsF_state_0(%obsarg3, %obsc0_bv1_3, %obsc0_bv1_4, %obsc0_bv1_5, %obs19, %obs20, %obs54, %obs46, %obs35, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_17 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs56 = smt.bv.xor %obsarg27, %obsc-1_bv1_17 : !smt.bv<1>
+      %obsc-1_bv1_18 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs57 = smt.eq %obsarg4, %obsc-1_bv1_18 : !smt.bv<1>
+      %obsc-1_bv1_19 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs58 = smt.bv.xor %obsarg4, %obsc-1_bv1_19 : !smt.bv<1>
+      %obs59 = smt.bv.xor %obsarg27, %obsc-1_bv1_19 : !smt.bv<1>
+      %obsc-1_bv1_20 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs60 = smt.bv.xor %obsarg4, %obsc-1_bv1_20 : !smt.bv<1>
+      %obs61 = smt.bv.and %obs60, %obs58 : !smt.bv<1>
+      %obs62 = smt.bv.and %obs61, %obsarg8 : !smt.bv<1>
+      %obsc-1_bv1_21 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs63 = smt.eq %obs62, %obsc-1_bv1_21 : !smt.bv<1>
+      %obs64 = smt.not %obs63
+      %obs65 = smt.and %obs57, %obs64
+      %obsc-1_bv1_22 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs66 = smt.bv.xor %obsarg4, %obsc-1_bv1_22 : !smt.bv<1>
+      %obs67 = smt.bv.xor %obsarg27, %obsc-1_bv1_22 : !smt.bv<1>
+      %obsc-1_bv1_23 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs68 = smt.bv.xor %obsarg8, %obsc-1_bv1_23 : !smt.bv<1>
+      %obsc-1_bv1_24 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs69 = smt.bv.xor %obsarg4, %obsc-1_bv1_24 : !smt.bv<1>
+      %obs70 = smt.bv.and %obs69, %obs66 : !smt.bv<1>
+      %obs71 = smt.bv.and %obs70, %obs68 : !smt.bv<1>
+      %obsc-1_bv1_25 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs72 = smt.eq %obs71, %obsc-1_bv1_25 : !smt.bv<1>
+      %obs73 = smt.not %obs72
+      %obs74 = smt.and %obs65, %obs73
+      %obs75 = smt.and %obs14, %obs74
+      %obs76 = smt.implies %obs75, %obs55
+      smt.yield %obs76 : !smt.bool
     }
     smt.assert %obs11
     %obs12 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__5(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_5(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.xor %obsarg27, %obsc-1_bv1 : !smt.bv<1>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_5 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_6 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_7 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs16 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs17 = smt.bv.or %obs16, %obsarg5 : !smt.bv<1>
+      %obs18 = smt.bv.xor %obs17, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc0_bv1_8 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs19 = smt.bv.xor %obsc0_bv1_1, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc0_bv1_9 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs20 = smt.apply_func %obsF_state_5(%obsc0_bv1_3, %obsc0_bv1_4, %obsc0_bv1_5, %obsc-1_bv1_6, %obs17, %obs18, %obsc0_bv1_9, %obsc0_bv1_7, %obsc0_bv1_8, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs21 = smt.bv.xor %obsarg27, %obsc-1_bv1_10 : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs22 = smt.bv.xor %obsarg4, %obsc-1_bv1_11 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs23 = smt.eq %obs22, %obsc-1_bv1_12 : !smt.bv<1>
+      %obs24 = smt.and %obs14, %obs23
+      %obs25 = smt.implies %obs24, %obs20
+      smt.yield %obs25 : !smt.bool
     }
     smt.assert %obs12
     %obs13 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__6(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__7(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
+    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<1>, %obsarg3: !smt.bv<1>, %obsarg4: !smt.bv<1>, %obsarg5: !smt.bv<1>, %obsarg6: !smt.bv<1>, %obsarg7: !smt.bv<1>, %obsarg8: !smt.bv<1>, %obsarg9: !smt.bv<1>, %obsarg10: !smt.bv<1>, %obsarg11: !smt.bv<1>, %obsarg12: !smt.bv<1>, %obsarg13: !smt.bv<1>, %obsarg14: !smt.bv<1>, %obsarg15: !smt.bv<1>, %obsarg16: !smt.bv<1>, %obsarg17: !smt.bv<1>, %obsarg18: !smt.bv<1>, %obsarg19: !smt.bv<1>, %obsarg20: !smt.bv<1>, %obsarg21: !smt.bv<1>, %obsarg22: !smt.bv<1>, %obsarg23: !smt.bv<1>, %obsarg24: !smt.bv<1>, %obsarg25: !smt.bv<1>, %obsarg26: !smt.bv<1>, %obsarg27: !smt.bv<1>):
+      %obs14 = smt.apply_func %obsF_state_5(%obsarg18, %obsarg19, %obsarg20, %obsarg21, %obsarg22, %obsarg23, %obsarg24, %obsarg25, %obsarg26, %obsarg27) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc0_bv1_1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs15 = smt.bv.xor %obsarg27, %obsc-1_bv1 : !smt.bv<1>
+      %obsc-1_bv1_2 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obsc-3_bv3 = smt.bv.constant #smt.bv<-3> : !smt.bv<3>
+      %obsc0_bv3 = smt.bv.constant #smt.bv<0> : !smt.bv<3>
+      %obsc0_bv1_3 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_4 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc0_bv1_5 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obs16 = smt.bv.and %obsarg3, %obsarg13 : !smt.bv<1>
+      %obs17 = smt.bv.or %obsarg7, %obsarg9 : !smt.bv<1>
+      %obs18 = smt.bv.or %obs17, %obsarg5 : !smt.bv<1>
+      %obs19 = smt.bv.or %obs16, %obs18 : !smt.bv<1>
+      %obs20 = smt.bv.xor %obs18, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs21 = smt.bv.and %obsarg3, %obsarg13 : !smt.bv<1>
+      %obs22 = smt.bv.xor %obsarg7, %obsc-1_bv1_2 : !smt.bv<1>
+      %obsc-1_bv1_6 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs23 = smt.eq %obs22, %obsc-1_bv1_6 : !smt.bv<1>
+      %obs24 = smt.ite %obs23, %obsarg9, %obsarg11 : !smt.bv<1>
+      %obsc-1_bv1_7 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs25 = smt.eq %obs22, %obsc-1_bv1_7 : !smt.bv<1>
+      %obs26 = smt.ite %obs25, %obsc-3_bv3, %obsc0_bv3 : !smt.bv<3>
+      %obs27 = smt.bv.xor %obs21, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs28 = smt.bv.or %obsarg7, %obs27 : !smt.bv<1>
+      %obs29 = smt.bv.xor %obsarg5, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs30 = smt.bv.and %obs22, %obs29 : !smt.bv<1>
+      %obs31 = smt.bv.xor %obs30, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs32 = smt.bv.and %obs29, %obsarg7 : !smt.bv<1>
+      %obs33 = smt.bv.xor %obs32, %obsc-1_bv1_2 : !smt.bv<1>
+      %obs34 = smt.bv.and %obs29, %obs33 : !smt.bv<1>
+      %obs35 = smt.bv.and %obs34, %obs31 : !smt.bv<1>
+      %obsc-1_bv1_8 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs36 = smt.bv.extract %obs26 from 2 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs37 = smt.bv.extract %obs26 from 0 : (!smt.bv<3>) -> !smt.bv<1>
+      %obs38 = smt.bv.concat %obs36, %obs37 : !smt.bv<1>, !smt.bv<1>
+      %obsc-1_bv2 = smt.bv.constant #smt.bv<-1> : !smt.bv<2>
+      %obs39 = smt.eq %obs38, %obsc-1_bv2 : !smt.bv<2>
+      %obsc0_bv1_9 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
+      %obsc-1_bv1_10 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs40 = smt.ite %obs39, %obsc-1_bv1_10, %obsc0_bv1_9 : !smt.bv<1>
+      %obsc-1_bv1_11 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs41 = smt.bv.xor %obs32, %obsc-1_bv1_11 : !smt.bv<1>
+      %obsc-1_bv1_12 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs42 = smt.bv.xor %obsarg5, %obsc-1_bv1_12 : !smt.bv<1>
+      %obs43 = smt.bv.and %obs42, %obs41 : !smt.bv<1>
+      %obs44 = smt.bv.and %obs43, %obs30 : !smt.bv<1>
+      %obs45 = smt.bv.and %obs44, %obs24 : !smt.bv<1>
+      %obs46 = smt.bv.and %obs45, %obs40 : !smt.bv<1>
+      %obsc-1_bv1_13 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs47 = smt.bv.xor %obs28, %obsc-1_bv1_13 : !smt.bv<1>
+      %obsc-1_bv1_14 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs48 = smt.bv.xor %obs24, %obsc-1_bv1_14 : !smt.bv<1>
+      %obsc-1_bv1_15 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs49 = smt.bv.xor %obs32, %obsc-1_bv1_15 : !smt.bv<1>
+      %obsc-1_bv1_16 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs50 = smt.bv.xor %obsarg5, %obsc-1_bv1_16 : !smt.bv<1>
+      %obs51 = smt.bv.and %obs50, %obs49 : !smt.bv<1>
+      %obs52 = smt.bv.and %obs51, %obs30 : !smt.bv<1>
+      %obs53 = smt.bv.and %obs52, %obs48 : !smt.bv<1>
+      %obs54 = smt.bv.and %obs53, %obs47 : !smt.bv<1>
+      %obs55 = smt.apply_func %obsF_state_0(%obsarg3, %obsc0_bv1_3, %obsc0_bv1_4, %obsc0_bv1_5, %obs19, %obs20, %obs54, %obs46, %obs35, %obsc0_bv1_1) : !smt.func<(!smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>, !smt.bv<1>) !smt.bool>
+      %obsc-1_bv1_17 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs56 = smt.bv.xor %obsarg27, %obsc-1_bv1_17 : !smt.bv<1>
+      %obsc-1_bv1_18 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs57 = smt.eq %obsarg4, %obsc-1_bv1_18 : !smt.bv<1>
+      %obsc-1_bv1_19 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs58 = smt.bv.xor %obsarg27, %obsc-1_bv1_19 : !smt.bv<1>
+      %obsc-1_bv1_20 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs59 = smt.bv.xor %obsarg4, %obsc-1_bv1_20 : !smt.bv<1>
+      %obsc-1_bv1_21 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
+      %obs60 = smt.eq %obs59, %obsc-1_bv1_21 : !smt.bv<1>
+      %obs61 = smt.not %obs60
+      %obs62 = smt.and %obs57, %obs61
+      %obs63 = smt.and %obs14, %obs62
+      %obs64 = smt.implies %obs63, %obs55
+      smt.yield %obs64 : !smt.bool
     }
     smt.assert %obs13
-    %obs14 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__6(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs14
-    %obs15 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__7(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__8(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs15
-    %obs16 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__7(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs16
-    %obs17 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__8(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__9(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs17
-    %obs18 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__8(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs18
-    %obs19 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__9(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__10(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs19
-    %obs20 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__9(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs20
-    %obs21 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__10(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__11(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs21
-    %obs22 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__10(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs22
-    %obs23 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__11(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__12(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs23
-    %obs24 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__11(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs24
-    %obs25 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__12(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__13(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs25
-    %obs26 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__12(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs26
-    %obs27 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__13(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__14(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs27
-    %obs28 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__13(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs28
-    %obs29 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__14(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__15(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs29
-    %obs30 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__14(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs30
-    %obs31 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__15(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__16(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs31
-    %obs32 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__15(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs32
-    %obs33 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__16(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__17(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs33
-    %obs34 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__16(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs34
-    %obs35 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__17(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__18(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs35
-    %obs36 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__17(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs36
-    %obs37 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__18(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__19(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs37
-    %obs38 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__18(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs38
-    %obs39 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__19(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__20(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs39
-    %obs40 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__19(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs40
-    %obs41 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__20(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__21(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs41
-    %obs42 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__20(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs42
-    %obs43 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__21(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__22(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs43
-    %obs44 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__21(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs44
-    %obs45 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__22(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__23(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs45
-    %obs46 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__22(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs46
-    %obs47 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__23(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__24(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs47
-    %obs48 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__23(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs48
-    %obs49 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__24(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__25(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs49
-    %obs50 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__24(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs50
-    %obs51 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__25(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__26(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs51
-    %obs52 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__25(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs52
-    %obs53 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__26(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__27(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs53
-    %obs54 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__26(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs54
-    %obs55 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__27(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__28(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs55
-    %obs56 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__27(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs56
-    %obs57 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__28(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__29(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs57
-    %obs58 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__28(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs58
-    %obs59 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__29(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__30(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs59
-    %obs60 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__29(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs60
-    %obs61 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__30(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__31(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs61
-    %obs62 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__30(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs62
-    %obs63 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__31(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__32(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs63
-    %obs64 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__31(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs64
-    %obs65 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__32(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__33(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs65
-    %obs66 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__32(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs66
-    %obs67 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__33(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__34(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs67
-    %obs68 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__33(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs68
-    %obs69 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__34(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__35(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs69
-    %obs70 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__34(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs70
-    %obs71 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__35(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__36(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs71
-    %obs72 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__35(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs72
-    %obs73 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__36(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__37(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs73
-    %obs74 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__36(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs74
-    %obs75 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__37(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__38(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs75
-    %obs76 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__37(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs76
-    %obs77 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__38(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__39(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs77
-    %obs78 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__38(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs78
-    %obs79 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__39(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.bv.add %obsarg2, %obsc1_bv16 : !smt.bv<16>
-      %obs83 = smt.apply_func %obsF__40(%obs82) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs84 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.ite %obs84, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs86 = smt.eq %obs85, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs87 = smt.and %obs81, %obs86
-      %obs88 = smt.implies %obs87, %obs83
-      smt.yield %obs88 : !smt.bool
-    }
-    smt.assert %obs79
-    %obs80 = smt.forall {
-    ^bb0(%obsarg0: !smt.bv<1>, %obsarg1: !smt.bv<1>, %obsarg2: !smt.bv<16>):
-      %obs81 = smt.apply_func %obsF__39(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs82 = smt.apply_func %obsF_ERR(%obsarg2) : !smt.func<(!smt.bv<16>) !smt.bool>
-      %obs83 = smt.eq %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_0 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs84 = smt.ite %obs83, %obsc-1_bv1_0, %obsc0_bv1 : !smt.bv<1>
-      %obsc-1_bv1_1 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs85 = smt.eq %obs84, %obsc-1_bv1_1 : !smt.bv<1>
-      %obs86 = smt.distinct %obsarg0, %obsc-1_bv1 : !smt.bv<1>
-      %obsc0_bv1_2 = smt.bv.constant #smt.bv<0> : !smt.bv<1>
-      %obsc-1_bv1_3 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs87 = smt.ite %obs86, %obsc-1_bv1_3, %obsc0_bv1_2 : !smt.bv<1>
-      %obsc-1_bv1_4 = smt.bv.constant #smt.bv<-1> : !smt.bv<1>
-      %obs88 = smt.eq %obs87, %obsc-1_bv1_4 : !smt.bv<1>
-      %obs89 = smt.not %obs88
-      %obs90 = smt.and %obs85, %obs89
-      %obs91 = smt.and %obs81, %obs90
-      %obs92 = smt.implies %obs91, %obs82
-      smt.yield %obs92 : !smt.bool
-    }
-    smt.assert %obs80
   }
 }
 
