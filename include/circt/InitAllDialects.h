@@ -15,6 +15,7 @@
 #define CIRCT_INITALLDIALECTS_H_
 
 #include "circt/Dialect/Arc/ArcDialect.h"
+#include "circt/Dialect/AXI4/AXI4Dialect.h"
 #include "circt/Dialect/Calyx/CalyxDialect.h"
 #include "circt/Dialect/Comb/CombDialect.h"
 #include "circt/Dialect/DC/DCDialect.h"
@@ -58,6 +59,7 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
   // clang-format off
   registry.insert<
     arc::ArcDialect,
+    axi4::AXI4Dialect,
     calyx::CalyxDialect,
     chirrtl::CHIRRTLDialect,
     comb::CombDialect,
