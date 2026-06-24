@@ -8,6 +8,7 @@
 
 #include "circt/Dialect/AXI4/AXI4Dialect.h"
 #include "circt/Dialect/AXI4/AXI4Ops.h"
+#include "circt/Dialect/HW/HWDialect.h"
 
 using namespace circt;
 using namespace axi4;
