@@ -42,3 +42,6 @@ axi4.subordinate %mgr @sub_module {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4>
+
+// CHECK: %[[XBAR:.+]] = axi4.xbar %[[MGR]], %[[MGR]] : !axi4.port<32, 64, 4>
+%xbar = axi4.xbar %mgr, %mgr : !axi4.port<32, 64, 4>

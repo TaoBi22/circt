@@ -57,3 +57,10 @@ func.func private @not_a_module()
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
 } : !axi4.port<32, 64, 4>
+
+// -----
+
+%a = unrealized_conversion_cast to !axi4.port<32, 64, 4>
+%b = unrealized_conversion_cast to !axi4.port<32, 64, 8>
+// expected-error @below {{requires the same type for all operands and results}}
+%xbar = "axi4.xbar"(%a, %b) : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 8>) -> !axi4.port<32, 64, 4>

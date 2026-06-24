@@ -17,6 +17,7 @@ include "circt/Dialect/AXI4/AXI4Dialect.td"
 include "circt/Dialect/AXI4/AXI4Types.td"
 include "circt/Dialect/AXI4/AXI4Attributes.td"
 include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for the operations in this dialect.
@@ -80,6 +81,25 @@ def SubordinateOp : AXI4Op<"subordinate", [
 
   let assemblyFormat = "$upstream $module attr-dict `:` qualified(type($upstream))";
   let hasVerifier = 1;
+}
+
+def XbarOp : AXI4Op<"xbar", [SameOperandsAndResultType]> {
+  let summary = "An AXI4 crossbar interconnect";
+  let description = [{
+    Describes a crossbar interconnect combining a variadic number of upstream
+    `!axi4.port` connections. All operands must have the same type as the
+    result.
+
+    Example:
+    ```mlir
+    %xbar = axi4.xbar %manager1, %manager2 : !axi4.port<32, 64, 4>
+    ```
+  }];
+
+  let arguments = (ins Variadic<PortType>:$upstream);
+  let results = (outs PortType:$port);
+
+  let assemblyFormat = "$upstream attr-dict `:` qualified(type($port))";
 }
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
