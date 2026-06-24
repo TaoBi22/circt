@@ -27,15 +27,18 @@
 // Operations
 //===----------------------------------------------------------------------===//
 
-// CHECK: %[[MGR:.+]] = axi4.manager @manager_core {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4>
-%mgr = axi4.manager @manager_core {
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
+
+// CHECK: %[[MGR:.+]] = axi4.manager @mgr_module {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4>
+%mgr = axi4.manager @mgr_module {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
 } : !axi4.port<32, 64, 4>
 
-// CHECK: axi4.subordinate %[[MGR]] @subordinate_peripheral {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32} : !axi4.port<32, 64, 4>
-axi4.subordinate %mgr @subordinate_peripheral {
+// CHECK: axi4.subordinate %[[MGR]] @sub_module {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32} : !axi4.port<32, 64, 4>
+axi4.subordinate %mgr @sub_module {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4>

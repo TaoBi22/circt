@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/Dialect/AXI4/AXI4Ops.h"
+#include "circt/Dialect/HW/HWOpInterfaces.h"
 #include "mlir/IR/Builders.h"
 
 using namespace circt;
@@ -35,6 +36,18 @@ static LogicalResult verifyAccessWindows(Operation *op, ArrayAttr access) {
         return op->emitOpError("access windows overlap");
     }
   }
+  return success();
+}
+
+/// Verify that `module` resolves to an `hw.module`-like symbol.
+static LogicalResult verifyModuleSymbol(Operation *op, FlatSymbolRefAttr module,
+                                        SymbolTableCollection &symbolTable) {
+  Operation *moduleOp = symbolTable.lookupNearestSymbolFrom(op, module);
+  if (!moduleOp)
+    return op->emitOpError("references unknown symbol @") << module.getValue();
+  if (!isa<hw::HWModuleLike>(moduleOp))
+    return op->emitOpError("symbol @")
+           << module.getValue() << " must refer to an 'hw.module'";
   return success();
 }
 
@@ -68,6 +81,10 @@ LogicalResult ManagerOp::verify() {
                            "outstanding_writes");
 }
 
+LogicalResult ManagerOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifyModuleSymbol(*this, getModuleAttr(), symbolTable);
+}
+
 //===----------------------------------------------------------------------===//
 // SubordinateOp
 //===----------------------------------------------------------------------===//
@@ -77,6 +94,11 @@ LogicalResult SubordinateOp::verify() {
     return failure();
   return verifyOutstanding(*this, cast<PortType>(getUpstream().getType()),
                            getOutstandingRequests(), "outstanding_requests");
+}
+
+LogicalResult
+SubordinateOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifyModuleSymbol(*this, getModuleAttr(), symbolTable);
 }
 
 //===----------------------------------------------------------------------===//

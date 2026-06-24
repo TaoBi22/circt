@@ -16,6 +16,7 @@
 include "circt/Dialect/AXI4/AXI4Dialect.td"
 include "circt/Dialect/AXI4/AXI4Types.td"
 include "circt/Dialect/AXI4/AXI4Attributes.td"
+include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for the operations in this dialect.
@@ -24,7 +25,8 @@ class AXI4Op<string mnemonic, list<Trait> traits = []> :
 
 def WindowArrayAttr : TypedArrayAttrBase<WindowAttr, "array of access windows">;
 
-def ManagerOp : AXI4Op<"manager"> {
+def ManagerOp : AXI4Op<"manager", [
+    DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "An AXI4 manager endpoint";
   let description = [{
     Describes a manager endpoint. The `access` windows specify the regions this
@@ -53,7 +55,8 @@ def ManagerOp : AXI4Op<"manager"> {
   let hasVerifier = 1;
 }
 
-def SubordinateOp : AXI4Op<"subordinate"> {
+def SubordinateOp : AXI4Op<"subordinate", [
+    DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "An AXI4 subordinate endpoint";
   let description = [{
     Describes a subordinate endpoint. Takes the upstream `!axi4.port`, an array
