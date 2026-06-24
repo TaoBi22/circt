@@ -11,9 +11,73 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/Dialect/AXI4/AXI4Ops.h"
+#include "mlir/IR/Builders.h"
 
 using namespace circt;
 using namespace axi4;
+using namespace mlir;
+
+//===----------------------------------------------------------------------===//
+// Verifier helpers
+//===----------------------------------------------------------------------===//
+
+/// Verify that no two access windows in `access` overlap.
+static LogicalResult verifyAccessWindows(Operation *op, ArrayAttr access) {
+  for (auto [i, lhsAttr] : llvm::enumerate(access)) {
+    auto lhs = cast<WindowAttr>(lhsAttr);
+    uint64_t lhsBase = lhs.getBase();
+    uint64_t lhsEnd = lhsBase + lhs.getSize();
+    for (auto rhsAttr : access.getValue().drop_front(i + 1)) {
+      auto rhs = cast<WindowAttr>(rhsAttr);
+      uint64_t rhsBase = rhs.getBase();
+      uint64_t rhsEnd = rhsBase + rhs.getSize();
+      if (lhsBase < rhsEnd && rhsBase < lhsEnd)
+        return op->emitOpError("access windows overlap");
+    }
+  }
+  return success();
+}
+
+/// Verify that `outstanding` does not exceed the 2^(ID width) outstanding
+/// transactions addressable by `port`.
+static LogicalResult verifyOutstanding(Operation *op, PortType port,
+                                       uint32_t outstanding, StringRef name) {
+  uint32_t idWidth = port.getIdWidth();
+  // A `ui32` count can never exceed 2^32, so only widths below 32 can be
+  // exceeded.
+  if (idWidth < 32 && outstanding > (uint32_t(1) << idWidth))
+    return op->emitOpError(name)
+           << " (" << outstanding << ") exceeds the maximum of 2^" << idWidth
+           << " (" << (uint32_t(1) << idWidth)
+           << ") addressable by the port's ID width";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ManagerOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ManagerOp::verify() {
+  if (failed(verifyAccessWindows(*this, getAccess())))
+    return failure();
+  auto port = cast<PortType>(getPort().getType());
+  if (failed(verifyOutstanding(*this, port, getOutstandingReads(),
+                               "outstanding_reads")))
+    return failure();
+  return verifyOutstanding(*this, port, getOutstandingWrites(),
+                           "outstanding_writes");
+}
+
+//===----------------------------------------------------------------------===//
+// SubordinateOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SubordinateOp::verify() {
+  if (failed(verifyAccessWindows(*this, getAccess())))
+    return failure();
+  return verifyOutstanding(*this, cast<PortType>(getUpstream().getType()),
+                           getOutstandingRequests(), "outstanding_requests");
+}
 
 //===----------------------------------------------------------------------===//
 // TableGen generated logic.
