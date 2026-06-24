@@ -64,3 +64,22 @@ func.func private @not_a_module()
 %b = unrealized_conversion_cast to !axi4.port<32, 64, 8>
 // expected-error @below {{requires the same type for all operands and results}}
 %xbar = "axi4.xbar"(%a, %b) : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 8>) -> !axi4.port<32, 64, 4>
+
+// -----
+
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
+// expected-error @below {{result must have at most one use}}
+%mgr = axi4.manager @mgr_module {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4>
+axi4.subordinate %mgr @sub_module {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4>
+axi4.subordinate %mgr @sub_module {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4>
