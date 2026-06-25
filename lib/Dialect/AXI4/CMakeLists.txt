@@ -17,3 +17,5 @@ add_circt_dialect_library(CIRCTAXI4
   CIRCTHW
   MLIRIR
 )
+
+add_subdirectory(Transforms)
