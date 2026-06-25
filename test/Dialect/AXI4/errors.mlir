@@ -5,6 +5,16 @@
 
 // -----
 
+// expected-error @below {{'incr' burst kind requires a 'len'}}
+"test.attrs"() {a = #axi4.burst_spec<incr>} : () -> ()
+
+// -----
+
+// expected-error @below {{'wrap' burst kind requires a 'len'}}
+"test.attrs"() {a = #axi4.burst_spec<wrap>} : () -> ()
+
+// -----
+
 hw.module.extern @mgr_module()
 // expected-error @below {{access windows overlap}}
 %mgr = axi4.manager @mgr_module {
