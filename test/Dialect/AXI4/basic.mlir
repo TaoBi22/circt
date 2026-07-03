@@ -6,6 +6,8 @@
 
 // CHECK: unrealized_conversion_cast to !axi4.port<32, 64, 4>
 %p = unrealized_conversion_cast to !axi4.port<32, 64, 4>
+// CHECK: unrealized_conversion_cast to !axi4.clock
+%c = unrealized_conversion_cast to !axi4.clock
 
 //===----------------------------------------------------------------------===//
 // Attributes
@@ -30,25 +32,25 @@
 hw.module.extern @mgr_module()
 hw.module.extern @sub_module()
 
-// CHECK: %[[MGR0:.+]] = axi4.manager @mgr_module {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4>
-%mgr0 = axi4.manager @mgr_module {
+// CHECK: %[[MGR0:.+]] = axi4.manager @mgr_module %[[CLK:.+]] {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4>
+%mgr0 = axi4.manager @mgr_module %c {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
 } : !axi4.port<32, 64, 4>
 
-// CHECK: %[[MGR1:.+]] = axi4.manager @mgr_module {access = [#axi4.window<base = 4096, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4>
-%mgr1 = axi4.manager @mgr_module {
+// CHECK: %[[MGR1:.+]] = axi4.manager @mgr_module %[[CLK]] {access = [#axi4.window<base = 4096, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4>
+%mgr1 = axi4.manager @mgr_module %c {
   access = [#axi4.window<base = 4096, size = 4096, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
 } : !axi4.port<32, 64, 4>
 
-// CHECK: %[[XBAR:.+]] = axi4.xbar %[[MGR0]], %[[MGR1]] : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
-%xbar = axi4.xbar %mgr0, %mgr1 : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
+// CHECK: %[[XBAR:.+]] = axi4.xbar %[[CLK]] mgrs %[[MGR0]], %[[MGR1]] : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
+%xbar = axi4.xbar %c mgrs %mgr0, %mgr1 : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
 
-// CHECK: axi4.subordinate %[[XBAR]] @sub_module {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32} : !axi4.port<32, 64, 5>
-axi4.subordinate %xbar @sub_module {
+// CHECK: axi4.subordinate %[[XBAR]] @sub_module %[[CLK]] {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32} : !axi4.port<32, 64, 5>
+axi4.subordinate %xbar @sub_module %c {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 5>

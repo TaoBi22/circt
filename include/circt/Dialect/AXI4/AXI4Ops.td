@@ -32,13 +32,14 @@ def ManagerOp : AXI4Op<"manager", [
   let description = [{
     Describes a manager endpoint. The `access` windows specify the regions this
     manager can send requests to, `outstanding_reads` and `outstanding_writes`
-    bound the number of concurrent outstanding transactions, and the symbol
-    indicates the `hw.module` this manager instantiates. Returns the
-    `!axi4.port` interface for the manager.
+    bound the number of concurrent outstanding transactions, the symbol
+    indicates the `hw.module` this manager instantiates, and the `!axi4.clock`
+    gives the clock domain it operates in. Returns the `!axi4.port` interface
+    for the manager.
 
     Example:
     ```mlir
-    %manager = axi4.manager @manager_core {
+    %manager = axi4.manager @manager_core %clk {
       access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
       outstanding_reads = 4 : ui32,
       outstanding_writes = 4 : ui32
@@ -47,12 +48,13 @@ def ManagerOp : AXI4Op<"manager", [
   }];
 
   let arguments = (ins FlatSymbolRefAttr:$module,
+                       ClockType:$clock,
                        WindowArrayAttr:$access,
                        UI32Attr:$outstanding_reads,
                        UI32Attr:$outstanding_writes);
   let results = (outs PortType:$port);
 
-  let assemblyFormat = "$module attr-dict `:` qualified(type($port))";
+  let assemblyFormat = "$module $clock attr-dict `:` qualified(type($port))";
   let hasVerifier = 1;
 }
 
@@ -62,12 +64,13 @@ def SubordinateOp : AXI4Op<"subordinate", [
   let description = [{
     Describes a subordinate endpoint. Takes the upstream `!axi4.port`, an array
     of `access` windows it can handle requests to, the maximum number of
-    `outstanding_requests` it can concurrently handle, and a symbol indicating
-    the `hw.module` this subordinate instantiates.
+    `outstanding_requests` it can concurrently handle, a symbol indicating the
+    `hw.module` this subordinate instantiates, and the `!axi4.clock` giving the
+    clock domain it operates in.
 
     Example:
     ```mlir
-    axi4.subordinate %manager @subordinate_peripheral {
+    axi4.subordinate %manager @subordinate_peripheral %clk {
       access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
       outstanding_requests = 4 : ui32
     } : !axi4.port<32, 64, 4>
@@ -76,30 +79,31 @@ def SubordinateOp : AXI4Op<"subordinate", [
 
   let arguments = (ins PortType:$upstream,
                        FlatSymbolRefAttr:$module,
+                       ClockType:$clock,
                        WindowArrayAttr:$access,
                        UI32Attr:$outstanding_requests);
 
-  let assemblyFormat = "$upstream $module attr-dict `:` qualified(type($upstream))";
+  let assemblyFormat = "$upstream $module $clock attr-dict `:` qualified(type($upstream))";
   let hasVerifier = 1;
 }
 
-def XbarOp : AXI4Op<"xbar", [SameTypeOperands]> {
+def XbarOp : AXI4Op<"xbar"> {
   let summary = "An AXI4 crossbar interconnect";
   let description = [{
     Describes a crossbar interconnect combining a variadic number of upstream
-    `!axi4.port` connections. All operands must have the same type as the
-    result.
+    `!axi4.port` connections and operating in the clock domain given by an
+    `!axi4.clock`. All upstream ports must have the same type.
 
     Example:
     ```mlir
-    %xbar = axi4.xbar %manager1, %manager2 : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
+    %xbar = axi4.xbar %clk mgrs %manager1, %manager2 : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
     ```
   }];
 
-  let arguments = (ins Variadic<PortType>:$upstream);
+  let arguments = (ins ClockType:$clock, Variadic<PortType>:$upstream);
   let results = (outs PortType:$port);
 
-  let assemblyFormat = "$upstream attr-dict `:` functional-type($upstream, $port)";
+  let assemblyFormat = "$clock `mgrs` $upstream attr-dict `:` functional-type($upstream, $port)";
   let hasVerifier = 1;
 }
 

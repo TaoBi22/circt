@@ -19,6 +19,14 @@ include "mlir/IR/AttrTypeBase.td"
 class AXI4TypeDef<string name, list<Trait> traits = []> :
     TypeDef<AXI4Dialect, name, traits>;
 
+def ClockType : AXI4TypeDef<"Clock"> {
+  let mnemonic = "clock";
+  let summary = "A clock domain over AXI4 components";
+  let description = [{
+    Defines a clock domain over AXI4 components.
+  }];
+}
+
 def PortType : AXI4TypeDef<"Port"> {
   let mnemonic = "port";
   let summary = "An AXI4 port interface";
