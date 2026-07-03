@@ -44,11 +44,11 @@ hw.module.extern @sub_module()
   outstanding_writes = 4 : ui32
 } : !axi4.port<32, 64, 4>
 
-// CHECK: %[[XBAR:.+]] = axi4.xbar %[[MGR0]], %[[MGR1]] : !axi4.port<32, 64, 4>
-%xbar = axi4.xbar %mgr0, %mgr1 : !axi4.port<32, 64, 4>
+// CHECK: %[[XBAR:.+]] = axi4.xbar %[[MGR0]], %[[MGR1]] : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
+%xbar = axi4.xbar %mgr0, %mgr1 : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
 
-// CHECK: axi4.subordinate %[[XBAR]] @sub_module {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32} : !axi4.port<32, 64, 4>
+// CHECK: axi4.subordinate %[[XBAR]] @sub_module {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32} : !axi4.port<32, 64, 5>
 axi4.subordinate %xbar @sub_module {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
-} : !axi4.port<32, 64, 4>
+} : !axi4.port<32, 64, 5>

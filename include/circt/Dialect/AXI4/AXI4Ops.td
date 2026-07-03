@@ -83,7 +83,7 @@ def SubordinateOp : AXI4Op<"subordinate", [
   let hasVerifier = 1;
 }
 
-def XbarOp : AXI4Op<"xbar", [SameOperandsAndResultType]> {
+def XbarOp : AXI4Op<"xbar", [SameTypeOperands]> {
   let summary = "An AXI4 crossbar interconnect";
   let description = [{
     Describes a crossbar interconnect combining a variadic number of upstream
@@ -92,14 +92,15 @@ def XbarOp : AXI4Op<"xbar", [SameOperandsAndResultType]> {
 
     Example:
     ```mlir
-    %xbar = axi4.xbar %manager1, %manager2 : !axi4.port<32, 64, 4>
+    %xbar = axi4.xbar %manager1, %manager2 : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
     ```
   }];
 
   let arguments = (ins Variadic<PortType>:$upstream);
   let results = (outs PortType:$port);
 
-  let assemblyFormat = "$upstream attr-dict `:` qualified(type($port))";
+  let assemblyFormat = "$upstream attr-dict `:` functional-type($upstream, $port)";
+  let hasVerifier = 1;
 }
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

@@ -13,6 +13,8 @@
 #include "circt/Dialect/AXI4/AXI4Ops.h"
 #include "circt/Dialect/HW/HWOpInterfaces.h"
 #include "mlir/IR/Builders.h"
+#include "llvm/Support/LogicalResult.h"
+#include <iostream>
 
 using namespace circt;
 using namespace axi4;
@@ -103,6 +105,23 @@ LogicalResult SubordinateOp::verify() {
 LogicalResult
 SubordinateOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return verifyModuleSymbol(*this, getModuleAttr(), symbolTable);
+}
+
+//===----------------------------------------------------------------------===//
+// XBarOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult XbarOp::verify() {
+  auto upstreamWidth =
+      cast<PortType>(getUpstream().getTypes().front()).getIdWidth();
+  auto downstreamWidth = getResult().getType().getIdWidth();
+  auto minWidth = upstreamWidth + llvm::Log2_64_Ceil(getNumOperands());
+  if (downstreamWidth < (minWidth))
+    return emitError()
+           << "Xbar return type's id width must be at least the input id width "
+              "+ ceil(log2(number of managers)) (i.e., "
+           << minWidth << ")";
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

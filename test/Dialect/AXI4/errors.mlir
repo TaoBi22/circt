@@ -71,9 +71,9 @@ func.func private @not_a_module()
 // -----
 
 %a = unrealized_conversion_cast to !axi4.port<32, 64, 4>
-%b = unrealized_conversion_cast to !axi4.port<32, 64, 8>
-// expected-error @below {{requires the same type for all operands and results}}
-%xbar = "axi4.xbar"(%a, %b) : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 8>) -> !axi4.port<32, 64, 4>
+%b = unrealized_conversion_cast to !axi4.port<32, 64, 4>
+// expected-error @below {{Xbar return type's id width must be at least the input id width + ceil(log2(number of managers)) (i.e., 5)}}
+%xbar = "axi4.xbar"(%a, %b) : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 4>
 
 // -----
 
