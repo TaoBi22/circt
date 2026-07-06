@@ -66,6 +66,17 @@ static LogicalResult verifyOutstanding(Operation *op, PortType port,
   return success();
 }
 
+/// Verify that `node` and `port_mapping` are either both given or both
+/// omitted.
+static LogicalResult verifyNodePortMapping(Operation *op, Value node,
+                                           Attribute portMapping) {
+  if (!node != !portMapping)
+    return op->emitOpError(
+        "'node' and 'port_mapping' must either both be given or both be "
+        "omitted");
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // NodeOp
 //===----------------------------------------------------------------------===//
@@ -79,6 +90,8 @@ LogicalResult NodeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ManagerPortOp::verify() {
+  if (failed(verifyNodePortMapping(*this, getNode(), getPortMappingAttr())))
+    return failure();
   if (failed(verifyAccessWindows(*this, getAccess())))
     return failure();
   // Managers fanning out to multiple endpoints must go through an 'axi4.xbar'.
@@ -98,6 +111,8 @@ LogicalResult ManagerPortOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult SubordinatePortOp::verify() {
+  if (failed(verifyNodePortMapping(*this, getNode(), getPortMappingAttr())))
+    return failure();
   if (failed(verifyAccessWindows(*this, getAccess())))
     return failure();
   return verifyOutstanding(*this, cast<PortType>(getUpstream().getType()),
