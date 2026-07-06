@@ -14,12 +14,33 @@
 #define CIRCT_DIALECT_AXI4_AXI4OPS_TD
 
 include "circt/Dialect/AXI4/AXI4Dialect.td"
+include "circt/Dialect/AXI4/AXI4Types.td"
+include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for the operations in this dialect.
 class AXI4Op<string mnemonic, list<Trait> traits = []> :
     Op<AXI4Dialect, mnemonic, traits>;
 
-// Operations will be added here.
+def NodeOp : AXI4Op<"node", [
+    DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
+  let summary = "An AXI4 node referencing a blackbox hardware module";
+  let description = [{
+    Describes an instantiated blackbox hardware module that has AXI4 ports.
+    The symbol must resolve to an `hw.module`-like operation. The resulting
+    `!axi4.node` value is used by `axi4.manager_port` and
+    `axi4.subordinate_port` to refer to the instantiated module.
+
+    Example:
+    ```mlir
+    %node = axi4.node @my_module : !axi4.node
+    ```
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$module);
+  let results = (outs NodeType:$node);
+
+  let assemblyFormat = "$module attr-dict `:` qualified(type($node))";
+}
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

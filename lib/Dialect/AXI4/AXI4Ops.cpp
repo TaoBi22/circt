@@ -11,9 +11,36 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/Dialect/AXI4/AXI4Ops.h"
+#include "circt/Dialect/HW/HWOpInterfaces.h"
+#include "mlir/IR/Builders.h"
 
 using namespace circt;
 using namespace axi4;
+using namespace mlir;
+
+//===----------------------------------------------------------------------===//
+// Verifier helpers
+//===----------------------------------------------------------------------===//
+
+/// Verify that `module` resolves to an `hw.module`-like symbol.
+static LogicalResult verifyModuleSymbol(Operation *op, FlatSymbolRefAttr module,
+                                        SymbolTableCollection &symbolTable) {
+  Operation *moduleOp = symbolTable.lookupNearestSymbolFrom(op, module);
+  if (!moduleOp)
+    return op->emitOpError("references unknown symbol @") << module.getValue();
+  if (!isa<hw::HWModuleLike>(moduleOp))
+    return op->emitOpError("symbol @")
+           << module.getValue() << " must refer to an 'hw.module'";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NodeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult NodeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  return verifyModuleSymbol(*this, getModuleAttr(), symbolTable);
+}
 
 //===----------------------------------------------------------------------===//
 // TableGen generated logic.
