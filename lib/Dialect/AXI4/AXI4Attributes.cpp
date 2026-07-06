@@ -24,8 +24,12 @@ using namespace mlir;
 LogicalResult
 BurstSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                       BurstKind kind, std::optional<uint32_t> len) {
+  // A 'len' is present iff the burst is incrementing ('incr' or 'wrap').
   if (kind == BurstKind::Fixed && len.has_value())
     return emitError() << "'fixed' burst kind cannot have a 'len'";
+  if (kind != BurstKind::Fixed && !len.has_value())
+    return emitError() << "'" << stringifyBurstKind(kind)
+                       << "' burst kind requires a 'len'";
   return success();
 }
 
