@@ -41,15 +41,25 @@ hw.module.extern @sub_module()
 // CHECK: %[[SUBNODE:.+]] = axi4.node @sub_module : !axi4.node
 %sub_node = axi4.node @sub_module : !axi4.node
 
-// CHECK: %[[MGR:.+]] = axi4.manager_port %[[MGRNODE]] %[[CLK:.+]] {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4>
-%mgr = axi4.manager_port %mgr_node %c {
+// CHECK: %[[MGR0:.+]] = axi4.manager_port %[[MGRNODE]] %[[CLK:.+]] {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4>
+%mgr0 = axi4.manager_port %mgr_node %c {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
 } : !axi4.port<32, 64, 4>
 
-// CHECK: axi4.subordinate_port %[[MGR]] %[[SUBNODE]] %[[CLK]] {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32} : !axi4.port<32, 64, 4>
-axi4.subordinate_port %mgr %sub_node %c {
+// CHECK: %[[MGR1:.+]] = axi4.manager_port %[[MGRNODE]] %[[CLK]] {access = [#axi4.window<base = 4096, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4>
+%mgr1 = axi4.manager_port %mgr_node %c {
+  access = [#axi4.window<base = 4096, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4>
+
+// CHECK: %[[XBAR:.+]] = axi4.xbar %[[CLK]] mgrs %[[MGR0]], %[[MGR1]] : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
+%xbar = axi4.xbar %c mgrs %mgr0, %mgr1 : (!axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 5>
+
+// CHECK: axi4.subordinate_port %[[XBAR]] %[[SUBNODE]] %[[CLK]] {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32} : !axi4.port<32, 64, 5>
+axi4.subordinate_port %xbar %sub_node %c {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
-} : !axi4.port<32, 64, 4>
+} : !axi4.port<32, 64, 5>
