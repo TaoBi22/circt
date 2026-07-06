@@ -34,12 +34,66 @@ static LogicalResult verifyModuleSymbol(Operation *op, FlatSymbolRefAttr module,
   return success();
 }
 
+/// Verify that no two access windows in `access` overlap.
+static LogicalResult verifyAccessWindows(Operation *op, ArrayAttr access) {
+  for (auto [i, lhsAttr] : llvm::enumerate(access)) {
+    auto lhs = cast<WindowAttr>(lhsAttr);
+    uint64_t lhsBase = lhs.getBase();
+    uint64_t lhsEnd = lhsBase + lhs.getSize();
+    for (auto rhsAttr : access.getValue().drop_front(i + 1)) {
+      auto rhs = cast<WindowAttr>(rhsAttr);
+      uint64_t rhsBase = rhs.getBase();
+      uint64_t rhsEnd = rhsBase + rhs.getSize();
+      if (lhsBase < rhsEnd && rhsBase < lhsEnd)
+        return op->emitOpError("access windows overlap");
+    }
+  }
+  return success();
+}
+
+/// Verify that `outstanding` does not exceed the 2^(ID width) outstanding
+/// transactions addressable by an ID field of `idWidth` bits.
+static LogicalResult verifyOutstanding(Operation *op, uint32_t idWidth,
+                                       uint32_t outstanding, StringRef name) {
+  // A `ui32` count can never exceed 2^32, so only widths below 32 can be
+  // exceeded.
+  if (idWidth < 32 && outstanding > (uint32_t(1) << idWidth))
+    return op->emitOpError(name)
+           << " (" << outstanding << ") exceeds the maximum of 2^" << idWidth
+           << " (" << (uint32_t(1) << idWidth)
+           << ") addressable by the port's ID width";
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // NodeOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult NodeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return verifyModuleSymbol(*this, getModuleAttr(), symbolTable);
+}
+
+//===----------------------------------------------------------------------===//
+// ManagerPortOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ManagerPortOp::verify() {
+  if (failed(verifyAccessWindows(*this, getAccess())))
+    return failure();
+  auto port = cast<PortType>(getPort().getType());
+  if (failed(verifyOutstanding(*this, port.getReadIdWidth(),
+                               getOutstandingReads(), "outstanding_reads")))
+    return failure();
+  return verifyOutstanding(*this, port.getWriteIdWidth(),
+                           getOutstandingWrites(), "outstanding_writes");
+}
+
+//===----------------------------------------------------------------------===//
+// SubordinatePortOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SubordinatePortOp::verify() {
+  return verifyAccessWindows(*this, getAccess());
 }
 
 //===----------------------------------------------------------------------===//

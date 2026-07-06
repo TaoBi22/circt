@@ -36,7 +36,23 @@
 // Operations
 //===----------------------------------------------------------------------===//
 
-hw.module.extern @my_module()
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
 
-// CHECK: %[[NODE:.+]] = axi4.node @my_module : !axi4.node
-%node = axi4.node @my_module : !axi4.node
+// CHECK: %[[MGRNODE:.+]] = axi4.node @mgr_module : !axi4.node
+%mgr_node = axi4.node @mgr_module : !axi4.node
+// CHECK: %[[SUBNODE:.+]] = axi4.node @sub_module : !axi4.node
+%sub_node = axi4.node @sub_module : !axi4.node
+
+// CHECK: %[[MGR:.+]] = axi4.manager_port %[[MGRNODE]] %[[CLK:.+]], %[[RST:.+]] {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4, 4, 0, 0, 0>
+%mgr = axi4.manager_port %mgr_node %c, %r {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0, 0, 0>
+
+// CHECK: axi4.subordinate_port %[[MGR]] %[[SUBNODE]] %[[CLK]], %[[RST]] {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32} : !axi4.port<32, 64, 4, 4, 0, 0, 0>
+axi4.subordinate_port %mgr %sub_node %c, %r {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0, 0, 0>

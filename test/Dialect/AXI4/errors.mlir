@@ -23,3 +23,45 @@
 func.func private @not_a_module()
 // expected-error @below {{symbol @not_a_module must refer to an 'hw.module'}}
 %node = axi4.node @not_a_module : !axi4.node
+
+// -----
+
+hw.module.extern @mgr_module()
+%node = axi4.node @mgr_module : !axi4.node
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+// expected-error @below {{access windows overlap}}
+%mgr = axi4.manager_port %node %clk, %rst {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>,
+            #axi4.window<base = 2048, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0, 0, 0>
+
+// -----
+
+hw.module.extern @mgr_module()
+%node = axi4.node @mgr_module : !axi4.node
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+// 'outstanding_reads' of 32 exceeds 2^4 = 16 addressable by the read ID width.
+// expected-error @below {{outstanding_reads (32) exceeds the maximum of 2^4 (16)}}
+%mgr = axi4.manager_port %node %clk, %rst {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 32 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0, 0, 0>
+
+// -----
+
+hw.module.extern @mgr_module()
+%node = axi4.node @mgr_module : !axi4.node
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+// 'outstanding_writes' of 32 exceeds 2^4 = 16 addressable by the write ID width.
+// expected-error @below {{outstanding_writes (32) exceeds the maximum of 2^4 (16)}}
+%mgr = axi4.manager_port %node %clk, %rst {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 32 : ui32
+} : !axi4.port<32, 64, 4, 4, 0, 0, 0>
