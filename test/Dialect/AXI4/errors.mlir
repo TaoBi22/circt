@@ -26,6 +26,29 @@ func.func private @not_a_module()
 
 // -----
 
+hw.module.extern @mgr_module()
+%node = axi4.node @mgr_module : !axi4.node
+%clk = unrealized_conversion_cast to !axi4.clock
+// expected-error @below {{'node' and 'port_mapping' must either both be given or both be omitted}}
+%mgr = axi4.manager_port %clk node %node {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4>
+
+// -----
+
+%clk = unrealized_conversion_cast to !axi4.clock
+// expected-error @below {{'node' and 'port_mapping' must either both be given or both be omitted}}
+%mgr = axi4.manager_port %clk {
+  port_mapping = #axi4.port_struct<"clk", "axi_in">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4>
+
+// -----
+
 %clk = unrealized_conversion_cast to !axi4.clock
 // expected-error @below {{access windows overlap}}
 %mgr = axi4.manager_port %clk {
