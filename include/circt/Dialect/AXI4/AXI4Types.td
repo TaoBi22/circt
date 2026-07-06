@@ -57,4 +57,13 @@ def PortType : AXI4TypeDef<"Port"> {
                        "$userRespWidth `>`";
 }
 
+def NodeType : AXI4TypeDef<"Node"> {
+  let mnemonic = "node";
+  let summary = "A blackbox hardware module instantiation";
+  let description = [{
+    Associates a symbol with an instantiated blackbox hardware module that has
+    AXI4 ports, e.g. the result of `axi4.node @my_module`.
+  }];
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4TYPES_TD

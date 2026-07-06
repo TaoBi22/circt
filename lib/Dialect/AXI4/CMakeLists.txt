@@ -7,9 +7,13 @@ add_circt_dialect_library(CIRCTAXI4
   ADDITIONAL_HEADER_DIRS
   ${CIRCT_MAIN_INCLUDE_DIR}/circt/Dialect/AXI4
 
+  DEPENDS
+  CIRCTHW
+
   LINK_COMPONENTS
   Support
 
   LINK_LIBS PUBLIC
+  CIRCTHW
   MLIRIR
 )

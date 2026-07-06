@@ -25,6 +25,7 @@ def AXI4Dialect : Dialect {
   }];
 
   let cppNamespace = "::circt::axi4";
+  let dependentDialects = ["circt::hw::HWDialect"];
 
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;

@@ -9,9 +9,11 @@
 #ifndef CIRCT_DIALECT_AXI4_AXI4OPS_H
 #define CIRCT_DIALECT_AXI4_AXI4OPS_H
 
-#include "mlir/IR/OpImplementation.h"
-
 #include "circt/Dialect/AXI4/AXI4Dialect.h"
+#include "circt/Dialect/AXI4/AXI4Types.h"
+#include "mlir/Bytecode/BytecodeOpInterface.h"
+#include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/SymbolTable.h"
 
 #define GET_OP_CLASSES
 #include "circt/Dialect/AXI4/AXI4.h.inc"
