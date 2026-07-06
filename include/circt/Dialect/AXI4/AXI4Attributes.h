@@ -10,6 +10,7 @@
 #define CIRCT_DIALECT_AXI4_AXI4ATTRIBUTES_H
 
 #include "circt/Dialect/AXI4/AXI4Dialect.h"
+#include "circt/Dialect/AXI4/AXI4Interfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 
 // Pull in the enum definitions.
