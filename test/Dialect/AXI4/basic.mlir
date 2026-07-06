@@ -13,6 +13,9 @@
 // CHECK: unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
 %p = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
 
+// CHECK: unrealized_conversion_cast to !axi4.node
+%n = unrealized_conversion_cast to !axi4.node
+
 //===----------------------------------------------------------------------===//
 // Attributes
 //===----------------------------------------------------------------------===//
@@ -28,3 +31,12 @@
 "test.attrs"() {a = #axi4.window<base = 0x4000, size = 0x100, burst_specs = [<fixed>]>} : () -> ()
 // CHECK: #axi4.window<base = 16384, size = 256, burst_specs = [<wrap, len = 256>, <incr, len = 256>]>
 "test.attrs"() {a = #axi4.window<base = 0x4000, size = 0x100, burst_specs = [<wrap, len = 256>, <incr, len = 256>]>} : () -> ()
+
+//===----------------------------------------------------------------------===//
+// Operations
+//===----------------------------------------------------------------------===//
+
+hw.module.extern @my_module()
+
+// CHECK: %[[NODE:.+]] = axi4.node @my_module : !axi4.node
+%node = axi4.node @my_module : !axi4.node
