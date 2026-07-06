@@ -16,6 +16,7 @@
 include "circt/Dialect/AXI4/AXI4Dialect.td"
 include "circt/Dialect/AXI4/AXI4Types.td"
 include "circt/Dialect/AXI4/AXI4Attributes.td"
+include "circt/Dialect/AXI4/AXI4Interfaces.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -52,13 +53,22 @@ def ManagerPortOp : AXI4Op<"manager_port"> {
     Describes a manager endpoint port. The `access` windows specify the
     regions this manager can send requests to, `outstanding_reads` and
     `outstanding_writes` bound the number of concurrent outstanding
-    transactions, `node` indicates the module this port is attached to, and
-    `clock`/`reset` are the clock and (active-low) reset domains it operates
-    in. Returns the `!axi4.port` interface for the manager port.
+    transactions, `clock`/`reset` are the clock and (active-low) reset
+    domains it operates in, and `node` optionally indicates the module this
+    port is attached to (in which case `port_mapping` must also be given to
+    indicate which port on that module this corresponds to). Returns the
+    `!axi4.port` interface for the manager port.
 
     Example:
     ```mlir
-    %manager = axi4.manager_port %node %clk, %rst_ni {
+    %manager = axi4.manager_port %clk, %rst_ni node %node {
+      port_mapping = #axi4.port_struct<"clk", "rst_ni", "axi_in">,
+      access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+      outstanding_reads = 4 : ui32,
+      outstanding_writes = 4 : ui32
+    } : !axi4.port<32, 64, 4>
+
+    %nodeless_manager = axi4.manager_port %clk, %rst_ni {
       access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
       outstanding_reads = 4 : ui32,
       outstanding_writes = 4 : ui32
@@ -66,30 +76,39 @@ def ManagerPortOp : AXI4Op<"manager_port"> {
     ```
   }];
 
-  let arguments = (ins NodeType:$node,
-                       ClockType:$clock,
+  let arguments = (ins ClockType:$clock,
                        ResetType:$reset,
+                       Optional<NodeType>:$node,
+                       OptionalAttr<AXI4PortMappingAttrInterface>:$port_mapping,
                        WindowArrayAttr:$access,
                        UI32Attr:$outstanding_reads,
                        UI32Attr:$outstanding_writes);
   let results = (outs PortType:$port);
 
-  let assemblyFormat = "$node $clock `,` $reset attr-dict `:` qualified(type($port))";
+  let assemblyFormat = "$clock `,` $reset (`node` $node^)? attr-dict `:` qualified(type($port))";
   let hasVerifier = 1;
 }
 
 def SubordinatePortOp : AXI4Op<"subordinate_port"> {
   let summary = "An AXI4 subordinate endpoint";
   let description = [{
-    Describes a subordinate endpoint port. Takes the upstream
-    `!axi4.port`, `node` indicating the port this port is attached to,
+    Describes a subordinate endpoint port. Takes the upstream `!axi4.port`,
     `clock`/`reset` for the clock and (active-low) reset domains it operates
-    in, an array of `access` windows it can handle requests to, and the
-    maximum number of `outstanding_requests` it can concurrently handle.
+    in, an array of `access` windows it can handle requests to, the maximum
+    number of `outstanding_requests` it can concurrently handle, and
+    optionally `node` indicating the module this port is attached to (in
+    which case `port_mapping` must also be given to indicate which port on
+    that module this corresponds to).
 
     Example:
     ```mlir
-    axi4.subordinate_port %manager %node %clk, %rst_ni {
+    axi4.subordinate_port %manager, %clk, %rst_ni node %node {
+      port_mapping = #axi4.req_resp_structs<"clk", "rst_ni", "axi_sub_req_i", "axi_sub_resp_o">,
+      access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+      outstanding_requests = 4 : ui32
+    } : !axi4.port<32, 64, 4>
+
+    axi4.subordinate_port %nodeless_manager, %clk, %rst_ni {
       access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
       outstanding_requests = 4 : ui32
     } : !axi4.port<32, 64, 4>
@@ -97,13 +116,14 @@ def SubordinatePortOp : AXI4Op<"subordinate_port"> {
   }];
 
   let arguments = (ins PortType:$upstream,
-                       NodeType:$node,
                        ClockType:$clock,
                        ResetType:$reset,
+                       Optional<NodeType>:$node,
+                       OptionalAttr<AXI4PortMappingAttrInterface>:$port_mapping,
                        WindowArrayAttr:$access,
                        UI32Attr:$outstanding_requests);
 
-  let assemblyFormat = "$upstream $node $clock `,` $reset attr-dict `:` qualified(type($upstream))";
+  let assemblyFormat = "$upstream `,` $clock `,` $reset (`node` $node^)? attr-dict `:` qualified(type($upstream))";
   let hasVerifier = 1;
 }
 
