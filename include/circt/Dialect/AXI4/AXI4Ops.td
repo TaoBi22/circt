@@ -127,4 +127,26 @@ def SubordinatePortOp : AXI4Op<"subordinate_port"> {
   let hasVerifier = 1;
 }
 
+def XbarOp : AXI4Op<"xbar"> {
+  let summary = "An AXI4 crossbar interconnect";
+  let description = [{
+    Describes a crossbar interconnect combining a variadic number of upstream
+    `!axi4.port` connections and operating in the clock/reset domain given by
+    an `!axi4.clock`/`!axi4.reset`. All upstream ports must have the same
+    type.
+
+    Example:
+    ```mlir
+    %xbar = axi4.xbar %clk, %rst_ni mgrs %manager1, %manager2 : (!axi4.port<32, 64, 4, 4, 0>, !axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 64, 5, 5, 0>
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, ResetType:$reset,
+                       Variadic<PortType>:$upstream);
+  let results = (outs PortType:$port);
+
+  let assemblyFormat = "$clock `,` $reset `mgrs` $upstream attr-dict `:` functional-type($upstream, $port)";
+  let hasVerifier = 1;
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

@@ -62,23 +62,46 @@ func.func private @not_a_module()
 
 // -----
 
-hw.module.extern @mgr_module()
-hw.module.extern @sub_module()
-%mgr_node = axi4.node @mgr_module : !axi4.node
-%sub_node = axi4.node @sub_module : !axi4.node
+%a = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
+%b = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+// expected-error @below {{xbar return type's write id width must be at least the input write id width + ceil(log2(number of managers)) (i.e., 5)}}
+%xbar = "axi4.xbar"(%clk, %rst, %a, %b) : (!axi4.clock, !axi4.reset, !axi4.port<32, 64, 4, 4, 0>, !axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 64, 4, 4, 0>
+
+// -----
+
+%a = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
+%b = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+// expected-error @below {{xbar return type's read id width must be at least the input read id width + ceil(log2(number of managers)) (i.e., 5)}}
+%xbar = "axi4.xbar"(%clk, %rst, %a, %b) : (!axi4.clock, !axi4.reset, !axi4.port<32, 64, 4, 4, 0>, !axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 64, 5, 4, 0>
+
+// -----
+
+%a = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
+%b = unrealized_conversion_cast to !axi4.port<32, 64, 5, 5, 0>
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+// expected-error @below {{all upstream ports must have the same type}}
+%xbar = "axi4.xbar"(%clk, %rst, %a, %b) : (!axi4.clock, !axi4.reset, !axi4.port<32, 64, 4, 4, 0>, !axi4.port<32, 64, 5, 5, 0>) -> !axi4.port<32, 64, 5, 5, 0>
+
+// -----
+
 %clk = unrealized_conversion_cast to !axi4.clock
 %rst = unrealized_conversion_cast to !axi4.reset
 // expected-error @below {{result must have at most one use}}
-%mgr = axi4.manager_port %mgr_node %clk, %rst {
+%mgr = axi4.manager_port %clk, %rst {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
 } : !axi4.port<32, 64, 4, 4, 0>
-axi4.subordinate_port %mgr %sub_node %clk, %rst {
+axi4.subordinate_port %mgr, %clk, %rst {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4, 4, 0>
-axi4.subordinate_port %mgr %sub_node %clk, %rst {
+axi4.subordinate_port %mgr, %clk, %rst {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4, 4, 0>
