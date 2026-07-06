@@ -15,6 +15,7 @@
 
 include "circt/Dialect/AXI4/AXI4Dialect.td"
 include "circt/Dialect/AXI4/AXI4Types.td"
+include "circt/Dialect/AXI4/AXI4Attributes.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -41,6 +42,67 @@ def NodeOp : AXI4Op<"node", [
   let results = (outs NodeType:$node);
 
   let assemblyFormat = "$module attr-dict `:` qualified(type($node))";
+}
+
+def WindowArrayAttr : TypedArrayAttrBase<WindowAttr, "array of access windows">;
+
+def ManagerPortOp : AXI4Op<"manager_port"> {
+  let summary = "An AXI4 manager endpoint";
+  let description = [{
+    Describes a manager endpoint port. The `access` windows specify the
+    regions this manager can send requests to, `outstanding_reads` and
+    `outstanding_writes` bound the number of concurrent outstanding
+    transactions, `node` indicates the module this port is attached to, and
+    `clock` is the clock domain it operates in. Returns the `!axi4.port`
+    interface for the manager port.
+
+    Example:
+    ```mlir
+    %manager = axi4.manager_port %node %clk {
+      access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+      outstanding_reads = 4 : ui32,
+      outstanding_writes = 4 : ui32
+    } : !axi4.port<32, 64, 4>
+    ```
+  }];
+
+  let arguments = (ins NodeType:$node,
+                       ClockType:$clock,
+                       WindowArrayAttr:$access,
+                       UI32Attr:$outstanding_reads,
+                       UI32Attr:$outstanding_writes);
+  let results = (outs PortType:$port);
+
+  let assemblyFormat = "$node $clock attr-dict `:` qualified(type($port))";
+  let hasVerifier = 1;
+}
+
+def SubordinatePortOp : AXI4Op<"subordinate_port"> {
+  let summary = "An AXI4 subordinate endpoint";
+  let description = [{
+    Describes a subordinate endpoint port. Takes the upstream
+    `!axi4.port`, `node` indicating the port this port is attached to,
+    `clock` for the clock domain it operates in, an array of `access`
+    windows it can handle requests to, and the maximum number of
+    `outstanding_requests` it can concurrently handle.
+
+    Example:
+    ```mlir
+    axi4.subordinate_port %manager %node %clk {
+      access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+      outstanding_requests = 4 : ui32
+    } : !axi4.port<32, 64, 4>
+    ```
+  }];
+
+  let arguments = (ins PortType:$upstream,
+                       NodeType:$node,
+                       ClockType:$clock,
+                       WindowArrayAttr:$access,
+                       UI32Attr:$outstanding_requests);
+
+  let assemblyFormat = "$upstream $node $clock attr-dict `:` qualified(type($upstream))";
+  let hasVerifier = 1;
 }
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
