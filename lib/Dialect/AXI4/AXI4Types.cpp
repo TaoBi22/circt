@@ -6,18 +6,22 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "circt/Dialect/AXI4/AXI4Types.h"
 #include "circt/Dialect/AXI4/AXI4Dialect.h"
-#include "circt/Dialect/AXI4/AXI4Ops.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 using namespace circt;
 using namespace axi4;
+using namespace mlir;
 
-void AXI4Dialect::initialize() {
-  registerTypes();
-  addOperations<
-#define GET_OP_LIST
-#include "circt/Dialect/AXI4/AXI4.cpp.inc"
+#define GET_TYPEDEF_CLASSES
+#include "circt/Dialect/AXI4/AXI4Types.cpp.inc"
+
+void AXI4Dialect::registerTypes() {
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "circt/Dialect/AXI4/AXI4Types.cpp.inc"
       >();
 }
-
-#include "circt/Dialect/AXI4/AXI4Dialect.cpp.inc"
