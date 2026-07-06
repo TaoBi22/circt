@@ -80,6 +80,10 @@ LogicalResult NodeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
 LogicalResult ManagerPortOp::verify() {
   if (failed(verifyAccessWindows(*this, getAccess())))
     return failure();
+  // Managers fanning out to multiple endpoints must go through an 'axi4.xbar'.
+  if (getPort().hasNUsesOrMore(2))
+    return emitOpError("result must have at most one use; route through an "
+                       "'axi4.xbar' to fan out to multiple endpoints");
   auto port = cast<PortType>(getPort().getType());
   if (failed(verifyOutstanding(*this, port.getReadIdWidth(),
                                getOutstandingReads(), "outstanding_reads")))
