@@ -11,6 +11,7 @@
 
 #include "circt/Dialect/AXI4/AXI4Attributes.h"
 #include "circt/Dialect/AXI4/AXI4Dialect.h"
+#include "circt/Dialect/AXI4/AXI4Interfaces.h"
 #include "circt/Dialect/AXI4/AXI4Types.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/OpImplementation.h"
