@@ -116,3 +116,22 @@ axi4.subordinate_port %mgr, %clk {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4>
+
+// -----
+
+hw.module.extern @combo_module()
+// expected-error @below {{ports sharing the clock port 'clk' must share the same '!axi4.clock' operand}}
+%node = axi4.node @combo_module : !axi4.node
+%clkA = unrealized_conversion_cast to !axi4.clock
+%clkB = unrealized_conversion_cast to !axi4.clock
+%mgr = axi4.manager_port %clkA node %node {
+  port_mapping = #axi4.port_struct<"clk", "axi_in">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4>
+axi4.subordinate_port %mgr, %clkB node %node {
+  port_mapping = #axi4.req_resp_structs<"clk", "axi_sub_req_i", "axi_sub_resp_o">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4>
