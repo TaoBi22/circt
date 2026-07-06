@@ -32,8 +32,8 @@
 // CHECK: #axi4.window<base = 16384, size = 256, burst_specs = [<wrap, len = 256>, <incr, len = 256>]>
 "test.attrs"() {a = #axi4.window<base = 0x4000, size = 0x100, burst_specs = [<wrap, len = 256>, <incr, len = 256>]>} : () -> ()
 
-// CHECK: #axi4.port_struct<"clk", "rst_ni", "axi_in">
-"test.attrs"() {a = #axi4.port_struct<"clk", "rst_ni", "axi_in">} : () -> ()
+// CHECK: #axi4.port_wires<"clk", "rst_ni", "axi_in">
+"test.attrs"() {a = #axi4.port_wires<"clk", "rst_ni", "axi_in">} : () -> ()
 
 // CHECK: #axi4.req_resp_structs<"clk", "rst_ni", "axi_sub_req_i", "axi_sub_resp_o">
 "test.attrs"() {a = #axi4.req_resp_structs<"clk", "rst_ni", "axi_sub_req_i", "axi_sub_resp_o">} : () -> ()
@@ -45,7 +45,42 @@
 // Operations
 //===----------------------------------------------------------------------===//
 
-hw.module.extern @my_module()
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
 
-// CHECK: %[[NODE:.+]] = axi4.node @my_module : !axi4.node
-%node = axi4.node @my_module : !axi4.node
+// CHECK: %[[MGRNODE:.+]] = axi4.node @mgr_module : !axi4.node
+%mgr_node = axi4.node @mgr_module : !axi4.node
+// CHECK: %[[SUBNODE:.+]] = axi4.node @sub_module : !axi4.node
+%sub_node = axi4.node @sub_module : !axi4.node
+
+// CHECK: %[[MGR:.+]] = axi4.manager_port %[[CLK:.+]], %[[RST:.+]] node %[[MGRNODE]] {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32, port_mapping = #axi4.port_wires<"clk", "rst_ni", "axi_in">} : !axi4.port<32, 64, 4, 4, 0>
+%mgr = axi4.manager_port %c, %r node %mgr_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "axi_in">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+
+// CHECK: axi4.subordinate_port %[[MGR]], %[[CLK]], %[[RST]] node %[[SUBNODE]] {access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32, port_mapping = #axi4.req_resp_structs<"clk", "rst_ni", "axi_sub_req_i", "axi_sub_resp_o">} : !axi4.port<32, 64, 4, 4, 0>
+axi4.subordinate_port %mgr, %c, %r node %sub_node {
+  port_mapping = #axi4.req_resp_structs<"clk", "rst_ni", "axi_sub_req_i", "axi_sub_resp_o">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+
+//===----------------------------------------------------------------------===//
+// Nodeless ports
+//===----------------------------------------------------------------------===//
+
+// CHECK: %[[NODELESS_MGR:.+]] = axi4.manager_port %[[CLK]], %[[RST]] {access = [#axi4.window<base = 8192, size = 4096, burst_specs = [<fixed>]>], outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32} : !axi4.port<32, 64, 4, 4, 0>
+%nodeless_mgr = axi4.manager_port %c, %r {
+  access = [#axi4.window<base = 8192, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+
+// CHECK: axi4.subordinate_port %[[NODELESS_MGR]], %[[CLK]], %[[RST]] {access = [#axi4.window<base = 8192, size = 4096, burst_specs = [<fixed>]>], outstanding_requests = 4 : ui32} : !axi4.port<32, 64, 4, 4, 0>
+axi4.subordinate_port %nodeless_mgr, %c, %r {
+  access = [#axi4.window<base = 8192, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>

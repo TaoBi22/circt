@@ -9,7 +9,9 @@
 #ifndef CIRCT_DIALECT_AXI4_AXI4OPS_H
 #define CIRCT_DIALECT_AXI4_AXI4OPS_H
 
+#include "circt/Dialect/AXI4/AXI4Attributes.h"
 #include "circt/Dialect/AXI4/AXI4Dialect.h"
+#include "circt/Dialect/AXI4/AXI4Interfaces.h"
 #include "circt/Dialect/AXI4/AXI4Types.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/OpImplementation.h"
