@@ -130,3 +130,43 @@ axi4.subordinate_port %mgr, %clk, %rst {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4, 4, 0, 0, 0>
+
+// -----
+
+hw.module.extern @combo_module()
+// expected-error @below {{ports sharing the clock port 'clk' must share the same '!axi4.clock' operand}}
+%node = axi4.node @combo_module : !axi4.node
+%clkA = unrealized_conversion_cast to !axi4.clock
+%clkB = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mgr = axi4.manager_port %clkA, %rst node %node {
+  port_mapping = #axi4.port_struct<"clk", "rst_ni", "axi_in">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0, 0, 0>
+axi4.subordinate_port %mgr, %clkB, %rst node %node {
+  port_mapping = #axi4.req_resp_structs<"clk", "rst_ni", "axi_sub_req_i", "axi_sub_resp_o">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0, 0, 0>
+
+// -----
+
+hw.module.extern @combo_module()
+// expected-error @below {{ports sharing the reset port 'rst_ni' must share the same '!axi4.reset' operand}}
+%node = axi4.node @combo_module : !axi4.node
+%clk = unrealized_conversion_cast to !axi4.clock
+%rstA = unrealized_conversion_cast to !axi4.reset
+%rstB = unrealized_conversion_cast to !axi4.reset
+%mgr = axi4.manager_port %clk, %rstA node %node {
+  port_mapping = #axi4.port_struct<"clk", "rst_ni", "axi_in">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0, 0, 0>
+axi4.subordinate_port %mgr, %clk, %rstB node %node {
+  port_mapping = #axi4.req_resp_structs<"clk", "rst_ni", "axi_sub_req_i", "axi_sub_resp_o">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0, 0, 0>
