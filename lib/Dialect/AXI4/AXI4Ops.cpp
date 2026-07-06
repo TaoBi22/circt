@@ -101,6 +101,42 @@ LogicalResult SubordinatePortOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// XbarOp
+//===----------------------------------------------------------------------===//
+
+/// Verify that `downstreamWidth` is at least `upstreamWidth` +
+/// ceil(log2(numManagers)), i.e. wide enough for the xbar to tag each
+/// manager's transactions with a unique ID.
+static LogicalResult verifyXbarIdWidth(Operation *op, uint32_t upstreamWidth,
+                                       uint32_t downstreamWidth,
+                                       size_t numManagers, StringRef name) {
+  uint32_t minWidth = upstreamWidth + llvm::Log2_64_Ceil(numManagers);
+  if (downstreamWidth < minWidth)
+    return op->emitError()
+           << "xbar return type's " << name << " must be at least the input "
+           << name << " + ceil(log2(number of managers)) (i.e., " << minWidth
+           << ")";
+  return success();
+}
+
+LogicalResult XbarOp::verify() {
+  auto upstream = getUpstream();
+  auto firstPortTy = cast<PortType>(upstream.getTypes().front());
+  for (Value v : upstream.drop_front())
+    if (v.getType() != firstPortTy)
+      return emitOpError("all upstream ports must have the same type");
+
+  auto downstream = getResult().getType();
+  if (failed(verifyXbarIdWidth(*this, firstPortTy.getWriteIdWidth(),
+                               downstream.getWriteIdWidth(), upstream.size(),
+                               "write id width")))
+    return failure();
+  return verifyXbarIdWidth(*this, firstPortTy.getReadIdWidth(),
+                           downstream.getReadIdWidth(), upstream.size(),
+                           "read id width");
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen generated logic.
 //===----------------------------------------------------------------------===//
 
