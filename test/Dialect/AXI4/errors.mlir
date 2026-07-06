@@ -70,6 +70,22 @@ axi4.subordinate_port %mgr %sub_node %clk {
 
 // -----
 
+%a = unrealized_conversion_cast to !axi4.port<32, 64, 4>
+%b = unrealized_conversion_cast to !axi4.port<32, 64, 4>
+%clk = unrealized_conversion_cast to !axi4.clock
+// expected-error @below {{Xbar return type's id width must be at least the input id width + ceil(log2(number of managers)) (i.e., 5)}}
+%xbar = "axi4.xbar"(%clk, %a, %b) : (!axi4.clock, !axi4.port<32, 64, 4>, !axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 4>
+
+// -----
+
+%a = unrealized_conversion_cast to !axi4.port<32, 64, 4>
+%b = unrealized_conversion_cast to !axi4.port<32, 64, 5>
+%clk = unrealized_conversion_cast to !axi4.clock
+// expected-error @below {{all upstream ports must have the same type}}
+%xbar = "axi4.xbar"(%clk, %a, %b) : (!axi4.clock, !axi4.port<32, 64, 4>, !axi4.port<32, 64, 5>) -> !axi4.port<32, 64, 5>
+
+// -----
+
 hw.module.extern @mgr_module()
 hw.module.extern @sub_module()
 %mgr_node = axi4.node @mgr_module : !axi4.node

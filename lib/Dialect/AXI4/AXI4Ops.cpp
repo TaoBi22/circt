@@ -105,6 +105,28 @@ LogicalResult SubordinatePortOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// XbarOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult XbarOp::verify() {
+  auto upstream = getUpstream();
+  auto firstPortTy = cast<PortType>(upstream.getTypes().front());
+  for (Value v : upstream.drop_front())
+    if (v.getType() != firstPortTy)
+      return emitOpError("all upstream ports must have the same type");
+
+  auto downstreamWidth = getResult().getType().getIdWidth();
+  auto minWidth =
+      firstPortTy.getIdWidth() + llvm::Log2_64_Ceil(upstream.size());
+  if (downstreamWidth < (minWidth))
+    return emitError()
+           << "Xbar return type's id width must be at least the input id width "
+              "+ ceil(log2(number of managers)) (i.e., "
+           << minWidth << ")";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen generated logic.
 //===----------------------------------------------------------------------===//
 
