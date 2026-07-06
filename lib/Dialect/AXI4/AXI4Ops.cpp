@@ -13,6 +13,7 @@
 #include "circt/Dialect/AXI4/AXI4Ops.h"
 #include "circt/Dialect/HW/HWOpInterfaces.h"
 #include "mlir/IR/Builders.h"
+#include "llvm/ADT/StringMap.h"
 
 using namespace circt;
 using namespace axi4;
@@ -83,6 +84,34 @@ static LogicalResult verifyNodePortMapping(Operation *op, Value node,
 
 LogicalResult NodeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return verifyModuleSymbol(*this, getModuleAttr(), symbolTable);
+}
+
+LogicalResult NodeOp::verify() {
+  // Ports attached to this node that share a clock port name in their
+  // 'port_mapping' must also share a '!axi4.clock' operand.
+  llvm::StringMap<Value> clockOfPort;
+  for (Operation *user : getNode().getUsers()) {
+    AXI4PortMappingAttrInterface mapping;
+    Value clock;
+    if (auto mgr = dyn_cast<ManagerPortOp>(user)) {
+      mapping = mgr.getPortMappingAttr();
+      clock = mgr.getClock();
+    } else if (auto sub = dyn_cast<SubordinatePortOp>(user)) {
+      mapping = sub.getPortMappingAttr();
+      clock = sub.getClock();
+    } else {
+      continue;
+    }
+    if (!mapping)
+      continue;
+
+    StringRef clockPort = mapping.getClockPort();
+    auto [it, inserted] = clockOfPort.try_emplace(clockPort, clock);
+    if (!inserted && it->second != clock)
+      return emitOpError("ports sharing the clock port '")
+             << clockPort << "' must share the same '!axi4.clock' operand";
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
