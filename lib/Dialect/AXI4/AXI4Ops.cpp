@@ -13,6 +13,7 @@
 #include "circt/Dialect/AXI4/AXI4Ops.h"
 #include "circt/Dialect/HW/HWOpInterfaces.h"
 #include "mlir/IR/Builders.h"
+#include "llvm/ADT/StringMap.h"
 
 using namespace circt;
 using namespace axi4;
@@ -82,6 +83,48 @@ static LogicalResult verifyNodePortMapping(Operation *op, Value node,
 
 LogicalResult NodeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   return verifyModuleSymbol(*this, getModuleAttr(), symbolTable);
+}
+
+LogicalResult NodeOp::verify() {
+  // Ports attached to this node that share a clock/reset port name in their
+  // 'port_mapping' must also share the corresponding '!axi4.clock'/
+  // '!axi4.reset' operand.
+  llvm::StringMap<Value> clockOfPort, resetOfPort;
+  auto checkShared = [&](llvm::StringMap<Value> &seen, StringRef port,
+                        Value operand, StringRef kind) -> LogicalResult {
+    auto [it, inserted] = seen.try_emplace(port, operand);
+    if (!inserted && it->second != operand)
+      return emitOpError("ports sharing the ")
+             << kind << " port '" << port << "' must share the same '!axi4."
+             << kind << "' operand";
+    return success();
+  };
+
+  for (Operation *user : getNode().getUsers()) {
+    AXI4PortMappingAttrInterface mapping;
+    Value clock, reset;
+    if (auto mgr = dyn_cast<ManagerPortOp>(user)) {
+      mapping = mgr.getPortMappingAttr();
+      clock = mgr.getClock();
+      reset = mgr.getReset();
+    } else if (auto sub = dyn_cast<SubordinatePortOp>(user)) {
+      mapping = sub.getPortMappingAttr();
+      clock = sub.getClock();
+      reset = sub.getReset();
+    } else {
+      continue;
+    }
+    if (!mapping)
+      continue;
+
+    if (failed(checkShared(clockOfPort, mapping.getClockPort(), clock,
+                           "clock")))
+      return failure();
+    if (failed(checkShared(resetOfPort, mapping.getResetPort(), reset,
+                           "reset")))
+      return failure();
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

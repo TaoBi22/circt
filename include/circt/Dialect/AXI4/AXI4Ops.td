@@ -43,6 +43,7 @@ def NodeOp : AXI4Op<"node", [
   let results = (outs NodeType:$node);
 
   let assemblyFormat = "$module attr-dict `:` qualified(type($node))";
+  let hasVerifier = 1;
 }
 
 def WindowArrayAttr : TypedArrayAttrBase<WindowAttr, "array of access windows">;
