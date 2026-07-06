@@ -67,3 +67,25 @@ axi4.subordinate_port %mgr %sub_node %clk {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 32 : ui32
 } : !axi4.port<32, 64, 4>
+
+// -----
+
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
+%mgr_node = axi4.node @mgr_module : !axi4.node
+%sub_node = axi4.node @sub_module : !axi4.node
+%clk = unrealized_conversion_cast to !axi4.clock
+// expected-error @below {{result must have at most one use}}
+%mgr = axi4.manager_port %mgr_node %clk {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32,
+  outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4>
+axi4.subordinate_port %mgr %sub_node %clk {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4>
+axi4.subordinate_port %mgr %sub_node %clk {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4>
