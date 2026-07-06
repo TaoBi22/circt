@@ -20,3 +20,8 @@ mlir_tablegen(AXI4AttrInterfaces.h.inc -gen-attr-interface-decls)
 mlir_tablegen(AXI4AttrInterfaces.cpp.inc -gen-attr-interface-defs)
 add_public_tablegen_target(MLIRAXI4AttrInterfacesIncGen)
 add_dependencies(circt-headers MLIRAXI4AttrInterfacesIncGen)
+
+set(LLVM_TARGET_DEFINITIONS AXI4Passes.td)
+mlir_tablegen(AXI4Passes.h.inc -gen-pass-decls)
+add_public_tablegen_target(CIRCTAXI4TransformsIncGen)
+add_circt_doc(AXI4Passes AXI4Passes -gen-pass-doc)
