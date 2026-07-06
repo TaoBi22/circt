@@ -29,6 +29,15 @@
 // CHECK: #axi4.window<base = 16384, size = 256, burst_specs = [<wrap, len = 256>, <incr, len = 256>]>
 "test.attrs"() {a = #axi4.window<base = 0x4000, size = 0x100, burst_specs = [<wrap, len = 256>, <incr, len = 256>]>} : () -> ()
 
+// CHECK: #axi4.port_struct<"clk", "axi_in">
+"test.attrs"() {a = #axi4.port_struct<"clk", "axi_in">} : () -> ()
+
+// CHECK: #axi4.req_resp_structs<"clk", "axi_sub_req_i", "axi_sub_resp_o">
+"test.attrs"() {a = #axi4.req_resp_structs<"clk", "axi_sub_req_i", "axi_sub_resp_o">} : () -> ()
+
+// CHECK: #axi4.port_interface<"clk", "axi_in_if">
+"test.attrs"() {a = #axi4.port_interface<"clk", "axi_in_if">} : () -> ()
+
 //===----------------------------------------------------------------------===//
 // Operations
 //===----------------------------------------------------------------------===//
