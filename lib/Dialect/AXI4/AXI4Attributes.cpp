@@ -33,6 +33,10 @@ BurstSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
+StringRef PortStructAttr::getClockPort() const { return getClock(); }
+StringRef ReqRespStructsAttr::getClockPort() const { return getClock(); }
+StringRef PortInterfaceAttr::getClockPort() const { return getClock(); }
+
 void AXI4Dialect::registerAttributes() {
   addAttributes<
 #define GET_ATTRDEF_LIST
