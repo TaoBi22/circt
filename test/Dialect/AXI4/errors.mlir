@@ -41,7 +41,7 @@ hw.module.extern @mgr_module()
 %clk = unrealized_conversion_cast to !axi4.clock
 // expected-error @below {{'node' and 'port_mapping' must either both be given or both be omitted}}
 %mgr = axi4.manager_port %clk {
-  port_mapping = #axi4.port_struct<"clk", "axi_in">,
+  port_mapping = #axi4.port_wires<"clk", "axi_in">,
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
@@ -125,7 +125,7 @@ hw.module.extern @combo_module()
 %clkA = unrealized_conversion_cast to !axi4.clock
 %clkB = unrealized_conversion_cast to !axi4.clock
 %mgr = axi4.manager_port %clkA node %node {
-  port_mapping = #axi4.port_struct<"clk", "axi_in">,
+  port_mapping = #axi4.port_wires<"clk", "axi_in">,
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
