@@ -1,3 +1,4 @@
+add_subdirectory(AXI4ToHW)
 add_subdirectory(AffineToLoopSchedule)
 add_subdirectory(SynthToComb)
 add_subdirectory(ArcToLLVM)
