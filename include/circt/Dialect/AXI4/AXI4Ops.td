@@ -63,7 +63,7 @@ def ManagerPortOp : AXI4Op<"manager_port"> {
     Example:
     ```mlir
     %manager = axi4.manager_port %clk, %rst_ni node %node {
-      port_mapping = #axi4.port_struct<"clk", "rst_ni", "axi_in">,
+      port_mapping = #axi4.port_wires<"clk", "rst_ni", "axi_in">,
       access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
       outstanding_reads = 4 : ui32,
       outstanding_writes = 4 : ui32

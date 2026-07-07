@@ -43,7 +43,7 @@ hw.module.extern @mgr_module()
 %rst = unrealized_conversion_cast to !axi4.reset
 // expected-error @below {{'node' and 'port_mapping' must either both be given or both be omitted}}
 %mgr = axi4.manager_port %clk, %rst {
-  port_mapping = #axi4.port_struct<"clk", "rst_ni", "axi_in">,
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "axi_in">,
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
@@ -140,7 +140,7 @@ hw.module.extern @combo_module()
 %clkB = unrealized_conversion_cast to !axi4.clock
 %rst = unrealized_conversion_cast to !axi4.reset
 %mgr = axi4.manager_port %clkA, %rst node %node {
-  port_mapping = #axi4.port_struct<"clk", "rst_ni", "axi_in">,
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "axi_in">,
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
@@ -160,7 +160,7 @@ hw.module.extern @combo_module()
 %rstA = unrealized_conversion_cast to !axi4.reset
 %rstB = unrealized_conversion_cast to !axi4.reset
 %mgr = axi4.manager_port %clk, %rstA node %node {
-  port_mapping = #axi4.port_struct<"clk", "rst_ni", "axi_in">,
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "axi_in">,
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
