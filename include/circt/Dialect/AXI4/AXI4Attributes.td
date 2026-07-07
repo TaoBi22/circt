@@ -75,18 +75,20 @@ def WindowAttr : AXI4AttrDef<"Window"> {
   }];
 }
 
-def PortStructAttr : AXI4AttrDef<"PortStruct", [
+def PortWiresAttr : AXI4AttrDef<"PortWires", [
     DeclareAttrInterfaceMethods<AXI4PortMappingAttrInterface>]> {
-  let mnemonic = "port_struct";
-  let summary = "Maps an AXI4 port to a single struct-typed module port";
+  let mnemonic = "port_wires";
+  let summary = "Maps an AXI4 port to a flat set of scalar module ports";
   let description = [{
-    Maps a manager/subordinate port to a single struct-typed module port
-    containing the AXI4 channels in the order used in the PULP Platform AXI
-    modules, e.g. `#axi4.port_struct<"clk", "axi_in">`.
+    Maps a manager/subordinate port to a flat set of individually-directioned
+    scalar ports following the PULP Platform AXI `AXI_M_PORT`/`AXI_S_PORT`
+    convention, i.e. ports named `m_axi_<name>_*` / `s_axi_<name>_*` (direction
+    depending on the manager/subordinate role), e.g.
+    `#axi4.port_wires<"clk", "axi_in">`.
   }];
 
   let parameters = (ins StringRefParameter<"clock port name">:$clock,
-                        StringRefParameter<"struct port name">:$name);
+                        StringRefParameter<"port name prefix">:$name);
 
   let assemblyFormat = "`<` $clock `,` $name `>`";
 }

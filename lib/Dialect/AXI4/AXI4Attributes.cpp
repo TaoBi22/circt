@@ -33,7 +33,7 @@ BurstSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
-StringRef PortStructAttr::getClockPort() const { return getClock(); }
+StringRef PortWiresAttr::getClockPort() const { return getClock(); }
 StringRef ReqRespStructsAttr::getClockPort() const { return getClock(); }
 StringRef PortInterfaceAttr::getClockPort() const { return getClock(); }
 
