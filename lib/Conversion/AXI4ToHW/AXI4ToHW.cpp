@@ -1,4 +1,5 @@
-//===- AXI4ToHW.cpp - Translate AXI4 into HW -------------------------------===//
+//===- AXI4ToHW.cpp - Translate AXI4 into HW
+//-------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -13,6 +14,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/Conversion/AXI4ToHW.h"
+#include "circt/Dialect/AXI4/AXI4Attributes.h"
+#include "circt/Dialect/AXI4/AXI4Dialect.h"
+#include "circt/Dialect/AXI4/AXI4Ops.h"
 #include "circt/Dialect/AXI4/AXI4Types.h"
 #include "circt/Dialect/Comb/CombDialect.h"
 #include "circt/Dialect/HW/HWDialect.h"
@@ -22,6 +26,7 @@
 #include "circt/Dialect/Seq/SeqTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 namespace circt {
 #define GEN_PASS_DEF_AXI4TOHW
@@ -119,6 +124,77 @@ constexpr unsigned kNumChannels = 5;
       });
 }
 
+//===----------------------------------------------------------------------===//
+// Pre-pass rejections
+//===----------------------------------------------------------------------===//
+
+LogicalResult checkNetwork(ModuleOp module) {
+  bool failed = false;
+
+  Value commonClock;
+  auto checkClock = [&](Operation *op, Value clock) {
+    if (!commonClock)
+      commonClock = clock;
+    else if (clock != commonClock) {
+      op->emitError("multiple clock domains are not yet supported");
+      failed = true;
+    }
+  };
+
+  auto checkUsers = [&](Operation *op) {
+    for (Operation *user : op->getUsers())
+      if (!isa_and_nonnull<AXI4Dialect>(user->getDialect())) {
+        op->emitError("results of axi4 operations may only be used by axi4 "
+                      "operations");
+        failed = true;
+        break;
+      }
+  };
+
+  auto checkMapping = [&](Operation *op,
+                          std::optional<AXI4PortMappingAttrInterface> mapping) {
+    if (mapping && !isa<PortWiresAttr>(*mapping)) {
+      op->emitError("only the 'port_wires' port_mapping is supported");
+      failed = true;
+    }
+  };
+
+  module.walk([&](Operation *op) {
+    TypeSwitch<Operation *>(op)
+        .Case<ManagerPortOp>([&](ManagerPortOp mgr) {
+          checkClock(mgr, mgr.getClock());
+          checkUsers(mgr);
+          if (!mgr.getNode()) {
+            mgr.emitError("nodeless ports are not yet supported");
+            failed = true;
+            return;
+          }
+          if (mgr.getPort().use_empty()) {
+            mgr.emitError("axi4.manager_ports with no uses are not yet "
+                          "supported");
+            failed = true;
+          }
+          checkMapping(mgr, mgr.getPortMapping());
+        })
+        .Case<SubordinatePortOp>([&](SubordinatePortOp sub) {
+          checkClock(sub, sub.getClock());
+          if (!sub.getNode()) {
+            sub.emitError("nodeless ports are not yet supported");
+            failed = true;
+            return;
+          }
+          checkMapping(sub, sub.getPortMapping());
+        })
+        .Case<XbarOp>([&](XbarOp xbar) {
+          checkClock(xbar, xbar.getClock());
+          checkUsers(xbar);
+        })
+        .Case<NodeOp>([&](NodeOp node) { checkUsers(node); });
+  });
+
+  return failure(failed);
+}
+
 struct AXI4ToHWPass : public circt::impl::AXI4ToHWBase<AXI4ToHWPass> {
   void runOnOperation() override;
 };
@@ -126,7 +202,10 @@ struct AXI4ToHWPass : public circt::impl::AXI4ToHWBase<AXI4ToHWPass> {
 } // namespace
 
 void AXI4ToHWPass::runOnOperation() {
-  // TODO: type conversion, network synthesis, and the port_wires adapter.
+  if (failed(checkNetwork(getOperation())))
+    return signalPassFailure();
+
+  // TODO: network synthesis and the port_wires adapter.
   getOperation().emitError("lower-axi4-to-hw: pass not yet implemented");
   signalPassFailure();
 }
