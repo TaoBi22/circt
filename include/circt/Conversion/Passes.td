@@ -16,6 +16,21 @@
 include "mlir/Pass/PassBase.td"
 
 //===----------------------------------------------------------------------===//
+// AXI4ToHW
+//===----------------------------------------------------------------------===//
+
+def AXI4ToHW : Pass<"lower-axi4-to-hw", "mlir::ModuleOp"> {
+  let summary = "Lower the abstract AXI4 network dialect to HW";
+  let description = [{
+    This pass lowers the abstract AXI4 network dialect to a concrete RTL
+    implementation.
+  }];
+  let constructor = "circt::createAXI4ToHWPass()";
+  let dependentDialects = ["hw::HWDialect", "comb::CombDialect",
+                           "seq::SeqDialect", "sv::SVDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // AffineToPipeline
 //===----------------------------------------------------------------------===//
 
