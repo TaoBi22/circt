@@ -208,17 +208,3 @@ axi4.subordinate_port %mgr, %clk node %sub_node {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4>
-
-// -----
-
-// Xbar lowering is not yet implemented.
-hw.module.extern @mgr_module()
-%clk = unrealized_conversion_cast to !axi4.clock
-%mgr_node = axi4.node @mgr_module : !axi4.node
-%mgr = axi4.manager_port %clk node %mgr_node {
-  port_mapping = #axi4.port_wires<"clk", "m0">,
-  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
-  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
-} : !axi4.port<32, 64, 4>
-// expected-error @below {{xbar lowering is not yet implemented}}
-%xbar = axi4.xbar %clk mgrs %mgr : (!axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 4>

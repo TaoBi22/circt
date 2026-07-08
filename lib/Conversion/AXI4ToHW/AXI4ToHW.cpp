@@ -145,6 +145,145 @@ hw::StructType getChannelPayloadType(PortType port, AXI4Channel channel) {
 }
 
 //===----------------------------------------------------------------------===//
+// PULP axi_xbar interface modeling
+//
+// The abstract xbar lowers to an instance of PULP's `axi_xbar`, whose slave and
+// master faces each carry an array of packed req/resp structs. Everything below
+// models that interface and bridges it to our canonical channel form.
+//===----------------------------------------------------------------------===//
+
+// PULP's aw_chan_t carries an atomic-op field our canonical AW payload lacks.
+constexpr unsigned kAtopWidth = 6;
+
+/// The PULP channel struct type for one channel. Identical to the canonical
+/// payload except AW, which appends a 6-bit `atop` field (tied to 0 on lowering).
+hw::StructType getPulpChannelType(PortType port, AXI4Channel channel) {
+  hw::StructType canon = getChannelPayloadType(port, channel);
+  if (channel != AXI4Channel::AW)
+    return canon;
+  SmallVector<hw::StructType::FieldInfo> fields(canon.getElements());
+  fields.push_back({StringAttr::get(port.getContext(), "atop"),
+                    IntegerType::get(port.getContext(), kAtopWidth)});
+  return hw::StructType::get(port.getContext(), fields);
+}
+
+/// PULP's `req_t`: all manager->subordinate signals for one port, in the field
+/// order `AXI_TYPEDEF_REQ_T` emits.
+hw::StructType getPulpReqType(PortType port) {
+  MLIRContext *ctx = port.getContext();
+  Type i1 = IntegerType::get(ctx, 1);
+  auto f = [&](StringRef n, Type t) {
+    return hw::StructType::FieldInfo{StringAttr::get(ctx, n), t};
+  };
+  return hw::StructType::get(
+      ctx, {f("aw", getPulpChannelType(port, AXI4Channel::AW)), f("aw_valid", i1),
+            f("w", getPulpChannelType(port, AXI4Channel::W)), f("w_valid", i1),
+            f("b_ready", i1),
+            f("ar", getPulpChannelType(port, AXI4Channel::AR)), f("ar_valid", i1),
+            f("r_ready", i1)});
+}
+
+/// PULP's `resp_t`: all subordinate->manager signals for one port, in the field
+/// order `AXI_TYPEDEF_RESP_T` emits.
+hw::StructType getPulpRespType(PortType port) {
+  MLIRContext *ctx = port.getContext();
+  Type i1 = IntegerType::get(ctx, 1);
+  auto f = [&](StringRef n, Type t) {
+    return hw::StructType::FieldInfo{StringAttr::get(ctx, n), t};
+  };
+  return hw::StructType::get(
+      ctx, {f("aw_ready", i1), f("ar_ready", i1), f("w_ready", i1),
+            f("b_valid", i1), f("b", getPulpChannelType(port, AXI4Channel::B)),
+            f("r_valid", i1), f("r", getPulpChannelType(port, AXI4Channel::R))});
+}
+
+/// Wrap a canonical AW payload as PULP's `aw_chan_t`, tying `atop` to 0.
+Value toPulpAw(ImplicitLocOpBuilder &b, Value canonical) {
+  auto canonTy = cast<hw::StructType>(canonical.getType());
+  SmallVector<Value> fields;
+  for (auto &fi : canonTy.getElements())
+    fields.push_back(hw::StructExtractOp::create(b, canonical, fi.name));
+  fields.push_back(hw::ConstantOp::create(b, b.getIntegerType(kAtopWidth), 0));
+  SmallVector<hw::StructType::FieldInfo> pulpFields(canonTy.getElements());
+  pulpFields.push_back(
+      {b.getStringAttr("atop"), b.getIntegerType(kAtopWidth)});
+  return hw::StructCreateOp::create(
+      b, hw::StructType::get(b.getContext(), pulpFields), fields);
+}
+
+/// Drop the `atop` field off a PULP `aw_chan_t`, yielding a canonical AW payload.
+Value fromPulpAw(ImplicitLocOpBuilder &b, Value pulp, hw::StructType canonTy) {
+  SmallVector<Value> fields;
+  for (auto &fi : canonTy.getElements())
+    fields.push_back(hw::StructExtractOp::create(b, pulp, fi.name));
+  return hw::StructCreateOp::create(b, canonTy, fields);
+}
+
+/// Build one PULP xbar face's input-array struct element (`req_t` at a
+/// subordinate face, `resp_t` at a manager face) from fresh backedges,
+/// populating the received signals of `wires`. The driven signals are left null
+/// and filled by `fillXbarFaceOutputs` once the instance exists.
+Value buildXbarFaceInput(bool isManager, PortType portType,
+                         ImplicitLocOpBuilder &builder, BackedgeBuilder &bb,
+                         PortWires &wires) {
+  Type i1 = builder.getI1Type();
+  hw::StructType inputTy =
+      isManager ? getPulpRespType(portType) : getPulpReqType(portType);
+
+  DenseMap<StringAttr, Value> fields;
+  wires.resize(kNumChannels);
+  for (auto [idx, ci] : llvm::enumerate(kChannelInfos)) {
+    ChannelWires &cw = wires[idx];
+    bool payloadDriven = (isManager == ci.isRequest);
+    if (payloadDriven) {
+      // payload/valid are driven by the xbar (filled later); ready is received.
+      Backedge ready = bb.get(i1);
+      cw.ready = {ready, ready};
+      fields[builder.getStringAttr(ci.token + Twine("_ready"))] = ready;
+      continue;
+    }
+    // payload/valid are received; ready is driven by the xbar (filled later).
+    Backedge payload = bb.get(getChannelPayloadType(portType, ci.channel));
+    cw.payload = {payload, payload};
+    Backedge valid = bb.get(i1);
+    cw.valid = {valid, valid};
+    Value payloadField =
+        ci.channel == AXI4Channel::AW ? toPulpAw(builder, payload) : Value(payload);
+    fields[builder.getStringAttr(ci.token)] = payloadField;
+    fields[builder.getStringAttr(ci.token + Twine("_valid"))] = valid;
+  }
+
+  SmallVector<Value> ordered;
+  for (auto &fi : inputTy.getElements())
+    ordered.push_back(fields.at(fi.name));
+  return hw::StructCreateOp::create(builder, inputTy, ordered);
+}
+
+/// Fill the driven signals of `wires` from one xbar face's output-array struct
+/// element (`resp_t` at a subordinate face, `req_t` at a manager face).
+void fillXbarFaceOutputs(bool isManager, PortType portType,
+                         ImplicitLocOpBuilder &builder, Value outputStruct,
+                         PortWires &wires) {
+  for (auto [idx, ci] : llvm::enumerate(kChannelInfos)) {
+    ChannelWires &cw = wires[idx];
+    bool payloadDriven = (isManager == ci.isRequest);
+    std::string token = ci.token.str();
+    if (payloadDriven) {
+      Value payload = hw::StructExtractOp::create(builder, outputStruct, token);
+      if (ci.channel == AXI4Channel::AW)
+        payload = fromPulpAw(builder, payload,
+                             getChannelPayloadType(portType, ci.channel));
+      cw.payload.value = payload;
+      cw.valid.value =
+          hw::StructExtractOp::create(builder, outputStruct, token + "_valid");
+      continue;
+    }
+    cw.ready.value =
+        hw::StructExtractOp::create(builder, outputStruct, token + "_ready");
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // Pre-pass rejections
 //===----------------------------------------------------------------------===//
 
@@ -434,6 +573,13 @@ public:
 private:
   LogicalResult lowerNetwork();
   LogicalResult lowerNode(NodeOp node);
+  LogicalResult lowerXbar(XbarOp xbar);
+  /// Get (or create) the extern crossbar module for this upstream/downstream
+  /// port count and type.
+  hw::HWModuleExternOp getOrCreateXbarModule(unsigned numUpstream,
+                                             unsigned numDownstream,
+                                             PortType upstreamType,
+                                             PortType downstreamType);
   /// Instantiate `moduleOp`, wiring each interface in `specs` via the flat
   /// port_wires convention; returns the per-interface wires in `wiresOut`.
   LogicalResult buildInstance(Operation *diag, hw::HWModuleLike moduleOp,
@@ -581,6 +727,143 @@ LogicalResult NetworkLowering::lowerNode(NodeOp node) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// PULP axi_xbar lowering
+//===----------------------------------------------------------------------===//
+
+hw::HWModuleExternOp
+NetworkLowering::getOrCreateXbarModule(unsigned numUpstream,
+                                      unsigned numDownstream,
+                                      PortType upstreamType,
+                                      PortType downstreamType) {
+  MLIRContext *ctx = module.getContext();
+  std::string name =
+      ("axi_xbar_" + Twine(numUpstream) + "u" + Twine(numDownstream) + "d_a" +
+       Twine(upstreamType.getAddressWidth()) + "_d" +
+       Twine(upstreamType.getDataWidth()) + "_i" +
+       Twine(upstreamType.getIdWidth()) + "_o" +
+       Twine(downstreamType.getIdWidth()))
+          .str();
+  if (auto existing = module.lookupSymbol<hw::HWModuleExternOp>(name))
+    return existing;
+
+  // Model PULP's `axi_xbar`: the slave (upstream) ports face the managers, the
+  // master (downstream) ports face the subordinates. Each side packs its N
+  // interfaces into an array of req/resp structs.
+  auto arrayOf = [](hw::StructType elem, unsigned n) {
+    return hw::ArrayType::get(elem, n);
+  };
+  auto port = [&](StringRef n, Type t, ModulePort::Direction d) {
+    return PortInfo{{StringAttr::get(ctx, n), t, d}};
+  };
+  hw::StructType upReq = getPulpReqType(upstreamType);
+  hw::StructType upResp = getPulpRespType(upstreamType);
+  hw::StructType downReq = getPulpReqType(downstreamType);
+  hw::StructType downResp = getPulpRespType(downstreamType);
+  SmallVector<PortInfo> ports = {
+      port("clk_i", IntegerType::get(ctx, 1), ModulePort::Input),
+      port("slv_ports_req_i", arrayOf(upReq, numUpstream), ModulePort::Input),
+      port("slv_ports_resp_o", arrayOf(upResp, numUpstream), ModulePort::Output),
+      port("mst_ports_req_o", arrayOf(downReq, numDownstream),
+           ModulePort::Output),
+      port("mst_ports_resp_i", arrayOf(downResp, numDownstream),
+           ModulePort::Input)};
+
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(module.getBody());
+  return hw::HWModuleExternOp::create(builder, StringAttr::get(ctx, name),
+                                      ports);
+}
+
+LogicalResult NetworkLowering::lowerXbar(XbarOp xbar) {
+  builder.setLoc(xbar.getLoc());
+
+  auto upstream = xbar.getUpstream();
+  unsigned numUpstream = upstream.size();
+  auto upstreamType = cast<PortType>(upstream.front().getType());
+  auto downstreamType = cast<PortType>(xbar.getPort().getType());
+
+  // A single result may fan out to several downstream consumers; each use is
+  // one physical downstream port.
+  SmallVector<OpOperand *> downstreamUses;
+  for (OpOperand &use : xbar.getPort().getUses())
+    downstreamUses.push_back(&use);
+  unsigned numDownstream = downstreamUses.size();
+
+  auto moduleOp = getOrCreateXbarModule(numUpstream, numDownstream, upstreamType,
+                                        downstreamType);
+
+  // Build each face's received-signal backedges and its input-array struct.
+  // Upstream faces are subordinate-role; downstream faces are manager-role.
+  SmallVector<PortWires, 0> upWires(numUpstream), downWires(numDownstream);
+  SmallVector<Value> slvReq(numUpstream), mstResp(numDownstream);
+  for (unsigned i = 0; i < numUpstream; ++i)
+    slvReq[i] = buildXbarFaceInput(/*isManager=*/false, upstreamType, builder,
+                                   bb, upWires[i]);
+  for (unsigned j = 0; j < numDownstream; ++j)
+    mstResp[j] = buildXbarFaceInput(/*isManager=*/true, downstreamType, builder,
+                                    bb, downWires[j]);
+
+  Value clock = materializeClock(xbar.getClock(), builder.getI1Type());
+  assert(clock && "i1 clock always materializes");
+
+  // Pack the per-face structs into the arrayed slave/master ports; array_create
+  // takes elements in descending index order, so reverse.
+  auto packArray = [&](ArrayRef<Value> elems) {
+    SmallVector<Value> rev(llvm::reverse(elems));
+    return hw::ArrayCreateOp::create(builder, rev).getResult();
+  };
+  DenseMap<StringRef, Value> inputByName;
+  inputByName["clk_i"] = clock;
+  inputByName["slv_ports_req_i"] = packArray(slvReq);
+  inputByName["mst_ports_resp_i"] = packArray(mstResp);
+
+  SmallVector<Value> inputs;
+  for (auto &p : moduleOp.getPortList())
+    if (p.isInput())
+      inputs.push_back(inputByName.at(p.getName()));
+
+  std::string instName = ("xbar_" + Twine(instanceCounter++)).str();
+  auto inst = hw::InstanceOp::create(builder, moduleOp,
+                                     builder.getStringAttr(instName), inputs);
+
+  DenseMap<StringRef, Value> outputByName;
+  unsigned resultIdx = 0;
+  for (auto &p : moduleOp.getPortList())
+    if (p.isOutput())
+      outputByName[p.getName()] = inst.getResult(resultIdx++);
+
+  // Unpack the driven signals for each face from the arrayed output ports.
+  auto unpack = [&](Value array, unsigned idx, unsigned size) {
+    unsigned width = std::max(1u, llvm::Log2_64_Ceil(size));
+    Value index =
+        hw::ConstantOp::create(builder, builder.getIntegerType(width), idx);
+    return hw::ArrayGetOp::create(builder, array, index).getResult();
+  };
+  Value slvResp = outputByName.at("slv_ports_resp_o");
+  Value mstReq = outputByName.at("mst_ports_req_o");
+  for (unsigned i = 0; i < numUpstream; ++i)
+    fillXbarFaceOutputs(/*isManager=*/false, upstreamType, builder,
+                        unpack(slvResp, i, numUpstream), upWires[i]);
+  for (unsigned j = 0; j < numDownstream; ++j)
+    fillXbarFaceOutputs(/*isManager=*/true, downstreamType, builder,
+                        unpack(mstReq, j, numDownstream), downWires[j]);
+
+  // File the wires under their edges: an upstream interface is the consumer of
+  // the operand feeding it; a downstream interface is the producer of a use.
+  unsigned upstreamBase = upstream.getBeginOperandIndex();
+  for (unsigned i = 0; i < numUpstream; ++i)
+    edges[&xbar->getOpOperand(upstreamBase + i)].consumer =
+        std::move(upWires[i]);
+  for (unsigned j = 0; j < numDownstream; ++j)
+    edges[downstreamUses[j]].producer = std::move(downWires[j]);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Pass driver
+//===----------------------------------------------------------------------===//
+
 LogicalResult NetworkLowering::run() {
   if (succeeded(lowerNetwork()))
     return success();
@@ -590,16 +873,14 @@ LogicalResult NetworkLowering::run() {
 }
 
 LogicalResult NetworkLowering::lowerNetwork() {
-  WalkResult xbarWalk = module.walk([&](XbarOp xbar) {
-    xbar.emitError("xbar lowering is not yet implemented");
-    return WalkResult::interrupt();
-  });
-  if (xbarWalk.wasInterrupted())
-    return failure();
-
   SmallVector<NodeOp> nodes(module.getOps<NodeOp>());
   for (NodeOp node : nodes)
     if (failed(lowerNode(node)))
+      return failure();
+
+  SmallVector<XbarOp> xbars(module.getOps<XbarOp>());
+  for (XbarOp xbar : xbars)
+    if (failed(lowerXbar(xbar)))
       return failure();
 
   // Connect every edge's producer side to its consumer side.
