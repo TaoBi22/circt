@@ -69,6 +69,17 @@ struct EdgeWires {
   PortWires consumer;
 };
 
+/// One AXI interface to wire on an instance: its role, port type, port_wires
+/// name, and clock. `diag` is the op errors are reported against.
+struct PortGroupSpec {
+  Operation *diag;
+  bool isManager;
+  PortType portType;
+  std::string name;
+  Value axiClock;
+  std::string clockPort;
+};
+
 // Fixed AXI4 field widths (bits).
 constexpr unsigned kLenWidth = 8;
 constexpr unsigned kSizeWidth = 3;
@@ -252,7 +263,7 @@ public:
 class PortWiresMappingLowerer : public MappingLowerer {
 public:
   PortWiresMappingLowerer(
-      Operation *portOp, bool isManager, PortWiresAttr mapping,
+      Operation *portOp, bool isManager, StringRef name,
       DenseMap<StringRef, PortInfo> &portByName,
       DenseMap<StringRef, Value> &inputByName,
       SmallVectorImpl<std::pair<Wire *, unsigned>> &outs,
@@ -260,8 +271,7 @@ public:
           &outStructs,
       ImplicitLocOpBuilder &builder)
       : portOp(portOp),
-        base(((isManager ? "m_axi_" : "s_axi_") + mapping.getName() + "_")
-                 .str()),
+        base(((isManager ? "m_axi_" : "s_axi_") + name + "_").str()),
         portByName(portByName), inputByName(inputByName), outs(outs),
         outStructs(outStructs), builder(builder) {}
 
@@ -424,15 +434,12 @@ public:
 private:
   LogicalResult lowerNetwork();
   LogicalResult lowerNode(NodeOp node);
-  /// Populate `wires` (and the instance's input drivers) for one port group.
-  LogicalResult addPortGroup(
-      Operation *portOp, bool isManager, PortType portType,
-      AXI4PortMappingAttrInterface mapping,
-      DenseMap<StringRef, PortInfo> &portByName,
-      DenseMap<StringRef, Value> &inputByName, PortWires &wires,
-      SmallVectorImpl<std::pair<Wire *, unsigned>> &outs,
-      SmallVectorImpl<std::tuple<Wire *, hw::StructType, SmallVector<unsigned>>>
-          &outStructs);
+  /// Instantiate `moduleOp`, wiring each interface in `specs` via the flat
+  /// port_wires convention; returns the per-interface wires in `wiresOut`.
+  LogicalResult buildInstance(Operation *diag, hw::HWModuleLike moduleOp,
+                              StringRef instanceName,
+                              ArrayRef<PortGroupSpec> specs,
+                              SmallVectorImpl<PortWires> &wiresOut);
   /// Materialize an `!axi4.clock` value as the module clock port's type.
   Value materializeClock(Value axiClock, Type portType);
 
@@ -456,22 +463,67 @@ Value NetworkLowering::materializeClock(Value axiClock, Type portType) {
   return clock;
 }
 
-LogicalResult NetworkLowering::addPortGroup(
-    Operation *portOp, bool isManager, PortType portType,
-    AXI4PortMappingAttrInterface mapping,
-    DenseMap<StringRef, PortInfo> &portByName,
-    DenseMap<StringRef, Value> &inputByName, PortWires &wires,
-    SmallVectorImpl<std::pair<Wire *, unsigned>> &outs,
-    SmallVectorImpl<std::tuple<Wire *, hw::StructType, SmallVector<unsigned>>>
-        &outStructs) {
-  if (auto portWires = dyn_cast<PortWiresAttr>(mapping)) {
-    PortWiresMappingLowerer lowerer(portOp, isManager, portWires, portByName,
-                                    inputByName, outs, outStructs, builder);
-    return populatePortGroup(isManager, portType, builder, bb, wires, lowerer);
+LogicalResult
+NetworkLowering::buildInstance(Operation *diag, hw::HWModuleLike moduleOp,
+                              StringRef instanceName,
+                              ArrayRef<PortGroupSpec> specs,
+                              SmallVectorImpl<PortWires> &wiresOut) {
+  DenseMap<StringRef, PortInfo> portByName;
+  for (auto &p : moduleOp.getPortList())
+    portByName[p.getName()] = p;
+
+  DenseMap<StringRef, Value> inputByName;
+  SmallVector<std::pair<Wire *, unsigned>> outs;
+  SmallVector<std::tuple<Wire *, hw::StructType, SmallVector<unsigned>>>
+      outStructs;
+
+  // Reserve so the deferred output pointers below stay valid: `outs`/`outStructs`
+  // hold Wire pointers into these elements until we resolve them post-instance.
+  wiresOut.reserve(specs.size());
+  for (const PortGroupSpec &spec : specs) {
+    wiresOut.emplace_back();
+    PortWiresMappingLowerer lowerer(spec.diag, spec.isManager, spec.name,
+                                    portByName, inputByName, outs, outStructs,
+                                    builder);
+    if (failed(populatePortGroup(spec.isManager, spec.portType, builder, bb,
+                                 wiresOut.back(), lowerer)))
+      return failure();
+
+    auto clockPort = portByName.find(spec.clockPort);
+    if (clockPort == portByName.end())
+      return spec.diag->emitError("referenced module has no clock port '")
+             << spec.clockPort << "'";
+    Value clock = materializeClock(spec.axiClock, clockPort->second.type);
+    if (!clock)
+      return spec.diag->emitError("unsupported clock port type");
+    inputByName[clockPort->second.name.getValue()] = clock;
   }
 
-  return portOp->emitError(
-      "only the 'port_wires' port_mapping is currently supported");
+  // Assemble instance inputs in the module's input-port order.
+  SmallVector<Value> inputs;
+  for (auto &p : moduleOp.getPortList()) {
+    if (!p.isInput())
+      continue;
+    auto it = inputByName.find(p.getName());
+    if (it == inputByName.end())
+      return diag->emitError("module input port '")
+             << p.getName() << "' is not driven by any AXI4 port";
+    inputs.push_back(it->second);
+  }
+
+  auto inst = hw::InstanceOp::create(
+      builder, moduleOp, builder.getStringAttr(instanceName), inputs);
+
+  // Resolve deferred module outputs into real driving values.
+  for (auto &[wire, argNum] : outs)
+    wire->value = inst.getResult(argNum);
+  for (auto &[wire, structTy, fieldArgs] : outStructs) {
+    SmallVector<Value> fields;
+    for (unsigned argNum : fieldArgs)
+      fields.push_back(inst.getResult(argNum));
+    wire->value = hw::StructCreateOp::create(builder, structTy, fields);
+  }
+  return success();
 }
 
 LogicalResult NetworkLowering::lowerNode(NodeOp node) {
@@ -483,21 +535,10 @@ LogicalResult NetworkLowering::lowerNode(NodeOp node) {
   auto moduleOp = module.lookupSymbol<hw::HWModuleLike>(node.getModuleAttr());
   assert(moduleOp && "node symbol does not map to module");
 
-  DenseMap<StringRef, PortInfo> portByName;
-  for (auto &p : moduleOp.getPortList())
-    portByName[p.getName()] = p;
-
   builder.setLoc(node.getLoc());
 
-  // Backedge-side wires live in `allWires` (stable, reserved) so the deferred
-  // output pointers below stay valid until we resolve them post-instantiation.
-  SmallVector<PortWires, 0> allWires;
-  allWires.reserve(ports.size());
-  DenseMap<StringRef, Value> inputByName;
-  SmallVector<std::pair<Wire *, unsigned>> outs;
-  SmallVector<std::tuple<Wire *, hw::StructType, SmallVector<unsigned>>>
-      outStructs;
-
+  // One interface per attached port.
+  SmallVector<PortGroupSpec> specs;
   for (Operation *portOp : ports) {
     bool isManager = isa<ManagerPortOp>(portOp);
     Value axiClock;
@@ -514,47 +555,19 @@ LogicalResult NetworkLowering::lowerNode(NodeOp node) {
       mapping = *sub.getPortMapping();
     }
 
-    allWires.emplace_back();
-    if (failed(addPortGroup(portOp, isManager, portType, mapping, portByName,
-                            inputByName, allWires.back(), outs, outStructs)))
-      return failure();
-
-    auto clockPort = portByName.find(mapping.getClockPort());
-    if (clockPort == portByName.end())
-      return portOp->emitError("referenced module has no clock port '")
-             << mapping.getClockPort() << "'";
-    Value clock = materializeClock(axiClock, clockPort->second.type);
-    if (!clock)
-      return portOp->emitError("unsupported clock port type");
-    inputByName[clockPort->second.name.getValue()] = clock;
+    auto portWires = dyn_cast<PortWiresAttr>(mapping);
+    if (!portWires)
+      return portOp->emitError(
+          "only the 'port_wires' port_mapping is currently supported");
+    specs.push_back({portOp, isManager, portType, portWires.getName().str(),
+                     axiClock, mapping.getClockPort().str()});
   }
 
-  // Assemble instance inputs in the module's input-port order.
-  SmallVector<Value> inputs;
-  for (auto &p : moduleOp.getPortList()) {
-    if (!p.isInput())
-      continue;
-    auto it = inputByName.find(p.getName());
-    if (it == inputByName.end())
-      return node.emitError("module input port '")
-             << p.getName() << "' is not driven by any AXI4 port";
-    inputs.push_back(it->second);
-  }
-
-  auto inst = hw::InstanceOp::create(
-      builder, moduleOp,
-      builder.getStringAttr(node.getModule() + "_" + Twine(instanceCounter++)),
-      inputs);
-
-  // Resolve deferred module outputs into real driving values.
-  for (auto &[wire, argNum] : outs)
-    wire->value = inst.getResult(argNum);
-  for (auto &[wire, structTy, fieldArgs] : outStructs) {
-    SmallVector<Value> fields;
-    for (unsigned argNum : fieldArgs)
-      fields.push_back(inst.getResult(argNum));
-    wire->value = hw::StructCreateOp::create(builder, structTy, fields);
-  }
+  SmallVector<PortWires, 0> allWires;
+  std::string instName =
+      (node.getModule() + "_" + Twine(instanceCounter++)).str();
+  if (failed(buildInstance(node, moduleOp, instName, specs, allWires)))
+    return failure();
 
   // File each port's wires under the edge it forms: a manager is the producer
   // for its result's (single) use; a subordinate is the consumer for its
