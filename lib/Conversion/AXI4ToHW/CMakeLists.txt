@@ -11,7 +11,6 @@ add_circt_conversion_library(CIRCTAXI4ToHW
   CIRCTAXI4
   CIRCTHW
   CIRCTComb
-  CIRCTSeq
   CIRCTSV
   MLIRIR
   MLIRPass

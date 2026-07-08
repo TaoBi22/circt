@@ -27,7 +27,7 @@ def AXI4ToHW : Pass<"lower-axi4-to-hw", "mlir::ModuleOp"> {
   }];
   let constructor = "circt::createAXI4ToHWPass()";
   let dependentDialects = ["hw::HWDialect", "comb::CombDialect",
-                           "seq::SeqDialect", "sv::SVDialect"];
+                           "sv::SVDialect"];
 }
 
 //===----------------------------------------------------------------------===//
