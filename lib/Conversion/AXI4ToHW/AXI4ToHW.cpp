@@ -62,6 +62,13 @@ struct ChannelWires {
 /// A port's five channels, in canonical order (AW, W, B, AR, R).
 using PortWires = SmallVector<ChannelWires, 5>;
 
+/// The two sides of one AXI edge, keyed by the consuming operand. Each side is
+/// filled when its endpoint is lowered; both exist by the time we connect.
+struct EdgeWires {
+  PortWires producer;
+  PortWires consumer;
+};
+
 // Fixed AXI4 field widths (bits).
 constexpr unsigned kLenWidth = 8;
 constexpr unsigned kSizeWidth = 3;
@@ -432,7 +439,7 @@ private:
   ModuleOp module;
   ImplicitLocOpBuilder builder;
   BackedgeBuilder bb;
-  DenseMap<Operation *, PortWires> portWires;
+  DenseMap<OpOperand *, EdgeWires> edges;
   DenseMap<Value, Value> clockCache;
   unsigned instanceCounter = 0;
 };
@@ -549,8 +556,15 @@ LogicalResult NetworkLowering::lowerNode(NodeOp node) {
     wire->value = hw::StructCreateOp::create(builder, structTy, fields);
   }
 
-  for (auto [portOp, wires] : llvm::zip(ports, allWires))
-    portWires[portOp] = std::move(wires);
+  // File each port's wires under the edge it forms: a manager is the producer
+  // for its result's (single) use; a subordinate is the consumer for its
+  // upstream operand.
+  for (auto [portOp, wires] : llvm::zip(ports, allWires)) {
+    if (auto mgr = dyn_cast<ManagerPortOp>(portOp))
+      edges[&*mgr.getPort().use_begin()].producer = std::move(wires);
+    else
+      edges[&portOp->getOpOperand(0)].consumer = std::move(wires);
+  }
   return success();
 }
 
@@ -575,35 +589,30 @@ LogicalResult NetworkLowering::lowerNetwork() {
     if (failed(lowerNode(node)))
       return failure();
 
-  // Connect each subordinate to its upstream manager.
-  WalkResult connectWalk = module.walk([&](SubordinatePortOp sub) {
-    auto mgr = sub.getUpstream().getDefiningOp<ManagerPortOp>();
-    if (!mgr) {
-      sub.emitError("upstream of a subordinate_port must be a manager_port");
-      return WalkResult::interrupt();
-    }
-    connectPorts(portWires[mgr], portWires[sub]);
-    return WalkResult::advance();
-  });
-  if (connectWalk.wasInterrupted())
-    return failure();
+  // Connect every edge's producer side to its consumer side.
+  for (auto &[operand, edge] : edges) {
+    assert(!edge.producer.empty() && !edge.consumer.empty() &&
+           "both endpoints of an AXI edge must be lowered");
+    connectPorts(edge.producer, edge.consumer);
+  }
 
-  // Erase abstract ops uses-first: subordinates, then managers, then nodes.
-  SmallVector<Operation *> subs, mgrs, deadNodes;
+  // Erase the abstract ops. Repeatedly drop those with no remaining uses; the
+  // SSA DAG guarantees each pass removes at least the current sinks.
+  SmallVector<Operation *> dead;
   module.walk([&](Operation *op) {
-    if (isa<SubordinatePortOp>(op))
-      subs.push_back(op);
-    else if (isa<ManagerPortOp>(op))
-      mgrs.push_back(op);
-    else if (isa<NodeOp>(op))
-      deadNodes.push_back(op);
+    if (isa_and_nonnull<AXI4Dialect>(op->getDialect()))
+      dead.push_back(op);
   });
-  for (Operation *op : subs)
-    op->erase();
-  for (Operation *op : mgrs)
-    op->erase();
-  for (Operation *op : deadNodes)
-    op->erase();
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (Operation *&op : dead)
+      if (op && op->use_empty()) {
+        op->erase();
+        op = nullptr;
+        changed = true;
+      }
+  }
 
   return success();
 }
