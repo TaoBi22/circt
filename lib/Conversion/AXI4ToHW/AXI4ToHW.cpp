@@ -494,6 +494,18 @@ LogicalResult checkNetwork(ModuleOp module) {
     }
   };
 
+  // The whole network is lowered into one block; a split-region network would
+  // otherwise emit instances that can't reach their peers.
+  Region *commonRegion = nullptr;
+  auto checkRegion = [&](Operation *op) {
+    if (!commonRegion)
+      commonRegion = op->getParentRegion();
+    else if (op->getParentRegion() != commonRegion) {
+      op->emitError("all axi4 network operations must be in the same region");
+      failed = true;
+    }
+  };
+
   auto checkUsers = [&](Operation *op) {
     for (Operation *user : op->getUsers())
       if (!isa_and_nonnull<AXI4Dialect>(user->getDialect())) {
@@ -517,6 +529,7 @@ LogicalResult checkNetwork(ModuleOp module) {
     TypeSwitch<Operation *>(op)
         .Case<ManagerPortOp>([&](ManagerPortOp mgr) {
           checkClock(mgr, mgr.getClock());
+          checkRegion(mgr);
           checkUsers(mgr);
           if (!mgr.getNode()) {
             mgr.emitError("nodeless ports are not yet supported");
@@ -532,6 +545,7 @@ LogicalResult checkNetwork(ModuleOp module) {
         })
         .Case<SubordinatePortOp>([&](SubordinatePortOp sub) {
           checkClock(sub, sub.getClock());
+          checkRegion(sub);
           if (!sub.getNode()) {
             sub.emitError("nodeless ports are not yet supported");
             failed = true;
@@ -541,6 +555,7 @@ LogicalResult checkNetwork(ModuleOp module) {
         })
         .Case<XbarOp>([&](XbarOp xbar) {
           checkClock(xbar, xbar.getClock());
+          checkRegion(xbar);
           checkUsers(xbar);
           // PULP's rule_t is xbar_rule_32_t/xbar_rule_64_t; wider addresses have
           // nowhere to go.
@@ -564,7 +579,10 @@ LogicalResult checkNetwork(ModuleOp module) {
                 return;
               }
         })
-        .Case<NodeOp>([&](NodeOp node) { checkUsers(node); });
+        .Case<NodeOp>([&](NodeOp node) {
+          checkRegion(node);
+          checkUsers(node);
+        });
   });
 
   return failure(failed);
@@ -1122,12 +1140,47 @@ LogicalResult NetworkLowering::run() {
 }
 
 LogicalResult NetworkLowering::lowerNetwork() {
-  SmallVector<NodeOp> nodes(module.getOps<NodeOp>());
+  // The network may sit at the top level or inside an enclosing hw.module; find
+  // its ops wherever they are and emit the lowered design in the same block, so
+  // an enclosing module comes out well-formed (and export-verilog-able).
+  SmallVector<NodeOp> nodes;
+  SmallVector<XbarOp> xbars;
+  module.walk([&](Operation *op) {
+    if (auto node = dyn_cast<NodeOp>(op))
+      nodes.push_back(node);
+    else if (auto xbar = dyn_cast<XbarOp>(op))
+      xbars.push_back(xbar);
+  });
+
+  Block *netBlock = nullptr;
+  if (!nodes.empty())
+    netBlock = nodes.front()->getBlock();
+  else if (!xbars.empty())
+    netBlock = xbars.front()->getBlock();
+  if (netBlock) {
+    if (!netBlock->empty() && netBlock->back().hasTrait<OpTrait::IsTerminator>())
+      builder.setInsertionPoint(&netBlock->back());
+    else
+      builder.setInsertionPointToEnd(netBlock);
+  }
+
+  // When the clock is an enclosing module's i1 port cast to !axi4.clock, read
+  // that i1 directly rather than casting back (which export-verilog rejects).
+  SmallVector<UnrealizedConversionCastOp> clockCasts;
+  if (netBlock)
+    for (Operation &op : *netBlock)
+      if (auto cast = dyn_cast<UnrealizedConversionCastOp>(op))
+        if (cast.getNumOperands() == 1 &&
+            isa<ClockType>(cast.getResult(0).getType()) &&
+            cast.getOperand(0).getType().isInteger(1)) {
+          clockCache[cast.getResult(0)] = cast.getOperand(0);
+          clockCasts.push_back(cast);
+        }
+
   for (NodeOp node : nodes)
     if (failed(lowerNode(node)))
       return failure();
 
-  SmallVector<XbarOp> xbars(module.getOps<XbarOp>());
   for (XbarOp xbar : xbars)
     if (failed(lowerXbar(xbar)))
       return failure();
@@ -1156,6 +1209,11 @@ LogicalResult NetworkLowering::lowerNetwork() {
         changed = true;
       }
   }
+
+  // The short-circuited clock casts are dead now that the network is gone.
+  for (UnrealizedConversionCastOp cast : clockCasts)
+    if (cast.use_empty())
+      cast.erase();
 
   return success();
 }

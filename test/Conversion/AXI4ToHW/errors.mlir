@@ -131,6 +131,32 @@ axi4.subordinate_port %mgr, %clk node %sub_node {
 
 // -----
 
+// Network operations split across regions. The whole network lowers into one
+// block, so ops in a different region (here, a second network nested in an
+// hw.module) are rejected.
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%mgr_node = axi4.node @mgr_module : !axi4.node
+%sub_node = axi4.node @sub_module : !axi4.node
+%mgr = axi4.manager_port %clk node %mgr_node {
+  port_mapping = #axi4.port_wires<"clk", "m0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4>
+axi4.subordinate_port %mgr, %clk node %sub_node {
+  port_mapping = #axi4.port_wires<"clk", "s0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4>
+hw.module @Other() {
+  // expected-error @below {{all axi4 network operations must be in the same region}}
+  %other_node = axi4.node @mgr_module : !axi4.node
+  hw.output
+}
+
+// -----
+
 // Node module port declared with the wrong direction.
 hw.module.extern @mgr_module(in %clk : i1, in %m_axi_m0_awid : i4)
 hw.module.extern @sub_module()
