@@ -28,6 +28,7 @@
 #include "circt/Support/BackedgeBuilder.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -323,6 +324,50 @@ struct AddrRule {
   uint64_t end;
 };
 
+/// Append the [start, end) address ranges served by one downstream endpoint of a
+/// crossbar. A subordinate contributes its access windows; a chained crossbar
+/// contributes the union of the ranges served by *its* downstreams, recursively,
+/// so a crossbar can fan out to subordinates and further crossbars at once.
+void collectDownstreamRanges(
+    Operation *consumer,
+    SmallVectorImpl<std::pair<uint64_t, uint64_t>> &ranges,
+    SmallPtrSetImpl<Operation *> &visited) {
+  if (auto sub = dyn_cast<SubordinatePortOp>(consumer)) {
+    for (auto win : sub.getAccess().getAsRange<WindowAttr>())
+      ranges.push_back({win.getBase(), win.getBase() + win.getSize()});
+    return;
+  }
+  if (auto xbar = dyn_cast<XbarOp>(consumer)) {
+    if (!visited.insert(xbar).second)
+      return; // Guard against pathological cycles.
+    for (OpOperand &use : xbar.getPort().getUses())
+      collectDownstreamRanges(use.getOwner(), ranges, visited);
+  }
+}
+
+/// Derive the crossbar's address map: one rule per address range served by each
+/// downstream endpoint, indexed by master-port (use-list) order to match how
+/// `lowerXbar` packs the arrays. A downstream with no reachable subordinate
+/// window (e.g. a dangling chained crossbar) falls back to the whole space.
+SmallVector<AddrRule> deriveXbarAddrMap(XbarOp xbar) {
+  auto downType = cast<PortType>(xbar.getPort().getType());
+  unsigned addrW = downType.getAddressWidth();
+  uint64_t fullRange = addrW >= 64 ? ~0ull : ((1ull << addrW) - 1);
+  SmallVector<AddrRule> rules;
+  unsigned idx = 0;
+  for (OpOperand &use : xbar.getPort().getUses()) {
+    SmallVector<std::pair<uint64_t, uint64_t>> ranges;
+    SmallPtrSet<Operation *, 4> visited;
+    collectDownstreamRanges(use.getOwner(), ranges, visited);
+    if (ranges.empty())
+      ranges.push_back({0, fullRange});
+    for (auto [start, end] : ranges)
+      rules.push_back({idx, start, end});
+    ++idx;
+  }
+  return rules;
+}
+
 /// Render the SystemVerilog wrapper for one crossbar configuration.
 std::string buildXbarWrapperSource(StringRef name, unsigned numUp,
                                    unsigned numDown, PortType upType,
@@ -417,6 +462,7 @@ std::string buildXbarWrapperSource(StringRef name, unsigned numUp,
   os << "    .rule_t        (" << ruleTy << ")\n";
   os << "  ) i_xbar (\n";
   os << "    .clk_i                 (clk_i),\n";
+  os << "    // TODO: rst_ni tied high - the crossbar never resets (stopgap).\n";
   os << "    .rst_ni                (1'b1),\n";
   os << "    .test_i                (1'b0),\n";
   os << "    .slv_ports_req_i       (slv_ports_req_i),\n";
@@ -496,6 +542,27 @@ LogicalResult checkNetwork(ModuleOp module) {
         .Case<XbarOp>([&](XbarOp xbar) {
           checkClock(xbar, xbar.getClock());
           checkUsers(xbar);
+          // PULP's rule_t is xbar_rule_32_t/xbar_rule_64_t; wider addresses have
+          // nowhere to go.
+          if (cast<PortType>(xbar.getPort().getType()).getAddressWidth() > 64) {
+            xbar.emitError("address widths wider than 64 bits are not supported "
+                           "by the PULP axi_xbar address map");
+            failed = true;
+            return;
+          }
+          // PULP's address decoder requires the rules to be disjoint.
+          SmallVector<AddrRule> rules = deriveXbarAddrMap(xbar);
+          for (unsigned i = 0; i < rules.size(); ++i)
+            for (unsigned k = i + 1; k < rules.size(); ++k)
+              if (rules[i].start < rules[k].end &&
+                  rules[k].start < rules[i].end) {
+                xbar.emitError("overlapping address windows in the crossbar "
+                               "address map (master ports ")
+                    << rules[i].idx << " and " << rules[k].idx
+                    << "); the PULP axi_xbar requires disjoint address rules";
+                failed = true;
+                return;
+              }
         })
         .Case<NodeOp>([&](NodeOp node) { checkUsers(node); });
   });
@@ -968,20 +1035,9 @@ LogicalResult NetworkLowering::lowerXbar(XbarOp xbar) {
     downstreamUses.push_back(&use);
   unsigned numDownstream = downstreamUses.size();
 
-  // Derive the address map from each downstream endpoint. A subordinate routes
-  // its declared access windows; any other consumer (a chained xbar) has no
-  // windows, so route the whole space to it (a documented stopgap).
-  unsigned addrW = downstreamType.getAddressWidth();
-  uint64_t fullRange = addrW >= 64 ? ~0ull : ((1ull << addrW) - 1);
-  SmallVector<AddrRule> rules;
-  for (unsigned j = 0; j < numDownstream; ++j) {
-    if (auto sub = dyn_cast<SubordinatePortOp>(downstreamUses[j]->getOwner())) {
-      for (auto win : sub.getAccess().getAsRange<WindowAttr>())
-        rules.push_back({j, win.getBase(), win.getBase() + win.getSize()});
-    } else {
-      rules.push_back({j, 0, fullRange});
-    }
-  }
+  // The address map (checkNetwork has already validated it is disjoint and
+  // within a supported width).
+  SmallVector<AddrRule> rules = deriveXbarAddrMap(xbar);
 
   auto moduleOp = getOrCreateXbarModule(numUpstream, numDownstream, upstreamType,
                                         downstreamType, rules);

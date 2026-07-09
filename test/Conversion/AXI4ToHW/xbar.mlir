@@ -61,6 +61,7 @@
 // CHECK-SAME: .rule_t{{ +}}(axi_pkg::xbar_rule_32_t)
 // CHECK-SAME: ) i_xbar (
 // CHECK-SAME: .clk_i{{ +}}(clk_i),
+// CHECK-SAME: // TODO: rst_ni tied high
 // CHECK-SAME: .rst_ni{{ +}}(1'b1),
 // CHECK-SAME: .test_i{{ +}}(1'b0),
 // CHECK-SAME: .addr_map_i{{ +}}(AddrMap),
@@ -119,24 +120,25 @@ axi4.subordinate_port %xbar, %clk node %snode {
 
 // -----
 
-// Chained crossbars: manager -> xbar -> xbar -> subordinate. The two xbars route
-// differently - the upstream xbar sees the whole address space, the downstream
-// xbar the subordinate's window - so each gets its own wrapper. The downstream
-// xbar is lowered second, so it takes the _0-suffixed name.
+// Chained crossbars: manager -> xbar -> xbar -> subordinate. The upstream xbar's
+// reachable range is computed from the downstream xbar's subordinate, so both
+// xbars route the same [0, 0x1000) window and share one wrapper (not full-range).
 
-// CHECK: sv.verbatim.source @axi_xbar_1u1d_a32_d64_i4_o4_0_source
+// Exactly one wrapper is emitted, routing the subordinate's window.
+// CHECK: sv.verbatim.source @axi_xbar
 // CHECK-SAME: '{idx: 0, start_addr: 32'h0, end_addr: 32'h1000}
-// CHECK: sv.verbatim.source @axi_xbar_1u1d_a32_d64_i4_o4_source
-// CHECK-SAME: '{idx: 0, start_addr: 32'h0, end_addr: 32'hFFFFFFFF}
+// CHECK-NOT: sv.verbatim.source
+// CHECK: sv.verbatim.module @axi_xbar_1u1d_a32_d64_i4_o4(
 
-// The upstream xbar (xbar_2, full-range) master request feeds the downstream
-// xbar (xbar_3, windowed) slave request: its AW is unpacked (atop/user dropped)
-// then repacked with atop/user tied to 0.
+// Both crossbars instantiate the shared wrapper.
 // CHECK: hw.instance "xbar_2" @axi_xbar_1u1d_a32_d64_i4_o4(
-// CHECK: %[[X1MSTREQ:.+]] = hw.array_get %xbar_2.mst_ports_req_o[%{{.+}}]
+// CHECK: hw.instance "xbar_3" @axi_xbar_1u1d_a32_d64_i4_o4(
+
+// The upstream xbar's master request feeds the downstream xbar's slave request:
+// its AW is unpacked (atop/user dropped) then repacked with atop/user tied to 0.
+// CHECK: %[[X1MSTREQ:.+]] = hw.array_get %xbar_{{[0-9]+}}.mst_ports_req_o[%{{.+}}]
 // CHECK: %[[X1AW:.+]] = hw.struct_extract %[[X1MSTREQ]]["aw"]
 // CHECK: %[[X1AWID:.+]] = hw.struct_extract %[[X1AW]]["id"] : !hw.struct<id: i4, {{.*}}, atop: i6, user: i1>
-// CHECK: hw.instance "xbar_3" @axi_xbar_1u1d_a32_d64_i4_o4_0(
 
 // CHECK-NOT: axi4.xbar
 
@@ -215,3 +217,50 @@ axi4.subordinate_port %xbar, %clk node %snode2 {
   access = [#axi4.window<base = 4096, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 5>
+
+// -----
+
+// Mixed fan-out: one crossbar feeds a subordinate AND a chained crossbar at once.
+// The chained downstream is routed the range reachable through it (computed from
+// its subordinate, not full-range), so it coexists with the sibling subordinate.
+
+// The leaf xbar routes its subordinate's [0x1000, 0x2000) window.
+// CHECK: sv.verbatim.source @axi_xbar_1u1d_a32_d64_i4_o4_source
+// CHECK-SAME: '{idx: 0, start_addr: 32'h1000, end_addr: 32'h2000}
+
+// The fan-out xbar has two master ports: idx 0 -> the direct subordinate, idx 1
+// -> the chained xbar's computed reachable range (not full-range).
+// CHECK: sv.verbatim.source @axi_xbar_1u2d_a32_d64_i4_o4_source
+// CHECK-DAG: '{idx: 0, start_addr: 32'h0, end_addr: 32'h1000}
+// CHECK-DAG: '{idx: 1, start_addr: 32'h1000, end_addr: 32'h2000}
+
+// CHECK: hw.instance "xbar_{{[0-9]+}}" @axi_xbar_1u2d_a32_d64_i4_o4(
+// CHECK: hw.instance "xbar_{{[0-9]+}}" @axi_xbar_1u1d_a32_d64_i4_o4(
+
+// CHECK-NOT: axi4.xbar
+
+hw.module.extern @mgr_module(in %clk : i1, out m_axi_m0_awid : i4, out m_axi_m0_awaddr : i32, out m_axi_m0_awlen : i8, out m_axi_m0_awsize : i3, out m_axi_m0_awburst : i2, out m_axi_m0_awlock : i1, out m_axi_m0_awcache : i4, out m_axi_m0_awprot : i3, out m_axi_m0_awqos : i4, out m_axi_m0_awregion : i4, out m_axi_m0_awvalid : i1, in %m_axi_m0_awready : i1, out m_axi_m0_wdata : i64, out m_axi_m0_wstrb : i8, out m_axi_m0_wlast : i1, out m_axi_m0_wvalid : i1, in %m_axi_m0_wready : i1, in %m_axi_m0_bid : i4, in %m_axi_m0_bresp : i2, in %m_axi_m0_bvalid : i1, out m_axi_m0_bready : i1, out m_axi_m0_arid : i4, out m_axi_m0_araddr : i32, out m_axi_m0_arlen : i8, out m_axi_m0_arsize : i3, out m_axi_m0_arburst : i2, out m_axi_m0_arlock : i1, out m_axi_m0_arcache : i4, out m_axi_m0_arprot : i3, out m_axi_m0_arqos : i4, out m_axi_m0_arregion : i4, out m_axi_m0_arvalid : i1, in %m_axi_m0_arready : i1, in %m_axi_m0_rid : i4, in %m_axi_m0_rdata : i64, in %m_axi_m0_rresp : i2, in %m_axi_m0_rlast : i1, in %m_axi_m0_rvalid : i1, out m_axi_m0_rready : i1)
+hw.module.extern @sub_module(in %clk : i1, in %s_axi_s0_awid : i4, in %s_axi_s0_awaddr : i32, in %s_axi_s0_awlen : i8, in %s_axi_s0_awsize : i3, in %s_axi_s0_awburst : i2, in %s_axi_s0_awlock : i1, in %s_axi_s0_awcache : i4, in %s_axi_s0_awprot : i3, in %s_axi_s0_awqos : i4, in %s_axi_s0_awregion : i4, in %s_axi_s0_awvalid : i1, out s_axi_s0_awready : i1, in %s_axi_s0_wdata : i64, in %s_axi_s0_wstrb : i8, in %s_axi_s0_wlast : i1, in %s_axi_s0_wvalid : i1, out s_axi_s0_wready : i1, out s_axi_s0_bid : i4, out s_axi_s0_bresp : i2, out s_axi_s0_bvalid : i1, in %s_axi_s0_bready : i1, in %s_axi_s0_arid : i4, in %s_axi_s0_araddr : i32, in %s_axi_s0_arlen : i8, in %s_axi_s0_arsize : i3, in %s_axi_s0_arburst : i2, in %s_axi_s0_arlock : i1, in %s_axi_s0_arcache : i4, in %s_axi_s0_arprot : i3, in %s_axi_s0_arqos : i4, in %s_axi_s0_arregion : i4, in %s_axi_s0_arvalid : i1, out s_axi_s0_arready : i1, out s_axi_s0_rid : i4, out s_axi_s0_rdata : i64, out s_axi_s0_rresp : i2, out s_axi_s0_rlast : i1, out s_axi_s0_rvalid : i1, in %s_axi_s0_rready : i1)
+
+%clk = unrealized_conversion_cast to !axi4.clock
+%mnode = axi4.node @mgr_module : !axi4.node
+%snode_a = axi4.node @sub_module : !axi4.node
+%snode_b = axi4.node @sub_module : !axi4.node
+%mgr = axi4.manager_port %clk node %mnode {
+  port_mapping = #axi4.port_wires<"clk", "m0">,
+  access = [#axi4.window<base = 0, size = 8192, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4>
+%xbar1 = axi4.xbar %clk mgrs %mgr : (!axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 4>
+%xbar2 = axi4.xbar %clk mgrs %xbar1 : (!axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 4>
+// %xbar1 fans out to both a direct subordinate and the chained %xbar2.
+axi4.subordinate_port %xbar1, %clk node %snode_a {
+  port_mapping = #axi4.port_wires<"clk", "s0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4>
+axi4.subordinate_port %xbar2, %clk node %snode_b {
+  port_mapping = #axi4.port_wires<"clk", "s0">,
+  access = [#axi4.window<base = 4096, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4>
