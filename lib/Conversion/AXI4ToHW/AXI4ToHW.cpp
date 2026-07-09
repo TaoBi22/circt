@@ -152,19 +152,26 @@ hw::StructType getChannelPayloadType(PortType port, AXI4Channel channel) {
 // models that interface and bridges it to our canonical channel form.
 //===----------------------------------------------------------------------===//
 
-// PULP's aw_chan_t carries an atomic-op field our canonical AW payload lacks.
+// PULP's aw_chan_t carries an atomic-op field our canonical AW payload lacks;
+// every channel carries a `user` sideband. Both are tied to 0 on lowering. The
+// `user` width is a stopgap: `!axi4.port` carries no user width, so we hardcode
+// it to 1.
 constexpr unsigned kAtopWidth = 6;
+constexpr unsigned kUserWidth = 1;
 
-/// The PULP channel struct type for one channel. Identical to the canonical
-/// payload except AW, which appends a 6-bit `atop` field (tied to 0 on lowering).
+/// The PULP channel struct type for one channel: the canonical payload plus a
+/// `user` field on every channel and a 6-bit `atop` on AW, in `AXI_TYPEDEF_*`
+/// field order (atop before user).
 hw::StructType getPulpChannelType(PortType port, AXI4Channel channel) {
   hw::StructType canon = getChannelPayloadType(port, channel);
-  if (channel != AXI4Channel::AW)
-    return canon;
+  MLIRContext *ctx = port.getContext();
   SmallVector<hw::StructType::FieldInfo> fields(canon.getElements());
-  fields.push_back({StringAttr::get(port.getContext(), "atop"),
-                    IntegerType::get(port.getContext(), kAtopWidth)});
-  return hw::StructType::get(port.getContext(), fields);
+  if (channel == AXI4Channel::AW)
+    fields.push_back({StringAttr::get(ctx, "atop"),
+                      IntegerType::get(ctx, kAtopWidth)});
+  fields.push_back(
+      {StringAttr::get(ctx, "user"), IntegerType::get(ctx, kUserWidth)});
+  return hw::StructType::get(ctx, fields);
 }
 
 /// PULP's `req_t`: all manager->subordinate signals for one port, in the field
@@ -197,22 +204,31 @@ hw::StructType getPulpRespType(PortType port) {
             f("r_valid", i1), f("r", getPulpChannelType(port, AXI4Channel::R))});
 }
 
-/// Wrap a canonical AW payload as PULP's `aw_chan_t`, tying `atop` to 0.
-Value toPulpAw(ImplicitLocOpBuilder &b, Value canonical) {
+/// Wrap a canonical channel payload as PULP's channel struct, tying the extra
+/// `user` (and `atop` on AW) fields to 0.
+Value toPulpChannel(ImplicitLocOpBuilder &b, AXI4Channel channel,
+                    Value canonical) {
   auto canonTy = cast<hw::StructType>(canonical.getType());
   SmallVector<Value> fields;
   for (auto &fi : canonTy.getElements())
     fields.push_back(hw::StructExtractOp::create(b, canonical, fi.name));
-  fields.push_back(hw::ConstantOp::create(b, b.getIntegerType(kAtopWidth), 0));
   SmallVector<hw::StructType::FieldInfo> pulpFields(canonTy.getElements());
-  pulpFields.push_back(
-      {b.getStringAttr("atop"), b.getIntegerType(kAtopWidth)});
+  if (channel == AXI4Channel::AW) {
+    fields.push_back(hw::ConstantOp::create(b, b.getIntegerType(kAtopWidth), 0));
+    pulpFields.push_back({b.getStringAttr("atop"), b.getIntegerType(kAtopWidth)});
+  }
+  fields.push_back(hw::ConstantOp::create(b, b.getIntegerType(kUserWidth), 0));
+  pulpFields.push_back({b.getStringAttr("user"), b.getIntegerType(kUserWidth)});
   return hw::StructCreateOp::create(
       b, hw::StructType::get(b.getContext(), pulpFields), fields);
 }
 
-/// Drop the `atop` field off a PULP `aw_chan_t`, yielding a canonical AW payload.
-Value fromPulpAw(ImplicitLocOpBuilder &b, Value pulp, hw::StructType canonTy) {
+/// Drop the PULP-only fields (`user`, and `atop` on AW) off a PULP channel
+/// struct, yielding a canonical channel payload. The canonical fields are a
+/// by-name subset of the PULP struct, so one extraction loop covers every
+/// channel.
+Value fromPulpChannel(ImplicitLocOpBuilder &b, Value pulp,
+                      hw::StructType canonTy) {
   SmallVector<Value> fields;
   for (auto &fi : canonTy.getElements())
     fields.push_back(hw::StructExtractOp::create(b, pulp, fi.name));
@@ -247,8 +263,7 @@ Value buildXbarFaceInput(bool isManager, PortType portType,
     cw.payload = {payload, payload};
     Backedge valid = bb.get(i1);
     cw.valid = {valid, valid};
-    Value payloadField =
-        ci.channel == AXI4Channel::AW ? toPulpAw(builder, payload) : Value(payload);
+    Value payloadField = toPulpChannel(builder, ci.channel, payload);
     fields[builder.getStringAttr(ci.token)] = payloadField;
     fields[builder.getStringAttr(ci.token + Twine("_valid"))] = valid;
   }
@@ -270,9 +285,8 @@ void fillXbarFaceOutputs(bool isManager, PortType portType,
     std::string token = ci.token.str();
     if (payloadDriven) {
       Value payload = hw::StructExtractOp::create(builder, outputStruct, token);
-      if (ci.channel == AXI4Channel::AW)
-        payload = fromPulpAw(builder, payload,
-                             getChannelPayloadType(portType, ci.channel));
+      payload = fromPulpChannel(builder, payload,
+                                getChannelPayloadType(portType, ci.channel));
       cw.payload.value = payload;
       cw.valid.value =
           hw::StructExtractOp::create(builder, outputStruct, token + "_valid");
