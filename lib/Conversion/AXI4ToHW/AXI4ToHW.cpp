@@ -317,31 +317,56 @@ void fillXbarFaceOutputs(bool isManager, PortType portType,
 //===----------------------------------------------------------------------===//
 
 /// One `xbar_rule_*_t` entry: requests in [start, end) route to master port
-/// `idx`.
+/// `idx`. Following PULP's addr_decode, `end == 0` means "to the end of the
+/// address space" - so a range reaching the top (including a full 64-bit space,
+/// whose exclusive top 2^64 is not representable in 64 bits) is exact.
 struct AddrRule {
   unsigned idx;
   uint64_t start;
   uint64_t end;
 };
 
+/// Exclusive end of the window [base, base + size) within an `addrW`-bit space,
+/// encoded as PULP expects (0 == end of space). Returns nullopt if the window
+/// does not fit the space.
+std::optional<uint64_t> windowEnd(uint64_t base, uint64_t size, unsigned addrW) {
+  uint64_t end = base + size;
+  bool overflow = end < base; // uint64 wrap => true sum >= 2^64
+  if (addrW >= 64)
+    // Fits unless the sum passes 2^64; a sum of exactly 2^64 is the end of space.
+    return overflow ? (end == 0 ? std::optional<uint64_t>(0) : std::nullopt)
+                    : std::optional<uint64_t>(end);
+  uint64_t top = 1ull << addrW;
+  if (overflow || base >= top || end > top)
+    return std::nullopt;
+  return end == top ? 0 : end;
+}
+
+/// End of a rule for ordering/overlap math, resolving the "end of space"
+/// sentinel to the maximum value.
+uint64_t ruleEndValue(const AddrRule &r) { return r.end == 0 ? ~0ull : r.end; }
+
 /// Append the [start, end) address ranges served by one downstream endpoint of a
 /// crossbar. A subordinate contributes its access windows; a chained crossbar
 /// contributes the union of the ranges served by *its* downstreams, recursively,
 /// so a crossbar can fan out to subordinates and further crossbars at once.
 void collectDownstreamRanges(
-    Operation *consumer,
+    Operation *consumer, unsigned addrW,
     SmallVectorImpl<std::pair<uint64_t, uint64_t>> &ranges,
     SmallPtrSetImpl<Operation *> &visited) {
   if (auto sub = dyn_cast<SubordinatePortOp>(consumer)) {
     for (auto win : sub.getAccess().getAsRange<WindowAttr>())
-      ranges.push_back({win.getBase(), win.getBase() + win.getSize()});
+      // Out-of-range windows are diagnosed in checkNetwork; clamp defensively.
+      ranges.push_back({win.getBase(),
+                        windowEnd(win.getBase(), win.getSize(), addrW)
+                            .value_or(0)});
     return;
   }
   if (auto xbar = dyn_cast<XbarOp>(consumer)) {
     if (!visited.insert(xbar).second)
       return; // Guard against pathological cycles.
     for (OpOperand &use : xbar.getPort().getUses())
-      collectDownstreamRanges(use.getOwner(), ranges, visited);
+      collectDownstreamRanges(use.getOwner(), addrW, ranges, visited);
   }
 }
 
@@ -352,15 +377,14 @@ void collectDownstreamRanges(
 SmallVector<AddrRule> deriveXbarAddrMap(XbarOp xbar) {
   auto downType = cast<PortType>(xbar.getPort().getType());
   unsigned addrW = downType.getAddressWidth();
-  uint64_t fullRange = addrW >= 64 ? ~0ull : ((1ull << addrW) - 1);
   SmallVector<AddrRule> rules;
   unsigned idx = 0;
   for (OpOperand &use : xbar.getPort().getUses()) {
     SmallVector<std::pair<uint64_t, uint64_t>> ranges;
     SmallPtrSet<Operation *, 4> visited;
-    collectDownstreamRanges(use.getOwner(), ranges, visited);
+    collectDownstreamRanges(use.getOwner(), addrW, ranges, visited);
     if (ranges.empty())
-      ranges.push_back({0, fullRange});
+      ranges.push_back({0, 0}); // Whole space (0 == end of space).
     for (auto [start, end] : ranges)
       rules.push_back({idx, start, end});
     ++idx;
@@ -516,6 +540,20 @@ LogicalResult checkNetwork(ModuleOp module) {
       }
   };
 
+  // Access windows must fit the port's address space; otherwise the derived
+  // routing rule would wrap and silently mis-route.
+  auto checkWindows = [&](Operation *op, auto access, unsigned addrW) {
+    for (auto win : access.template getAsRange<WindowAttr>()) {
+      uint64_t base = win.getBase(), size = win.getSize();
+      if (!windowEnd(base, size, addrW)) {
+        op->emitError("access window [base ")
+            << base << ", size " << size << ") does not fit the " << addrW
+            << "-bit address space";
+        failed = true;
+      }
+    }
+  };
+
   auto checkMapping = [&](Operation *op,
                           std::optional<AXI4PortMappingAttrInterface> mapping) {
     if (mapping && !isa<PortWiresAttr>(*mapping)) {
@@ -541,6 +579,8 @@ LogicalResult checkNetwork(ModuleOp module) {
                           "supported");
             failed = true;
           }
+          checkWindows(mgr, mgr.getAccess(),
+                       cast<PortType>(mgr.getPort().getType()).getAddressWidth());
           checkMapping(mgr, mgr.getPortMapping());
         })
         .Case<SubordinatePortOp>([&](SubordinatePortOp sub) {
@@ -551,6 +591,9 @@ LogicalResult checkNetwork(ModuleOp module) {
             failed = true;
             return;
           }
+          checkWindows(
+              sub, sub.getAccess(),
+              cast<PortType>(sub.getUpstream().getType()).getAddressWidth());
           checkMapping(sub, sub.getPortMapping());
         })
         .Case<XbarOp>([&](XbarOp xbar) {
@@ -569,8 +612,8 @@ LogicalResult checkNetwork(ModuleOp module) {
           SmallVector<AddrRule> rules = deriveXbarAddrMap(xbar);
           for (unsigned i = 0; i < rules.size(); ++i)
             for (unsigned k = i + 1; k < rules.size(); ++k)
-              if (rules[i].start < rules[k].end &&
-                  rules[k].start < rules[i].end) {
+              if (rules[i].start < ruleEndValue(rules[k]) &&
+                  rules[k].start < ruleEndValue(rules[i])) {
                 xbar.emitError("overlapping address windows in the crossbar "
                                "address map (master ports ")
                     << rules[i].idx << " and " << rules[k].idx
