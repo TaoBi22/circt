@@ -95,3 +95,14 @@ axi4.subordinate_port %nodeless_mgr, %c, %r {
   access = [#axi4.window<base = 8192, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4, 4, 0>
+
+//===----------------------------------------------------------------------===//
+// Generic ports
+//===----------------------------------------------------------------------===//
+
+// CHECK: %[[FOO:.+]] = unrealized_conversion_cast to i8
+%foo = unrealized_conversion_cast to i8
+// CHECK: axi4.generic_input %[[FOO]], "sum_i" node %[[MGRNODE]] : i8
+axi4.generic_input %foo, "sum_i" node %mgr_node : i8
+// CHECK: %[[BAR:.+]] = axi4.generic_output "carry_o" node %[[MGRNODE]] : i1
+%bar = axi4.generic_output "carry_o" node %mgr_node : i1

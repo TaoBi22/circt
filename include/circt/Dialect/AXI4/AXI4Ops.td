@@ -150,4 +150,43 @@ def XbarOp : AXI4Op<"xbar"> {
   let hasVerifier = 1;
 }
 
+def GenericInputOp : AXI4Op<"generic_input"> {
+  let summary = "Connects an SSA value to a generic input port on a node";
+  let description = [{
+    Allows a generic (any-typed) input of a node to be connected to an SSA
+    value, so that `axi4.node` operations can instantiate modules with ports
+    beyond AXI interfaces without ignoring their connectivity. `node` is
+    mandatory, since this must be tied to a concrete module.
+
+    Example:
+    ```mlir
+    axi4.generic_input %foo, "sum_i" node %node : i8
+    ```
+  }];
+
+  let arguments = (ins AnyType:$input, StrAttr:$port, NodeType:$node);
+
+  let assemblyFormat = "$input `,` $port `node` $node attr-dict `:` type($input)";
+}
+
+def GenericOutputOp : AXI4Op<"generic_output"> {
+  let summary = "Connects a generic output port on a node to an SSA value";
+  let description = [{
+    Allows a generic (any-typed) output of a node to be used as an SSA value,
+    so that `axi4.node` operations can instantiate modules with ports beyond
+    AXI interfaces without ignoring their connectivity. `node` is mandatory,
+    since this must be tied to a concrete module.
+
+    Example:
+    ```mlir
+    %bar = axi4.generic_output "carry_o" node %node : i1
+    ```
+  }];
+
+  let arguments = (ins StrAttr:$port, NodeType:$node);
+  let results = (outs AnyType:$output);
+
+  let assemblyFormat = "$port `node` $node attr-dict `:` type($output)";
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
