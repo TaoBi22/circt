@@ -23,8 +23,7 @@ SystemVerilog is self-contained. For each design, `run.sh`:
 5. **simulate** (Tier 3, if a matching `sim/tb_axitop_$name.sv` exists) —
    builds and runs it against the real `axi_xbar`, dumping a waveform of
    actual AXI4 burst traffic completing end to end. Same skip condition as
-   Tier 2; designs without a matching testbench (currently `mixed_fanout`)
-   are skipped automatically.
+   Tier 2; all three designs currently have a matching testbench.
 
 Run it:
 
@@ -53,12 +52,8 @@ git clone --branch v0.2.2   https://github.com/pulp-platform/tech_cells_generic.
 ## Tier 3: simulate
 
 Each design with a matching `sim/tb_axitop_$name.sv` gets built and run
-against the real `axi_xbar`; designs without one (currently `mixed_fanout`)
-are skipped automatically — their manager/subordinate modules are still the
-original stub copies, and two `axi4.node` references to the same symbol
-always lower to identical hardware, so there's no way to give the two
-managers in that design distinct target addresses without extending the
-dialect.
+against the real `axi_xbar`; a design without one would be skipped
+automatically (no design is currently in that state).
 
 - **`single`**: `designs/single.mlir`'s `mgr_module` issues a single 4-beat
   AXI4 INCR burst read starting at address 0; `sub_module` is a tiny 4-word
@@ -80,8 +75,19 @@ dialect.
   arbitration/pipeline registers — with their respective, distinct ROM
   contents. Waveform: `build/multi.sim/tb_axitop_multi.vcd`.
 
+- **`mixed_fanout`**: `designs/mixed_fanout.mlir` has 1 manager (`mgr_module`)
+  issuing two *sequential* 4-beat AXI4 INCR burst reads through one crossbar
+  (`xbar1`) that fans out to a direct subordinate (`sub_module_a` at address
+  0) and a chained second crossbar (`xbar2` → `sub_module_b` at address
+  4096), each subordinate with its own distinct 4-word ROM. This proves both
+  fan-out paths of the real `axi_xbar` actually work, not just single-flow
+  correctness. `run.sh` builds `sim/tb_axitop_mixed_fanout.sv`, runs it, and
+  self-checks that both sequential bursts complete with their respective,
+  distinct ROM contents. Waveform:
+  `build/mixed_fanout.sim/tb_axitop_mixed_fanout.vcd`.
+
 Open the waveforms in gtkwave/surfer to see the AR/R handshakes (including
-the multi-beat `rlast` sequencing, and for `multi`, both managers' traffic
+the multi-beat `rlast` sequencing, and for `multi`/`mixed_fanout`, traffic
 sharing the crossbar) flow through the real `axi_xbar`.
 
 Fragility note (both testbenches): the hierarchical `dut.<instance>.done` /
@@ -111,3 +117,10 @@ subordinate pair's FSM state is private to that instance, so there's no
 shared mutable state for the two concurrent bursts to race on outside of the
 real `axi_xbar`'s own (already-vendored, out-of-scope) internal
 arbitration/id-tracking logic.
+
+`mixed_fanout.mlir`'s `mgr_module`/`sub_module_a`/`sub_module_b` carry the
+same never-reset stopgap. `mgr_module`'s two-burst sequencer is a single
+FSM (`phase_q`) driving both bursts one after another, not two independent
+instances, so unlike `multi.mlir` there genuinely is one piece of shared
+state across the two bursts — but it's a plain sequential handoff (burst B
+only ever starts after burst A's `rlast`), not a concurrency hazard.
