@@ -6,14 +6,18 @@
 #
 # For each design in designs/*.mlir (a network inside an hw.module @AXITop):
 #   1. lower       --lower-axi4-to-hw
-#   2. emit        --export-verilog -> the full design (top module + xbar wrappers)
+#   2. emit        --lower-seq-to-sv --export-verilog -> the full design (top
+#                  module + xbar wrappers)
 #   3. structural  assert the emitted SV has the wrapper pieces we expect (Tier 1)
 #   4. elaborate   verilator --lint-only with AXITop as top, resolving the real
 #                  axi_xbar + common_cells by library search (Tier 2, skipped if
 #                  the checkouts / verilator are absent). One run covers the whole
 #                  stack: AXITop glue -> wrapper -> axi_xbar -> common_cells. The
-#                  designs carry their own trivial manager/subordinate stubs, so
-#                  the emitted SV is self-contained.
+#                  designs carry their own manager/subordinate modules, so the
+#                  emitted SV is self-contained.
+#   5. simulate    (single design only) build and run sim/tb_axitop.sv against
+#                  the real axi_xbar, dumping a waveform of the AXI4 read
+#                  (Tier 3, same availability gate as Tier 2).
 #
 # Path overrides (env): CIRCT_OPT, AXI_ROOT, COMMON_CELLS_ROOT, TECH_CELLS_ROOT.
 set -uo pipefail
@@ -62,7 +66,7 @@ for design in "$here"/designs/*.mlir; do
   fi
   pass "lower $name"
 
-  if ! "$CIRCT_OPT" "$low" --export-verilog -o /dev/null >"$sv" 2>"$build/$name.ev.log"; then
+  if ! "$CIRCT_OPT" "$low" --lower-seq-to-sv --export-verilog -o /dev/null >"$sv" 2>"$build/$name.ev.log"; then
     fail "export-verilog $name"; sed 's/^/      /' "$build/$name.ev.log"; continue
   fi
   pass "export-verilog $name"
@@ -107,6 +111,30 @@ for design in "$here"/designs/*.mlir; do
   fi
   warns="$(grep -c '%Warning' "$log")"
   pass "elaborate $name ($top) against real axi_xbar (${warns} PULP-internal warnings)"
+
+  # Tier 3 (simulate, single-design only): actually run the AXI4 read through
+  # the real axi_xbar and dump a waveform. See sim/tb_axitop.sv.
+  if [[ "$name" == "single" ]]; then
+    tb="$here/sim/tb_axitop.sv"
+    simdir="$build/$name.sim"
+    mkdir -p "$simdir"
+    if verilator --cc --exe --main --timing --trace-vcd --top-module tb_axitop \
+         -Wno-fatal \
+         +incdir+"$AXI_ROOT/include" +incdir+"$COMMON_CELLS_ROOT/include" \
+         -y "$AXI_ROOT/src" -y "$COMMON_CELLS_ROOT/src" -y "$TECH_CELLS_ROOT/src" \
+         -Mdir "$simdir/obj" \
+         "$tb" "$sv" "$AXI_ROOT/src/axi_pkg.sv" "$COMMON_CELLS_ROOT/src/cf_math_pkg.sv" \
+         --build >"$build/$name.simulate.log" 2>&1; then
+      if (cd "$simdir" && "$simdir/obj/Vtb_axitop") >"$build/$name.simulate.run.log" 2>&1; then
+        pass "simulate $name (waveform: $simdir/tb_axitop.vcd)"
+      else
+        fail "simulate $name (dut mismatch/timeout, see $build/$name.simulate.run.log)"
+        tail -5 "$build/$name.simulate.run.log" | sed 's/^/      /'
+      fi
+    else
+      fail "simulate $name: verilator build failed (see $build/$name.simulate.log)"
+    fi
+  fi
 done
 
 echo

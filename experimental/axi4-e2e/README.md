@@ -20,6 +20,9 @@ SystemVerilog is self-contained. For each design, `run.sh`:
    resolving the real `axi_xbar` + `common_cells` by library search. One run
    covers the whole stack: `AXITop` glue → wrapper → `axi_xbar` → `common_cells`.
    Skipped if the PULP checkouts or verilator are absent.
+5. **simulate** (Tier 3, `single` design only) — builds and runs
+   `sim/tb_axitop.sv` against the real `axi_xbar`, dumping a waveform of an
+   actual AXI4 read completing end to end. Same skip condition as Tier 2.
 
 Run it:
 
@@ -45,8 +48,27 @@ git clone --branch v1.39.0  https://github.com/pulp-platform/common_cells.git
 git clone --branch v0.2.2   https://github.com/pulp-platform/tech_cells_generic.git
 ```
 
+## Tier 3: simulate
+
+`designs/single.mlir`'s `mgr_module` issues a single AXI4 read to address 0;
+`sub_module` is a tiny 4-word ROM (only word 0 is ever fetched). `run.sh`
+builds `sim/tb_axitop.sv` with verilator (`--trace-vcd`), runs it, and
+self-checks that the read completes with the expected ROM word. The waveform
+lands at `build/single.sim/tb_axitop.vcd` — open it in gtkwave/surfer to see
+the AR/R handshakes flow through the real `axi_xbar`. `multi`/`mixed_fanout`
+don't get this treatment: their manager/subordinate modules are independent
+stub copies untouched by this, and two `axi4.node` references to the same
+symbol always lower to identical hardware, so there's no way to give the two
+managers in those designs distinct target addresses without extending the
+dialect.
+
 ## Known stopgaps validated as-is
 
 The wrapper ties `rst_ni = 1'b1`, hardcodes user width 1, and defaults
 `MaxMstTrans`/`MaxSlvTrans`/`LatencyMode` — see the branch's commit history.
 Elaboration confirms these bind; it does not exercise reset behavior.
+
+`single.mlir`'s `mgr_module`/`sub_module` registers likewise never reset
+(their `seq.compreg` reset inputs are tied permanently false) — they rely on
+the simulator's zero-initialized register state at time 0, same stopgap as
+`rst_ni` above. `mgr_module`'s `done` output is sticky and never clears.
