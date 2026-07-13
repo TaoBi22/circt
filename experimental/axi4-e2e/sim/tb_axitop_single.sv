@@ -1,7 +1,8 @@
 // Waveform testbench for designs/single.mlir. Drives AXITop's clock, dumps a
 // VCD, and self-checks that the 4-beat AXI4 INCR burst read completes with
-// the expected ROM words. single-design-only (see run.sh Tier 3).
-module tb_axitop;
+// the expected ROM words. Counterpart of sim/tb_axitop_multi.sv (2 managers);
+// see run.sh Tier 3.
+module tb_axitop_single;
   logic clk_i = 0;
   always #5 clk_i = ~clk_i;
 
@@ -19,8 +20,8 @@ module tb_axitop;
   bit seen_done = 0;
 
   initial begin
-    $dumpfile("tb_axitop.vcd");
-    $dumpvars(0, tb_axitop);
+    $dumpfile("tb_axitop_single.vcd");
+    $dumpvars(0, tb_axitop_single);
 
     for (int i = 0; i < CYCLE_BOUND; i++) begin
       @(posedge clk_i);

@@ -20,9 +20,11 @@ SystemVerilog is self-contained. For each design, `run.sh`:
    resolving the real `axi_xbar` + `common_cells` by library search. One run
    covers the whole stack: `AXITop` glue → wrapper → `axi_xbar` → `common_cells`.
    Skipped if the PULP checkouts or verilator are absent.
-5. **simulate** (Tier 3, `single` design only) — builds and runs
-   `sim/tb_axitop.sv` against the real `axi_xbar`, dumping a waveform of an
-   actual AXI4 burst read completing end to end. Same skip condition as Tier 2.
+5. **simulate** (Tier 3, if a matching `sim/tb_axitop_$name.sv` exists) —
+   builds and runs it against the real `axi_xbar`, dumping a waveform of
+   actual AXI4 burst traffic completing end to end. Same skip condition as
+   Tier 2; designs without a matching testbench (currently `mixed_fanout`)
+   are skipped automatically.
 
 Run it:
 
@@ -50,19 +52,46 @@ git clone --branch v0.2.2   https://github.com/pulp-platform/tech_cells_generic.
 
 ## Tier 3: simulate
 
-`designs/single.mlir`'s `mgr_module` issues a single 4-beat AXI4 INCR burst
-read starting at address 0; `sub_module` is a tiny 4-word ROM that streams
-all four words back across the burst. `run.sh` builds `sim/tb_axitop.sv` with
-verilator (`--trace-vcd`), runs it, and self-checks that the burst completes
-with the four expected ROM words. The waveform lands at
-`build/single.sim/tb_axitop.vcd` — open it in gtkwave/surfer to see the AR/R
-handshakes (including the multi-beat `rlast` sequencing) flow through the
-real `axi_xbar`. `multi`/`mixed_fanout`
-don't get this treatment: their manager/subordinate modules are independent
-stub copies untouched by this, and two `axi4.node` references to the same
-symbol always lower to identical hardware, so there's no way to give the two
-managers in those designs distinct target addresses without extending the
+Each design with a matching `sim/tb_axitop_$name.sv` gets built and run
+against the real `axi_xbar`; designs without one (currently `mixed_fanout`)
+are skipped automatically — their manager/subordinate modules are still the
+original stub copies, and two `axi4.node` references to the same symbol
+always lower to identical hardware, so there's no way to give the two
+managers in that design distinct target addresses without extending the
 dialect.
+
+- **`single`**: `designs/single.mlir`'s `mgr_module` issues a single 4-beat
+  AXI4 INCR burst read starting at address 0; `sub_module` is a tiny 4-word
+  ROM that streams all four words back across the burst. `run.sh` builds
+  `sim/tb_axitop_single.sv` with verilator (`--trace-vcd`), runs it, and
+  self-checks that the burst completes with the four expected ROM words.
+  Waveform: `build/single.sim/tb_axitop_single.vcd`.
+
+- **`multi`**: `designs/multi.mlir` has 2 managers (`mgr_module_a`,
+  `mgr_module_b`) issuing concurrent 4-beat AXI4 INCR burst reads through the
+  *same* shared crossbar to 2 different subordinates (`sub_module5_a` at
+  address 0, `sub_module5_b` at address 4096), each with its own distinct
+  4-word ROM. This proves the real `axi_xbar`'s address-based routing,
+  inter-manager arbitration, and downstream id-widening (4 → 5 bits, so the
+  xbar can disambiguate which manager an in-flight R response belongs to)
+  actually work end to end, not just single-flow correctness. `run.sh` builds
+  `sim/tb_axitop_multi.sv`, runs it, and self-checks that both bursts
+  complete — they may finish on different cycles depending on xbar-internal
+  arbitration/pipeline registers — with their respective, distinct ROM
+  contents. Waveform: `build/multi.sim/tb_axitop_multi.vcd`.
+
+Open the waveforms in gtkwave/surfer to see the AR/R handshakes (including
+the multi-beat `rlast` sequencing, and for `multi`, both managers' traffic
+sharing the crossbar) flow through the real `axi_xbar`.
+
+Fragility note (both testbenches): the hierarchical `dut.<instance>.done` /
+`.beatN` references rely on `AXI4ToHW.cpp`'s node-instance naming
+(`<module>_<counter>`, one shared counter across managers/subordinates/xbars,
+assigned in `axi4.node` textual/program order — see `NetworkLowering`'s
+`instanceCounter` in `lib/Conversion/AXI4ToHW/AXI4ToHW.cpp`). Reordering the
+`axi4.node` ops in a design (or inserting new ones before them) silently
+shifts every instance name after that point; the testbench then fails at
+elaboration with an unresolved hierarchical reference, not at lowering time.
 
 ## Known stopgaps validated as-is
 
@@ -74,3 +103,11 @@ Elaboration confirms these bind; it does not exercise reset behavior.
 (their `seq.compreg` reset inputs are tied permanently false) — they rely on
 the simulator's zero-initialized register state at time 0, same stopgap as
 `rst_ni` above. `mgr_module`'s `done` output is sticky and never clears.
+
+`multi.mlir`'s `mgr_module_a`/`mgr_module_b`/`sub_module5_a`/`sub_module5_b`
+carry the same never-reset stopgap. Running two concurrent instances of this
+pattern doesn't introduce any new cross-instance risk: each manager/
+subordinate pair's FSM state is private to that instance, so there's no
+shared mutable state for the two concurrent bursts to race on outside of the
+real `axi_xbar`'s own (already-vendored, out-of-scope) internal
+arbitration/id-tracking logic.

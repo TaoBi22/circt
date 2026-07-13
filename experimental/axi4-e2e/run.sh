@@ -15,9 +15,11 @@
 #                  stack: AXITop glue -> wrapper -> axi_xbar -> common_cells. The
 #                  designs carry their own manager/subordinate modules, so the
 #                  emitted SV is self-contained.
-#   5. simulate    (single design only) build and run sim/tb_axitop.sv against
-#                  the real axi_xbar, dumping a waveform of the AXI4 read
-#                  (Tier 3, same availability gate as Tier 2).
+#   5. simulate    if a matching sim/tb_axitop_$name.sv testbench exists for
+#                  this design, build and run it against the real axi_xbar,
+#                  dumping a waveform of the AXI4 traffic (Tier 3, same
+#                  availability gate as Tier 2). Designs without a matching
+#                  testbench (currently mixed_fanout) are skipped.
 #
 # Path overrides (env): CIRCT_OPT, AXI_ROOT, COMMON_CELLS_ROOT, TECH_CELLS_ROOT.
 set -uo pipefail
@@ -112,21 +114,23 @@ for design in "$here"/designs/*.mlir; do
   warns="$(grep -c '%Warning' "$log")"
   pass "elaborate $name ($top) against real axi_xbar (${warns} PULP-internal warnings)"
 
-  # Tier 3 (simulate, single-design only): actually run the AXI4 read through
-  # the real axi_xbar and dump a waveform. See sim/tb_axitop.sv.
-  if [[ "$name" == "single" ]]; then
-    tb="$here/sim/tb_axitop.sv"
+  # Tier 3 (simulate): if a matching hand-written testbench exists for this
+  # design, build and run it against the real axi_xbar, dumping a waveform of
+  # the AXI4 traffic. See sim/tb_axitop_single.sv / sim/tb_axitop_multi.sv.
+  tb="$here/sim/tb_axitop_$name.sv"
+  if [[ -f "$tb" ]]; then
+    top_tb="tb_axitop_$name"
     simdir="$build/$name.sim"
     mkdir -p "$simdir"
-    if verilator --cc --exe --main --timing --trace-vcd --top-module tb_axitop \
+    if verilator --cc --exe --main --timing --trace-vcd --top-module "$top_tb" \
          -Wno-fatal \
          +incdir+"$AXI_ROOT/include" +incdir+"$COMMON_CELLS_ROOT/include" \
          -y "$AXI_ROOT/src" -y "$COMMON_CELLS_ROOT/src" -y "$TECH_CELLS_ROOT/src" \
          -Mdir "$simdir/obj" \
          "$tb" "$sv" "$AXI_ROOT/src/axi_pkg.sv" "$COMMON_CELLS_ROOT/src/cf_math_pkg.sv" \
          --build >"$build/$name.simulate.log" 2>&1; then
-      if (cd "$simdir" && "$simdir/obj/Vtb_axitop") >"$build/$name.simulate.run.log" 2>&1; then
-        pass "simulate $name (waveform: $simdir/tb_axitop.vcd)"
+      if (cd "$simdir" && "$simdir/obj/V$top_tb") >"$build/$name.simulate.run.log" 2>&1; then
+        pass "simulate $name (waveform: $simdir/$top_tb.vcd)"
       else
         fail "simulate $name (dut mismatch/timeout, see $build/$name.simulate.run.log)"
         tail -5 "$build/$name.simulate.run.log" | sed 's/^/      /'
@@ -134,6 +138,8 @@ for design in "$here"/designs/*.mlir; do
     else
       fail "simulate $name: verilator build failed (see $build/$name.simulate.log)"
     fi
+  else
+    skip "simulate $name (no sim/tb_axitop_$name.sv)"
   fi
 done
 
