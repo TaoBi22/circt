@@ -1,6 +1,6 @@
 // Waveform testbench for designs/single.mlir. Drives AXITop's clock, dumps a
-// VCD, and self-checks that the single AXI4 read completes with the expected
-// ROM word. single-design-only (see run.sh Tier 3).
+// VCD, and self-checks that the 4-beat AXI4 INCR burst read completes with
+// the expected ROM words. single-design-only (see run.sh Tier 3).
 module tb_axitop;
   logic clk_i = 0;
   always #5 clk_i = ~clk_i;
@@ -12,7 +12,10 @@ module tb_axitop;
   AXITop dut (.clk_i(clk_i));
 
   localparam int CYCLE_BOUND = 50;
-  localparam logic [63:0] EXPECTED_WORD0 = 64'hCAFEF00DCAFEF00D;
+  localparam logic [63:0] EXPECTED_BEAT0 = 64'hCAFEF00DCAFEF00D;
+  localparam logic [63:0] EXPECTED_BEAT1 = 64'hDEADBEEFDEADBEEF;
+  localparam logic [63:0] EXPECTED_BEAT2 = 64'hFACEFEEDFACEFEED;
+  localparam logic [63:0] EXPECTED_BEAT3 = 64'h8BADF00D8BADF00D;
   bit seen_done = 0;
 
   initial begin
@@ -30,12 +33,19 @@ module tb_axitop;
     if (!seen_done) begin
       $display("FAIL: timeout after %0d cycles without done", CYCLE_BOUND);
       $fatal;
-    end else if (dut.mgr_module_0.captured_rdata !== EXPECTED_WORD0) begin
-      $display("FAIL: done asserted but captured_rdata=%0h != expected %0h",
-                dut.mgr_module_0.captured_rdata, EXPECTED_WORD0);
+    end else if (dut.mgr_module_0.beat0 !== EXPECTED_BEAT0 ||
+                 dut.mgr_module_0.beat1 !== EXPECTED_BEAT1 ||
+                 dut.mgr_module_0.beat2 !== EXPECTED_BEAT2 ||
+                 dut.mgr_module_0.beat3 !== EXPECTED_BEAT3) begin
+      $display("FAIL: done asserted but beats=%0h,%0h,%0h,%0h != expected %0h,%0h,%0h,%0h",
+                dut.mgr_module_0.beat0, dut.mgr_module_0.beat1,
+                dut.mgr_module_0.beat2, dut.mgr_module_0.beat3,
+                EXPECTED_BEAT0, EXPECTED_BEAT1, EXPECTED_BEAT2, EXPECTED_BEAT3);
       $fatal;
     end else begin
-      $display("PASS: read completed, captured_rdata=%0h", dut.mgr_module_0.captured_rdata);
+      $display("PASS: burst read completed, beats=%0h,%0h,%0h,%0h",
+                dut.mgr_module_0.beat0, dut.mgr_module_0.beat1,
+                dut.mgr_module_0.beat2, dut.mgr_module_0.beat3);
       $finish;
     end
   end

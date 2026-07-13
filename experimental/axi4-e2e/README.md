@@ -22,7 +22,7 @@ SystemVerilog is self-contained. For each design, `run.sh`:
    Skipped if the PULP checkouts or verilator are absent.
 5. **simulate** (Tier 3, `single` design only) — builds and runs
    `sim/tb_axitop.sv` against the real `axi_xbar`, dumping a waveform of an
-   actual AXI4 read completing end to end. Same skip condition as Tier 2.
+   actual AXI4 burst read completing end to end. Same skip condition as Tier 2.
 
 Run it:
 
@@ -50,12 +50,14 @@ git clone --branch v0.2.2   https://github.com/pulp-platform/tech_cells_generic.
 
 ## Tier 3: simulate
 
-`designs/single.mlir`'s `mgr_module` issues a single AXI4 read to address 0;
-`sub_module` is a tiny 4-word ROM (only word 0 is ever fetched). `run.sh`
-builds `sim/tb_axitop.sv` with verilator (`--trace-vcd`), runs it, and
-self-checks that the read completes with the expected ROM word. The waveform
-lands at `build/single.sim/tb_axitop.vcd` — open it in gtkwave/surfer to see
-the AR/R handshakes flow through the real `axi_xbar`. `multi`/`mixed_fanout`
+`designs/single.mlir`'s `mgr_module` issues a single 4-beat AXI4 INCR burst
+read starting at address 0; `sub_module` is a tiny 4-word ROM that streams
+all four words back across the burst. `run.sh` builds `sim/tb_axitop.sv` with
+verilator (`--trace-vcd`), runs it, and self-checks that the burst completes
+with the four expected ROM words. The waveform lands at
+`build/single.sim/tb_axitop.vcd` — open it in gtkwave/surfer to see the AR/R
+handshakes (including the multi-beat `rlast` sequencing) flow through the
+real `axi_xbar`. `multi`/`mixed_fanout`
 don't get this treatment: their manager/subordinate modules are independent
 stub copies untouched by this, and two `axi4.node` references to the same
 symbol always lower to identical hardware, so there's no way to give the two

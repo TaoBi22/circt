@@ -1,8 +1,9 @@
 // manager -> xbar -> subordinate, inside a top module. Emits AXITop + one
-// axi_xbar_1u1d wrapper. mgr_module issues a single AXI4 read to address 0;
-// sub_module is a tiny 4-word ROM. See sim/tb_axitop.sv for the waveform
-// testbench that exercises this end to end.
-hw.module @mgr_module(in %clk : i1, out m_axi_m0_awid : i4, out m_axi_m0_awaddr : i32, out m_axi_m0_awlen : i8, out m_axi_m0_awsize : i3, out m_axi_m0_awburst : i2, out m_axi_m0_awlock : i1, out m_axi_m0_awcache : i4, out m_axi_m0_awprot : i3, out m_axi_m0_awqos : i4, out m_axi_m0_awregion : i4, out m_axi_m0_awvalid : i1, in %m_axi_m0_awready : i1, out m_axi_m0_wdata : i64, out m_axi_m0_wstrb : i8, out m_axi_m0_wlast : i1, out m_axi_m0_wvalid : i1, in %m_axi_m0_wready : i1, in %m_axi_m0_bid : i4, in %m_axi_m0_bresp : i2, in %m_axi_m0_bvalid : i1, out m_axi_m0_bready : i1, out m_axi_m0_arid : i4, out m_axi_m0_araddr : i32, out m_axi_m0_arlen : i8, out m_axi_m0_arsize : i3, out m_axi_m0_arburst : i2, out m_axi_m0_arlock : i1, out m_axi_m0_arcache : i4, out m_axi_m0_arprot : i3, out m_axi_m0_arqos : i4, out m_axi_m0_arregion : i4, out m_axi_m0_arvalid : i1, in %m_axi_m0_arready : i1, in %m_axi_m0_rid : i4, in %m_axi_m0_rdata : i64, in %m_axi_m0_rresp : i2, in %m_axi_m0_rlast : i1, in %m_axi_m0_rvalid : i1, out m_axi_m0_rready : i1, out done : i1, out captured_rdata : i64) {
+// axi_xbar_1u1d wrapper. mgr_module issues a single 4-beat AXI4 INCR burst
+// read starting at address 0; sub_module is a tiny 4-word ROM that streams
+// all four words back across the burst. See sim/tb_axitop.sv for the
+// waveform testbench that exercises this end to end.
+hw.module @mgr_module(in %clk : i1, out m_axi_m0_awid : i4, out m_axi_m0_awaddr : i32, out m_axi_m0_awlen : i8, out m_axi_m0_awsize : i3, out m_axi_m0_awburst : i2, out m_axi_m0_awlock : i1, out m_axi_m0_awcache : i4, out m_axi_m0_awprot : i3, out m_axi_m0_awqos : i4, out m_axi_m0_awregion : i4, out m_axi_m0_awvalid : i1, in %m_axi_m0_awready : i1, out m_axi_m0_wdata : i64, out m_axi_m0_wstrb : i8, out m_axi_m0_wlast : i1, out m_axi_m0_wvalid : i1, in %m_axi_m0_wready : i1, in %m_axi_m0_bid : i4, in %m_axi_m0_bresp : i2, in %m_axi_m0_bvalid : i1, out m_axi_m0_bready : i1, out m_axi_m0_arid : i4, out m_axi_m0_araddr : i32, out m_axi_m0_arlen : i8, out m_axi_m0_arsize : i3, out m_axi_m0_arburst : i2, out m_axi_m0_arlock : i1, out m_axi_m0_arcache : i4, out m_axi_m0_arprot : i3, out m_axi_m0_arqos : i4, out m_axi_m0_arregion : i4, out m_axi_m0_arvalid : i1, in %m_axi_m0_arready : i1, in %m_axi_m0_rid : i4, in %m_axi_m0_rdata : i64, in %m_axi_m0_rresp : i2, in %m_axi_m0_rlast : i1, in %m_axi_m0_rvalid : i1, out m_axi_m0_rready : i1, out done : i1, out beat0 : i64, out beat1 : i64, out beat2 : i64, out beat3 : i64) {
   %f = hw.constant 0 : i1
   %t = hw.constant 1 : i1
   %c2 = hw.constant 0 : i2
@@ -12,6 +13,8 @@ hw.module @mgr_module(in %clk : i1, out m_axi_m0_awid : i4, out m_axi_m0_awaddr 
   %c32 = hw.constant 0 : i32
   %c64 = hw.constant 0 : i64
   %arsize = hw.constant 3 : i3
+  %arlen4 = hw.constant 3 : i8        // arlen = beats - 1 -> 4-beat burst
+  %arburst_incr = hw.constant 1 : i2  // INCR
 
   %clock = seq.to_clock %clk
 
@@ -21,59 +24,100 @@ hw.module @mgr_module(in %clk : i1, out m_axi_m0_awid : i4, out m_axi_m0_awaddr 
   %ar_accept = comb.and %issuing, %m_axi_m0_arready : i1
   %state_next = comb.mux %ar_accept, %t, %state_q : i1
 
-  // Capture the R response once accepted.
-  %r_accept = comb.and %state_q, %m_axi_m0_rvalid : i1
-  %done_next = comb.mux %r_accept, %t, %done_q : i1
+  // Accept every beat of the burst response (rready held high throughout);
+  // done fires once the final (rlast) beat is accepted.
+  %r_last_beat = comb.and %m_axi_m0_rvalid, %m_axi_m0_rlast : i1
+  %done_next = comb.mux %r_last_beat, %t, %done_q : i1
   %done_q = seq.compreg %done_next, %clock reset %f, %f : i1
-  %rdata_next = comb.mux %r_accept, %m_axi_m0_rdata, %captured_rdata_q : i64
-  %captured_rdata_q = seq.compreg %rdata_next, %clock reset %f, %c64 : i64
+
+  // Beat counter selects which beatN register captures the incoming beat.
+  %bc0 = hw.constant 0 : i2
+  %bc1 = hw.constant 1 : i2
+  %bc2 = hw.constant 2 : i2
+  %bc3 = hw.constant 3 : i2
+  %beat_count_next = comb.mux %m_axi_m0_rvalid, %beat_count_inc, %beat_count_q : i2
+  %beat_count_q = seq.compreg %beat_count_next, %clock reset %f, %bc0 : i2
+  %beat_count_inc = comb.add %beat_count_q, %bc1 : i2
+
+  %is_beat0 = comb.icmp eq %beat_count_q, %bc0 : i2
+  %is_beat1 = comb.icmp eq %beat_count_q, %bc1 : i2
+  %is_beat2 = comb.icmp eq %beat_count_q, %bc2 : i2
+  %is_beat3 = comb.icmp eq %beat_count_q, %bc3 : i2
+  %en_beat0 = comb.and %m_axi_m0_rvalid, %is_beat0 : i1
+  %en_beat1 = comb.and %m_axi_m0_rvalid, %is_beat1 : i1
+  %en_beat2 = comb.and %m_axi_m0_rvalid, %is_beat2 : i1
+  %en_beat3 = comb.and %m_axi_m0_rvalid, %is_beat3 : i1
+
+  %beat0_next = comb.mux %en_beat0, %m_axi_m0_rdata, %beat0_q : i64
+  %beat0_q = seq.compreg %beat0_next, %clock reset %f, %c64 : i64
+  %beat1_next = comb.mux %en_beat1, %m_axi_m0_rdata, %beat1_q : i64
+  %beat1_q = seq.compreg %beat1_next, %clock reset %f, %c64 : i64
+  %beat2_next = comb.mux %en_beat2, %m_axi_m0_rdata, %beat2_q : i64
+  %beat2_q = seq.compreg %beat2_next, %clock reset %f, %c64 : i64
+  %beat3_next = comb.mux %en_beat3, %m_axi_m0_rdata, %beat3_q : i64
+  %beat3_q = seq.compreg %beat3_next, %clock reset %f, %c64 : i64
 
   hw.output %c4, %c32, %c8, %c3, %c2, %f, %c4, %c3, %c4, %c4, %f,
             %c64, %c8, %f, %f,
             %f,
-            %c4, %c32, %c8, %arsize, %c2, %f, %c4, %c3, %c4, %c4, %issuing,
-            %state_q,
-            %done_q, %captured_rdata_q
+            %c4, %c32, %arlen4, %arsize, %arburst_incr, %f, %c4, %c3, %c4, %c4, %issuing,
+            %t,
+            %done_q, %beat0_q, %beat1_q, %beat2_q, %beat3_q
     : i4, i32, i8, i3, i2, i1, i4, i3, i4, i4, i1, i64, i8, i1, i1, i1,
-      i4, i32, i8, i3, i2, i1, i4, i3, i4, i4, i1, i1, i1, i64
+      i4, i32, i8, i3, i2, i1, i4, i3, i4, i4, i1, i1, i1, i64, i64, i64, i64
 }
 hw.module @sub_module(in %clk : i1, in %s_axi_s0_awid : i4, in %s_axi_s0_awaddr : i32, in %s_axi_s0_awlen : i8, in %s_axi_s0_awsize : i3, in %s_axi_s0_awburst : i2, in %s_axi_s0_awlock : i1, in %s_axi_s0_awcache : i4, in %s_axi_s0_awprot : i3, in %s_axi_s0_awqos : i4, in %s_axi_s0_awregion : i4, in %s_axi_s0_awvalid : i1, out s_axi_s0_awready : i1, in %s_axi_s0_wdata : i64, in %s_axi_s0_wstrb : i8, in %s_axi_s0_wlast : i1, in %s_axi_s0_wvalid : i1, out s_axi_s0_wready : i1, out s_axi_s0_bid : i4, out s_axi_s0_bresp : i2, out s_axi_s0_bvalid : i1, in %s_axi_s0_bready : i1, in %s_axi_s0_arid : i4, in %s_axi_s0_araddr : i32, in %s_axi_s0_arlen : i8, in %s_axi_s0_arsize : i3, in %s_axi_s0_arburst : i2, in %s_axi_s0_arlock : i1, in %s_axi_s0_arcache : i4, in %s_axi_s0_arprot : i3, in %s_axi_s0_arqos : i4, in %s_axi_s0_arregion : i4, in %s_axi_s0_arvalid : i1, out s_axi_s0_arready : i1, out s_axi_s0_rid : i4, out s_axi_s0_rdata : i64, out s_axi_s0_rresp : i2, out s_axi_s0_rlast : i1, out s_axi_s0_rvalid : i1, in %s_axi_s0_rready : i1) {
   %false = hw.constant false
   %true = hw.constant true
   %c0_i2 = hw.constant 0 : i2
   %c0_i4 = hw.constant 0 : i4
+  %c0_i8 = hw.constant 0 : i8
+  %c1_i2 = hw.constant 1 : i2
+  %c1_i8 = hw.constant 1 : i8
   %c0_i64 = hw.constant 0 : i64
 
   %clock = seq.to_clock %clk
 
-  // ROM contents (depth 4, indexed by araddr[4:3]); only word 0 is ever
-  // fetched by mgr_module - the rest just prove it's a real memory.
+  // ROM contents (depth 4, walked in order across a burst); the manager
+  // issues a 4-beat INCR burst starting at word 0, so all four are fetched.
   %rom0 = hw.constant 0xCAFEF00DCAFEF00D : i64
   %rom1 = hw.constant 0xDEADBEEFDEADBEEF : i64
   %rom2 = hw.constant 0xFACEFEEDFACEFEED : i64
   %rom3 = hw.constant 0x8BADF00D8BADF00D : i64
 
-  // 2-state FSM: state_q = 0 IDLE (accept AR) / 1 RESP (drive R channel).
+  // 2-state FSM: state_q = 0 IDLE (accept AR) / 1 BURST (stream R beats).
   %state_q = seq.compreg %state_next, %clock reset %false, %false : i1
   %idle = comb.xor %state_q, %true : i1
   %accept = comb.and %s_axi_s0_arvalid, %idle : i1
-  %handshake_r = comb.and %state_q, %s_axi_s0_rready : i1
-  %back_to_idle = comb.mux %handshake_r, %false, %state_q : i1
+  %r_handshake = comb.and %state_q, %s_axi_s0_rready : i1
+  %is_last_beat = comb.icmp eq %remaining_q, %c0_i8 : i8
+  %burst_done = comb.and %r_handshake, %is_last_beat : i1
+  %back_to_idle = comb.mux %burst_done, %false, %state_q : i1
   %state_next = comb.mux %accept, %true, %back_to_idle : i1
 
-  %idx = comb.extract %s_axi_s0_araddr from 3 : (i32) -> i2
-  %idx0 = comb.extract %idx from 0 : (i2) -> i1
-  %idx1 = comb.extract %idx from 1 : (i2) -> i1
+  %rid_next = comb.mux %accept, %s_axi_s0_arid, %rid_q : i4
+  %rid_q = seq.compreg %rid_next, %clock reset %false, %c0_i4 : i4
+
+  // Beats remaining, latched from arlen at AR accept, decremented per beat.
+  %remaining_dec = comb.sub %remaining_q, %c1_i8 : i8
+  %remaining_after_beat = comb.mux %r_handshake, %remaining_dec, %remaining_q : i8
+  %remaining_next = comb.mux %accept, %s_axi_s0_arlen, %remaining_after_beat : i8
+  %remaining_q = seq.compreg %remaining_next, %clock reset %false, %c0_i8 : i8
+
+  // ROM word index, latched from araddr at AR accept, incremented per beat.
+  %idx_start = comb.extract %s_axi_s0_araddr from 3 : (i32) -> i2
+  %idx_inc = comb.add %idx_q, %c1_i2 : i2
+  %idx_after_beat = comb.mux %r_handshake, %idx_inc, %idx_q : i2
+  %idx_next = comb.mux %accept, %idx_start, %idx_after_beat : i2
+  %idx_q = seq.compreg %idx_next, %clock reset %false, %c0_i2 : i2
+
+  %idx0 = comb.extract %idx_q from 0 : (i2) -> i1
+  %idx1 = comb.extract %idx_q from 1 : (i2) -> i1
   %sel_lo = comb.mux %idx0, %rom1, %rom0 : i64
   %sel_hi = comb.mux %idx0, %rom3, %rom2 : i64
   %selected = comb.mux %idx1, %sel_hi, %sel_lo : i64
 
-  %rid_next = comb.mux %accept, %s_axi_s0_arid, %rid_q : i4
-  %rid_q = seq.compreg %rid_next, %clock reset %false, %c0_i4 : i4
-  %rdata_next = comb.mux %accept, %selected, %rdata_q : i64
-  %rdata_q = seq.compreg %rdata_next, %clock reset %false, %c0_i64 : i64
-
-  hw.output %false, %false, %c0_i4, %c0_i2, %false, %idle, %rid_q, %rdata_q, %c0_i2, %true, %state_q
+  hw.output %false, %false, %c0_i4, %c0_i2, %false, %idle, %rid_q, %selected, %c0_i2, %is_last_beat, %state_q
     : i1, i1, i4, i2, i1, i1, i4, i64, i2, i1, i1
 }
 
@@ -83,13 +127,13 @@ hw.module @AXITop(in %clk_i : i1) {
   %snode = axi4.node @sub_module : !axi4.node
   %mgr = axi4.manager_port %clk node %mnode {
     port_mapping = #axi4.port_wires<"clk", "m0">,
-    access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+    access = [#axi4.window<base = 0, size = 4096, burst_specs = [<incr, len = 4>]>],
     outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
   } : !axi4.port<32, 64, 4>
   %xbar = axi4.xbar %clk mgrs %mgr : (!axi4.port<32, 64, 4>) -> !axi4.port<32, 64, 4>
   axi4.subordinate_port %xbar, %clk node %snode {
     port_mapping = #axi4.port_wires<"clk", "s0">,
-    access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+    access = [#axi4.window<base = 0, size = 4096, burst_specs = [<incr, len = 4>]>],
     outstanding_requests = 4 : ui32
   } : !axi4.port<32, 64, 4>
   hw.output
