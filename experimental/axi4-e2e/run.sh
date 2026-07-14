@@ -6,8 +6,12 @@
 #
 # For each design in designs/*.mlir (a network inside an hw.module @AXITop):
 #   1. lower       --lower-axi4-to-hw
-#   2. emit        --lower-seq-to-sv --export-verilog -> the full design (top
-#                  module + xbar wrappers)
+#   2. emit        --lower-seq-to-sv --canonicalize --export-verilog -> the full
+#                  design (top module + xbar wrappers). --canonicalize is
+#                  required once any module uses seq.initial-preloaded
+#                  registers: --lower-seq-to-sv leaves a dead, unused
+#                  `builtin.unrealized_conversion_cast` behind that a bare
+#                  --export-verilog refuses to emit.
 #   3. structural  assert the emitted SV has the wrapper pieces we expect (Tier 1)
 #   4. elaborate   verilator --lint-only with AXITop as top, resolving the real
 #                  axi_xbar + common_cells by library search (Tier 2, skipped if
@@ -68,7 +72,7 @@ for design in "$here"/designs/*.mlir; do
   fi
   pass "lower $name"
 
-  if ! "$CIRCT_OPT" "$low" --lower-seq-to-sv --export-verilog -o /dev/null >"$sv" 2>"$build/$name.ev.log"; then
+  if ! "$CIRCT_OPT" "$low" --lower-seq-to-sv --canonicalize --export-verilog -o /dev/null >"$sv" 2>"$build/$name.ev.log"; then
     fail "export-verilog $name"; sed 's/^/      /' "$build/$name.ev.log"; continue
   fi
   pass "export-verilog $name"

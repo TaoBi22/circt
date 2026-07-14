@@ -11,8 +11,12 @@ plus trivial manager/subordinate stub modules (outputs tied to 0) so the emitted
 SystemVerilog is self-contained. For each design, `run.sh`:
 
 1. **lower** — `circt-opt --lower-axi4-to-hw`.
-2. **emit** — `circt-opt --export-verilog` → the full design: `AXITop`, the stubs,
-   and one `axi_xbar` wrapper per crossbar.
+2. **emit** — `circt-opt --lower-seq-to-sv --canonicalize --export-verilog` → the
+   full design: `AXITop`, the stubs, and one `axi_xbar` wrapper per crossbar.
+   `--canonicalize` is required once any module uses `seq.initial`-preloaded
+   registers (see `single`'s Tier 3 entry below) — `--lower-seq-to-sv` alone
+   leaves a dead, unused `builtin.unrealized_conversion_cast` behind that a bare
+   `--export-verilog` refuses to emit.
 3. **structural** (Tier 1) — assert the emitted SV has the top module and, per
    crossbar, a wrapper instantiating `axi_xbar` with a baked `Cfg` + address map;
    assert no abstract `axi4.` ops survived lowering.
@@ -55,12 +59,18 @@ Each design with a matching `sim/tb_axitop_$name.sv` gets built and run
 against the real `axi_xbar`; a design without one would be skipped
 automatically (no design is currently in that state).
 
-- **`single`**: `designs/single.mlir`'s `mgr_module` issues a single 4-beat
-  AXI4 INCR burst read starting at address 0; `sub_module` is a tiny 4-word
-  ROM that streams all four words back across the burst. `run.sh` builds
+- **`single`**: `designs/single.mlir`'s `mgr_module` runs a 7-phase
+  read-write-read sequence: a 4-beat AXI4 INCR read burst from address 0, a
+  2-beat INCR write burst overwriting words 1 and 2 (address 8) with new
+  data, then a second 4-beat read burst re-reading all 4 words.
+  `sub_module` is a real 4-word read/write RAM (not a ROM) preloaded via
+  `seq.initial` (see "Known stopgaps" below for why that's necessary — the
+  `seq.compreg` reset operand alone can't do it here). `run.sh` builds
   `sim/tb_axitop_single.sv` with verilator (`--trace-vcd`), runs it, and
-  self-checks that the burst completes with the four expected ROM words.
-  Waveform: `build/single.sim/tb_axitop_single.vcd`.
+  self-checks both the pre-write read (all 4 original words) and the
+  post-write read (words 1 and 2 changed, 0 and 3 unchanged) — a genuine
+  read-after-write check through the real crossbar, not just a read-only
+  smoke test. Waveform: `build/single.sim/tb_axitop_single.vcd`.
 
 - **`multi`**: `designs/multi.mlir` has 2 managers (`mgr_module_a`,
   `mgr_module_b`) issuing concurrent 4-beat AXI4 INCR burst reads through the
@@ -106,9 +116,19 @@ The wrapper ties `rst_ni = 1'b1`, hardcodes user width 1, and defaults
 Elaboration confirms these bind; it does not exercise reset behavior.
 
 `single.mlir`'s `mgr_module`/`sub_module` registers likewise never reset
-(their `seq.compreg` reset inputs are tied permanently false) — they rely on
-the simulator's zero-initialized register state at time 0, same stopgap as
-`rst_ni` above. `mgr_module`'s `done` output is sticky and never clears.
+(their `seq.compreg` reset inputs are tied permanently false). `mgr_module`'s
+`done` output is sticky and never clears. Unlike the other designs,
+`sub_module`'s 4 RAM word registers can't rely on the simulator's
+zero-initialized state to get their identifiable starting values (they need
+to start as the *specific*, distinct `0xCAFEF00D...`/etc. words, not just
+"some deterministic value") — the `seq.compreg` reset operand is dead code
+here (reset is never asserted, same as every other register in this
+harness), so each word register is preloaded via a separate `seq.initial`
+region and the compreg's `initial` clause instead. Don't confuse the two:
+the `reset`/`resetValue` operand and the `initial`/`initialValue` operand on
+`seq.compreg` are independent — only the latter actually seeds a register's
+simulation-time value when reset is never asserted. `sub_module` also
+ignores `wstrb` entirely (full-word writes only, no partial-strobe support).
 
 `multi.mlir`'s `mgr_module_a`/`mgr_module_b`/`sub_module5_a`/`sub_module5_b`
 carry the same never-reset stopgap. Running two concurrent instances of this
