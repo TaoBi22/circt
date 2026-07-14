@@ -2,8 +2,10 @@
 
 // A manager -> xbar -> subordinate network. The xbar lowers to a generated
 // SystemVerilog wrapper (sv.verbatim.source) instantiating PULP's axi_xbar, plus
-// a typed sv.verbatim.module interface the hw.instance targets. Every channel
-// carries a `user` sideband and AW a 6-bit `atop`, both tied to 0.
+// a typed sv.verbatim.module interface the hw.instance targets. The wrapper's
+// boundary mirrors the internal channel-split form (a struct payload plus
+// valid/ready per channel per face); PULP's req/resp packing - and tying its
+// atop/user fields to 0 - lives entirely in the generated SystemVerilog.
 
 // The wrapper source bakes in the AXI typedefs, the Cfg, the address map (from
 // the subordinate's access window), and ties off reset/test/default-port ports.
@@ -20,28 +22,45 @@
 // CHECK-SAME: `AXI_TYPEDEF_ALL(axi_xbar_1u1d_a32_d64_i4_o4_slv, axi_xbar_1u1d_a32_d64_i4_o4_addr_t, axi_xbar_1u1d_a32_d64_i4_o4_slv_id_t,
 // CHECK-SAME: `AXI_TYPEDEF_ALL(axi_xbar_1u1d_a32_d64_i4_o4_mst, axi_xbar_1u1d_a32_d64_i4_o4_addr_t, axi_xbar_1u1d_a32_d64_i4_o4_mst_id_t,
 
-// The wrapper's own port list uses the PULP req/resp typedefs (bit-identical to
-// the hw.array-of-struct interface below).
+// Canonical (non-PULP) per-channel payload typedefs for the boundary ports, one
+// set per face role. No atop/user - those are PULP-only and stay internal.
+// CHECK-SAME: typedef struct packed { axi_xbar_1u1d_a32_d64_i4_o4_slv_id_t id; axi_xbar_1u1d_a32_d64_i4_o4_addr_t addr; axi_pkg::len_t len; axi_pkg::size_t size; axi_pkg::burst_t burst; logic lock; axi_pkg::cache_t cache; axi_pkg::prot_t prot; axi_pkg::qos_t qos; axi_pkg::region_t region; } axi_xbar_1u1d_a32_d64_i4_o4_sub_aw_t;
+// CHECK-SAME: typedef struct packed { axi_xbar_1u1d_a32_d64_i4_o4_data_t data; axi_xbar_1u1d_a32_d64_i4_o4_strb_t strb; logic last; } axi_xbar_1u1d_a32_d64_i4_o4_sub_w_t;
+// CHECK-SAME: } axi_xbar_1u1d_a32_d64_i4_o4_mgr_r_t;
+
+// The wrapper's port list is per-channel struct/valid/ready per face, matching
+// the typed interface below. Requests are received on the subordinate face and
+// driven on the manager face; responses flow the other way.
 // CHECK-SAME: module axi_xbar_1u1d_a32_d64_i4_o4 (
 // CHECK-SAME: input  logic clk_i,
-// CHECK-SAME: input  axi_xbar_1u1d_a32_d64_i4_o4_slv_req_t  [1-1:0] slv_ports_req_i,
-// CHECK-SAME: output axi_xbar_1u1d_a32_d64_i4_o4_slv_resp_t [1-1:0] slv_ports_resp_o,
-// CHECK-SAME: output axi_xbar_1u1d_a32_d64_i4_o4_mst_req_t  [1-1:0] mst_ports_req_o,
-// CHECK-SAME: input  axi_xbar_1u1d_a32_d64_i4_o4_mst_resp_t [1-1:0] mst_ports_resp_i
+// CHECK-SAME: input  axi_xbar_1u1d_a32_d64_i4_o4_sub_aw_t sub0_aw,
+// CHECK-SAME: input  logic sub0_aw_valid,
+// CHECK-SAME: output logic sub0_aw_ready,
+// CHECK-SAME: output axi_xbar_1u1d_a32_d64_i4_o4_sub_b_t sub0_b,
+// CHECK-SAME: output logic sub0_b_valid,
+// CHECK-SAME: input  logic sub0_b_ready,
+// CHECK-SAME: output axi_xbar_1u1d_a32_d64_i4_o4_mgr_aw_t mgr0_aw,
+// CHECK-SAME: output logic mgr0_aw_valid,
+// CHECK-SAME: input  logic mgr0_aw_ready,
+// CHECK-SAME: input  axi_xbar_1u1d_a32_d64_i4_o4_mgr_b_t mgr0_b,
+
+// Internal PULP-shaped req/resp arrays, wired to the boundary ports by assigns.
+// CHECK-SAME: axi_xbar_1u1d_a32_d64_i4_o4_slv_req_t  [1-1:0] slv_req;
+// CHECK-SAME: axi_xbar_1u1d_a32_d64_i4_o4_mst_resp_t [1-1:0] mst_resp;
+
+// The request payload bridges canonical -> PULP with atop/user tied to 0; the
+// response bridges PULP -> canonical, dropping them.
+// CHECK-SAME: assign slv_req[0].aw = '{id: sub0_aw.id, addr: sub0_aw.addr, len: sub0_aw.len, size: sub0_aw.size, burst: sub0_aw.burst, lock: sub0_aw.lock, cache: sub0_aw.cache, prot: sub0_aw.prot, qos: sub0_aw.qos, region: sub0_aw.region, atop: '0, user: '0};
+// CHECK-SAME: assign slv_req[0].aw_valid = sub0_aw_valid;
+// CHECK-SAME: assign sub0_aw_ready = slv_resp[0].aw_ready;
+// CHECK-SAME: assign sub0_b = '{id: slv_resp[0].b.id, resp: slv_resp[0].b.resp};
+// CHECK-SAME: assign mgr0_aw = '{id: mst_req[0].aw.id, addr: mst_req[0].aw.addr, len: mst_req[0].aw.len, size: mst_req[0].aw.size, burst: mst_req[0].aw.burst, lock: mst_req[0].aw.lock, cache: mst_req[0].aw.cache, prot: mst_req[0].aw.prot, qos: mst_req[0].aw.qos, region: mst_req[0].aw.region};
+// CHECK-SAME: assign mst_resp[0].b = '{id: mgr0_b.id, resp: mgr0_b.resp, user: '0};
 
 // Every Cfg field is populated; unset/version-specific fields fall back to 0.
 // CHECK-SAME: localparam axi_pkg::xbar_cfg_t Cfg = '{
 // CHECK-SAME: NoSlvPorts:{{ +}}1,
 // CHECK-SAME: NoMstPorts:{{ +}}1,
-// CHECK-SAME: MaxMstTrans:{{ +}}8,
-// CHECK-SAME: MaxSlvTrans:{{ +}}8,
-// CHECK-SAME: FallThrough:{{ +}}1'b0,
-// CHECK-SAME: LatencyMode:{{ +}}axi_pkg::CUT_ALL_AX,
-// CHECK-SAME: AxiIdWidthSlvPorts:{{ +}}4,
-// CHECK-SAME: AxiIdUsedSlvPorts:{{ +}}4,
-// CHECK-SAME: UniqueIds:{{ +}}1'b0,
-// CHECK-SAME: AxiAddrWidth:{{ +}}32,
-// CHECK-SAME: AxiDataWidth:{{ +}}64,
 // CHECK-SAME: NoAddrRules:{{ +}}1,
 // CHECK-SAME: default:{{ +}}'0
 
@@ -49,51 +68,37 @@
 // CHECK-SAME: localparam axi_pkg::xbar_rule_32_t [1-1:0] AddrMap = '{
 // CHECK-SAME: '{idx: 0, start_addr: 32'h0, end_addr: 32'h1000}
 
-// The axi_xbar instance binds every type parameter and ties off the control
-// ports (reset high, test/default off).
+// The axi_xbar instance binds every type parameter, wires to the internal
+// req/resp arrays, and ties off the control ports (reset high, test/default off).
 // CHECK-SAME: axi_xbar #(
 // CHECK-SAME: .Cfg{{ +}}(Cfg),
-// CHECK-SAME: .ATOPs{{ +}}(1'b1),
-// CHECK-SAME: .Connectivity{{ +}}('1),
-// CHECK-SAME: .w_chan_t{{ +}}(axi_xbar_1u1d_a32_d64_i4_o4_slv_w_chan_t),
 // CHECK-SAME: .slv_req_t{{ +}}(axi_xbar_1u1d_a32_d64_i4_o4_slv_req_t),
-// CHECK-SAME: .mst_resp_t{{ +}}(axi_xbar_1u1d_a32_d64_i4_o4_mst_resp_t),
 // CHECK-SAME: .rule_t{{ +}}(axi_pkg::xbar_rule_32_t)
 // CHECK-SAME: ) i_xbar (
 // CHECK-SAME: .clk_i{{ +}}(clk_i),
-// CHECK-SAME: // TODO: rst_ni tied high
 // CHECK-SAME: .rst_ni{{ +}}(1'b1),
-// CHECK-SAME: .test_i{{ +}}(1'b0),
+// CHECK-SAME: .slv_ports_req_i       (slv_req),
+// CHECK-SAME: .mst_ports_resp_i      (mst_resp),
 // CHECK-SAME: .addr_map_i{{ +}}(AddrMap),
-// CHECK-SAME: .en_default_mst_port_i ('0),
-// CHECK-SAME: .default_mst_port_i    ('0)
 // CHECK-SAME: verilogName = "axi_xbar_1u1d_a32_d64_i4_o4"
 
-// The typed interface carries the 5 array-of-struct data ports, points at the
-// source, and is targeted by the hw.instance via verilogName.
+// The typed interface carries the per-channel struct/valid/ready ports, points
+// at the source, and is targeted by the hw.instance via verilogName.
 // CHECK: sv.verbatim.module @axi_xbar_1u1d_a32_d64_i4_o4(in %clk_i : i1
-// CHECK-SAME: %slv_ports_req_i : !hw.array<1xstruct<aw: !hw.struct<id: i4, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, atop: i6, user: i1>
+// CHECK-SAME: in %sub0_aw : !hw.struct<id: i4, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4>
+// CHECK-SAME: in %sub0_aw_valid : i1, out sub0_aw_ready : i1
+// CHECK-SAME: out mgr0_aw : !hw.struct<id: i4, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4>
 // CHECK-SAME: source = @axi_xbar_1u1d_a32_d64_i4_o4_source
 // CHECK-SAME: verilogName = "axi_xbar_1u1d_a32_d64_i4_o4"
 
-// The manager's request channels pack into a req struct - AW bridged with atop
-// and user tied to 0 - and array into the slave request port; the subordinate's
-// responses pack into the master response port.
-// CHECK-DAG: %[[ATOP:.+]] = hw.constant 0 : i6
-// CHECK-DAG: %[[AWCHAN:.+]] = hw.struct_create ({{.*}}, %[[ATOP]], %{{.+}}) : !hw.struct<id: i4, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, atop: i6, user: i1>
-// CHECK-DAG: %[[REQ:.+]] = hw.struct_create (%[[AWCHAN]], {{.*}}) : !hw.struct<aw: {{.*}}, r_ready: i1>
-// CHECK-DAG: %[[SLVREQ:.+]] = hw.array_create %[[REQ]] : !hw.struct<aw: {{.*}}, r_ready: i1>
-// CHECK-DAG: %[[MSTRESP:.+]] = hw.array_create %{{.+}} : !hw.struct<aw_ready: i1, {{.*}}>
+// The manager-face request outputs are structs; the subordinate node unpacks
+// them per field (emitted during node lowering, before the xbar instance).
+// CHECK: hw.struct_extract %xbar_2.mgr0_aw["id"] : !hw.struct<id: i4, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4>
 
-// CHECK: hw.instance "xbar_2" @axi_xbar_1u1d_a32_d64_i4_o4(clk_i: %{{.+}}: i1, slv_ports_req_i: %[[SLVREQ]]: {{.*}}, mst_ports_resp_i: %[[MSTRESP]]: {{.*}}) ->
-
-// The slave response and master request arrays unpack per element; the master AW
-// is bridged back to canonical, dropping atop and user.
-// CHECK-DAG: %[[SLVRESP:.+]] = hw.array_get %xbar_2.slv_ports_resp_o[%{{.+}}]
-// CHECK-DAG: %{{.+}} = hw.struct_extract %[[SLVRESP]]["aw_ready"]
-// CHECK-DAG: %[[MSTREQ:.+]] = hw.array_get %xbar_2.mst_ports_req_o[%{{.+}}]
-// CHECK-DAG: %[[MSTAW:.+]] = hw.struct_extract %[[MSTREQ]]["aw"] : !hw.struct<aw: {{.*}}, r_ready: i1>
-// CHECK-DAG: %{{.+}} = hw.struct_extract %[[MSTAW]]["id"] : !hw.struct<id: i4, {{.*}}, atop: i6, user: i1>
+// The manager's request channels feed the subordinate-face struct ports (each
+// channel one struct value); mgr0_aw is a struct output.
+// CHECK: hw.instance "xbar_2" @axi_xbar_1u1d_a32_d64_i4_o4(clk_i: %{{[^:]+}}: i1, sub0_aw: %{{[^:]+}}: !hw.struct<id: i4, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4>, sub0_aw_valid: %{{[^:]+}}: i1
+// CHECK-SAME: -> (sub0_aw_ready: i1, {{.*}}, mgr0_aw: !hw.struct<id: i4, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4>
 
 // CHECK-NOT: axi4.node
 // CHECK-NOT: axi4.manager_port
@@ -132,13 +137,11 @@ axi4.subordinate_port %xbar, %clk node %snode {
 
 // Both crossbars instantiate the shared wrapper.
 // CHECK: hw.instance "xbar_2" @axi_xbar_1u1d_a32_d64_i4_o4(
-// CHECK: hw.instance "xbar_3" @axi_xbar_1u1d_a32_d64_i4_o4(
 
-// The upstream xbar's master request feeds the downstream xbar's slave request:
-// its AW is unpacked (atop/user dropped) then repacked with atop/user tied to 0.
-// CHECK: %[[X1MSTREQ:.+]] = hw.array_get %xbar_{{[0-9]+}}.mst_ports_req_o[%{{.+}}]
-// CHECK: %[[X1AW:.+]] = hw.struct_extract %[[X1MSTREQ]]["aw"]
-// CHECK: %[[X1AWID:.+]] = hw.struct_extract %[[X1AW]]["id"] : !hw.struct<id: i4, {{.*}}, atop: i6, user: i1>
+// The two wrappers speak the same canonical channel form, so the upstream xbar's
+// manager-face request output feeds the downstream xbar's subordinate-face input
+// directly - no unpack/repack (and no atop/user round-trip) between them.
+// CHECK: hw.instance "xbar_3" @axi_xbar_1u1d_a32_d64_i4_o4(clk_i: %{{[^:]+}}: i1, sub0_aw: %xbar_2.mgr0_aw: !hw.struct<id: i4, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4>
 
 // CHECK-NOT: axi4.xbar
 
@@ -163,13 +166,17 @@ axi4.subordinate_port %xbar2, %clk node %snode {
 
 // -----
 
-// A 2-manager -> xbar -> 2-subordinate network exercises multi-port shapes: the
-// req/resp arrays are sized to the port counts, the Cfg tracks them, and the
-// address map carries one rule per downstream window.
+// A 2-manager -> xbar -> 2-subordinate network exercises multi-port shapes: each
+// face gets its own numbered set of boundary ports, the internal req/resp arrays
+// are sized to the port counts, the Cfg tracks them, and the address map carries
+// one rule per downstream window.
 
 // CHECK: sv.verbatim.source @axi_xbar_2u2d_a32_d64_i4_o5_source
-// CHECK-SAME: input  axi_xbar_2u2d_a32_d64_i4_o5_slv_req_t  [2-1:0] slv_ports_req_i,
-// CHECK-SAME: output axi_xbar_2u2d_a32_d64_i4_o5_mst_req_t  [2-1:0] mst_ports_req_o,
+// Two subordinate faces (sub0/sub1) and two manager faces (mgr0/mgr1) on the
+// boundary; the internal PULP arrays are sized [2-1:0].
+// CHECK-SAME: input  logic sub1_aw_valid,
+// CHECK-SAME: output logic mgr1_aw_valid,
+// CHECK-SAME: axi_xbar_2u2d_a32_d64_i4_o5_slv_req_t  [2-1:0] slv_req;
 // CHECK-SAME: NoSlvPorts:{{ +}}2,
 // CHECK-SAME: NoMstPorts:{{ +}}2,
 // CHECK-SAME: NoAddrRules:{{ +}}2,
@@ -179,9 +186,9 @@ axi4.subordinate_port %xbar2, %clk node %snode {
 // CHECK-DAG: '{idx: 0, start_addr: 32'h1000, end_addr: 32'h2000}
 // CHECK-DAG: '{idx: 1, start_addr: 32'h0, end_addr: 32'h1000}
 
-// Both upstream managers and both downstream subordinates wire through the sized
-// req/resp arrays.
-// CHECK: hw.instance "xbar_4" @axi_xbar_2u2d_a32_d64_i4_o5(clk_i: %{{.+}}: i1, slv_ports_req_i: %{{.+}}: !hw.array<2xstruct<{{.*}}>>, mst_ports_resp_i: %{{.+}}: !hw.array<2xstruct<{{.*}}>>)
+// Both upstream managers and both downstream subordinates wire through their own
+// numbered faces.
+// CHECK: hw.instance "xbar_4" @axi_xbar_2u2d_a32_d64_i4_o5(clk_i: %{{[^:]+}}: i1, sub0_aw: %{{.+}}
 
 // CHECK-NOT: axi4.xbar
 

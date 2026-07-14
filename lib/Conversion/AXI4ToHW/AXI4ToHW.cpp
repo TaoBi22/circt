@@ -74,12 +74,23 @@ struct EdgeWires {
   PortWires consumer;
 };
 
-/// One AXI interface to wire on an instance: its role, port type, port_wires
-/// name, and clock. `diag` is the op errors are reported against.
+/// How a port group's channels map onto the instantiated module's ports.
+enum class MappingKind {
+  /// Flat per-field scalar ports (`m_axi_`/`s_axi_` `port_wires` convention).
+  PortWires,
+  /// Struct-grouped channel-split ports (xbar wrapper convention).
+  ChannelPorts,
+};
+
+/// One AXI interface to wire on an instance: its role, port type, mapping
+/// convention + name/prefix, and clock. `diag` is the op errors are reported
+/// against. `name` is the `port_wires` name for `PortWires`, or the per-face
+/// port prefix (e.g. `sub0_`) for `ChannelPorts`.
 struct PortGroupSpec {
   Operation *diag;
   bool isManager;
   PortType portType;
+  MappingKind kind;
   std::string name;
   Value axiClock;
   std::string clockPort;
@@ -149,158 +160,45 @@ hw::StructType getChannelPayloadType(PortType port, AXI4Channel channel) {
   return hw::StructType::get(ctx, fields);
 }
 
+/// Append one port group's channel-split ports (`<prefix><token>` struct payload,
+/// `<prefix><token>_valid`, `<prefix><token>_ready`, per channel) to `ports`.
+/// Directions follow the same `isManager == ci.isRequest` rule
+/// `populatePortGroup` uses, so the declared ports match what the mapping binds.
+/// The single source of truth for both the xbar wrapper's HW port list and its
+/// generated SystemVerilog port declarations.
+void buildChannelPortList(MLIRContext *ctx, PortType portType, bool isManager,
+                          StringRef prefix, SmallVectorImpl<PortInfo> &ports) {
+  Type i1 = IntegerType::get(ctx, 1);
+  auto add = [&](const Twine &name, Type t, ModulePort::Direction d) {
+    ports.push_back(PortInfo{{StringAttr::get(ctx, name.str()), t, d}});
+  };
+  for (const ChannelInfo &ci : kChannelInfos) {
+    bool payloadDrivenByModule = (isManager == ci.isRequest);
+    ModulePort::Direction fwd =
+        payloadDrivenByModule ? ModulePort::Output : ModulePort::Input;
+    ModulePort::Direction rev =
+        payloadDrivenByModule ? ModulePort::Input : ModulePort::Output;
+    std::string base = (prefix + ci.token).str();
+    add(base, getChannelPayloadType(portType, ci.channel), fwd);
+    add(base + "_valid", i1, fwd);
+    add(base + "_ready", i1, rev);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // PULP axi_xbar interface modeling
 //
-// The abstract xbar lowers to an instance of PULP's `axi_xbar`, whose slave and
-// master faces each carry an array of packed req/resp structs. Everything below
-// models that interface and bridges it to our canonical channel form.
+// The abstract xbar lowers to an instance of PULP's `axi_xbar`. The wrapper's
+// boundary uses the canonical channel-split form (see `buildChannelPortList`);
+// the packing into PULP's `req_t`/`resp_t` structs lives entirely in the
+// generated SystemVerilog (see `buildXbarWrapperSource`).
 //===----------------------------------------------------------------------===//
 
 // PULP's aw_chan_t carries an atomic-op field our canonical AW payload lacks;
-// every channel carries a `user` sideband. Both are tied to 0 on lowering. The
-// `user` width is a stopgap: `!axi4.port` carries no user width, so we hardcode
-// it to 1.
-constexpr unsigned kAtopWidth = 6;
+// every channel carries a `user` sideband. Both are tied to 0 in the generated
+// wrapper. The `user` width is a stopgap: `!axi4.port` carries no user width, so
+// we hardcode it to 1.
 constexpr unsigned kUserWidth = 1;
-
-/// The PULP channel struct type for one channel: the canonical payload plus a
-/// `user` field on every channel and a 6-bit `atop` on AW, in `AXI_TYPEDEF_*`
-/// field order (atop before user).
-hw::StructType getPulpChannelType(PortType port, AXI4Channel channel) {
-  hw::StructType canon = getChannelPayloadType(port, channel);
-  MLIRContext *ctx = port.getContext();
-  SmallVector<hw::StructType::FieldInfo> fields(canon.getElements());
-  if (channel == AXI4Channel::AW)
-    fields.push_back({StringAttr::get(ctx, "atop"),
-                      IntegerType::get(ctx, kAtopWidth)});
-  fields.push_back(
-      {StringAttr::get(ctx, "user"), IntegerType::get(ctx, kUserWidth)});
-  return hw::StructType::get(ctx, fields);
-}
-
-/// PULP's `req_t`: all manager->subordinate signals for one port, in the field
-/// order `AXI_TYPEDEF_REQ_T` emits.
-hw::StructType getPulpReqType(PortType port) {
-  MLIRContext *ctx = port.getContext();
-  Type i1 = IntegerType::get(ctx, 1);
-  auto f = [&](StringRef n, Type t) {
-    return hw::StructType::FieldInfo{StringAttr::get(ctx, n), t};
-  };
-  return hw::StructType::get(
-      ctx, {f("aw", getPulpChannelType(port, AXI4Channel::AW)), f("aw_valid", i1),
-            f("w", getPulpChannelType(port, AXI4Channel::W)), f("w_valid", i1),
-            f("b_ready", i1),
-            f("ar", getPulpChannelType(port, AXI4Channel::AR)), f("ar_valid", i1),
-            f("r_ready", i1)});
-}
-
-/// PULP's `resp_t`: all subordinate->manager signals for one port, in the field
-/// order `AXI_TYPEDEF_RESP_T` emits.
-hw::StructType getPulpRespType(PortType port) {
-  MLIRContext *ctx = port.getContext();
-  Type i1 = IntegerType::get(ctx, 1);
-  auto f = [&](StringRef n, Type t) {
-    return hw::StructType::FieldInfo{StringAttr::get(ctx, n), t};
-  };
-  return hw::StructType::get(
-      ctx, {f("aw_ready", i1), f("ar_ready", i1), f("w_ready", i1),
-            f("b_valid", i1), f("b", getPulpChannelType(port, AXI4Channel::B)),
-            f("r_valid", i1), f("r", getPulpChannelType(port, AXI4Channel::R))});
-}
-
-/// Wrap a canonical channel payload as PULP's channel struct, tying the extra
-/// `user` (and `atop` on AW) fields to 0.
-Value toPulpChannel(ImplicitLocOpBuilder &b, AXI4Channel channel,
-                    Value canonical) {
-  auto canonTy = cast<hw::StructType>(canonical.getType());
-  SmallVector<Value> fields;
-  for (auto &fi : canonTy.getElements())
-    fields.push_back(hw::StructExtractOp::create(b, canonical, fi.name));
-  SmallVector<hw::StructType::FieldInfo> pulpFields(canonTy.getElements());
-  if (channel == AXI4Channel::AW) {
-    fields.push_back(hw::ConstantOp::create(b, b.getIntegerType(kAtopWidth), 0));
-    pulpFields.push_back({b.getStringAttr("atop"), b.getIntegerType(kAtopWidth)});
-  }
-  fields.push_back(hw::ConstantOp::create(b, b.getIntegerType(kUserWidth), 0));
-  pulpFields.push_back({b.getStringAttr("user"), b.getIntegerType(kUserWidth)});
-  return hw::StructCreateOp::create(
-      b, hw::StructType::get(b.getContext(), pulpFields), fields);
-}
-
-/// Drop the PULP-only fields (`user`, and `atop` on AW) off a PULP channel
-/// struct, yielding a canonical channel payload. The canonical fields are a
-/// by-name subset of the PULP struct, so one extraction loop covers every
-/// channel.
-Value fromPulpChannel(ImplicitLocOpBuilder &b, Value pulp,
-                      hw::StructType canonTy) {
-  SmallVector<Value> fields;
-  for (auto &fi : canonTy.getElements())
-    fields.push_back(hw::StructExtractOp::create(b, pulp, fi.name));
-  return hw::StructCreateOp::create(b, canonTy, fields);
-}
-
-/// Build one PULP xbar face's input-array struct element (`req_t` at a
-/// subordinate face, `resp_t` at a manager face) from fresh backedges,
-/// populating the received signals of `wires`. The driven signals are left null
-/// and filled by `fillXbarFaceOutputs` once the instance exists.
-Value buildXbarFaceInput(bool isManager, PortType portType,
-                         ImplicitLocOpBuilder &builder, BackedgeBuilder &bb,
-                         PortWires &wires) {
-  Type i1 = builder.getI1Type();
-  hw::StructType inputTy =
-      isManager ? getPulpRespType(portType) : getPulpReqType(portType);
-
-  DenseMap<StringAttr, Value> fields;
-  wires.resize(kNumChannels);
-  for (auto [idx, ci] : llvm::enumerate(kChannelInfos)) {
-    ChannelWires &cw = wires[idx];
-    bool payloadDriven = (isManager == ci.isRequest);
-    if (payloadDriven) {
-      // payload/valid are driven by the xbar (filled later); ready is received.
-      Backedge ready = bb.get(i1);
-      cw.ready = {ready, ready};
-      fields[builder.getStringAttr(ci.token + Twine("_ready"))] = ready;
-      continue;
-    }
-    // payload/valid are received; ready is driven by the xbar (filled later).
-    Backedge payload = bb.get(getChannelPayloadType(portType, ci.channel));
-    cw.payload = {payload, payload};
-    Backedge valid = bb.get(i1);
-    cw.valid = {valid, valid};
-    Value payloadField = toPulpChannel(builder, ci.channel, payload);
-    fields[builder.getStringAttr(ci.token)] = payloadField;
-    fields[builder.getStringAttr(ci.token + Twine("_valid"))] = valid;
-  }
-
-  SmallVector<Value> ordered;
-  for (auto &fi : inputTy.getElements())
-    ordered.push_back(fields.at(fi.name));
-  return hw::StructCreateOp::create(builder, inputTy, ordered);
-}
-
-/// Fill the driven signals of `wires` from one xbar face's output-array struct
-/// element (`resp_t` at a subordinate face, `req_t` at a manager face).
-void fillXbarFaceOutputs(bool isManager, PortType portType,
-                         ImplicitLocOpBuilder &builder, Value outputStruct,
-                         PortWires &wires) {
-  for (auto [idx, ci] : llvm::enumerate(kChannelInfos)) {
-    ChannelWires &cw = wires[idx];
-    bool payloadDriven = (isManager == ci.isRequest);
-    std::string token = ci.token.str();
-    if (payloadDriven) {
-      Value payload = hw::StructExtractOp::create(builder, outputStruct, token);
-      payload = fromPulpChannel(builder, payload,
-                                getChannelPayloadType(portType, ci.channel));
-      cw.payload.value = payload;
-      cw.valid.value =
-          hw::StructExtractOp::create(builder, outputStruct, token + "_valid");
-      continue;
-    }
-    cw.ready.value =
-        hw::StructExtractOp::create(builder, outputStruct, token + "_ready");
-  }
-}
 
 //===----------------------------------------------------------------------===//
 // PULP axi_xbar wrapper generation
@@ -392,6 +290,38 @@ SmallVector<AddrRule> deriveXbarAddrMap(XbarOp xbar) {
   return rules;
 }
 
+/// SystemVerilog type name for one canonical channel-payload field, matching the
+/// integer widths `getChannelPayloadType` uses. `id`/`addr`/`data`/`strb` route
+/// to the name-prefixed typedefs; fixed-width control fields use `axi_pkg`.
+std::string svChannelFieldType(StringRef field, StringRef p, StringRef idTy) {
+  if (field == "id")
+    return idTy.str();
+  if (field == "addr")
+    return (p + "addr_t").str();
+  if (field == "data")
+    return (p + "data_t").str();
+  if (field == "strb")
+    return (p + "strb_t").str();
+  if (field == "len")
+    return "axi_pkg::len_t";
+  if (field == "size")
+    return "axi_pkg::size_t";
+  if (field == "burst")
+    return "axi_pkg::burst_t";
+  if (field == "cache")
+    return "axi_pkg::cache_t";
+  if (field == "prot")
+    return "axi_pkg::prot_t";
+  if (field == "qos")
+    return "axi_pkg::qos_t";
+  if (field == "region")
+    return "axi_pkg::region_t";
+  if (field == "resp")
+    return "axi_pkg::resp_t";
+  // lock, last
+  return "logic";
+}
+
 /// Render the SystemVerilog wrapper for one crossbar configuration.
 std::string buildXbarWrapperSource(StringRef name, unsigned numUp,
                                    unsigned numDown, PortType upType,
@@ -421,22 +351,123 @@ std::string buildXbarWrapperSource(StringRef name, unsigned numUp,
   os << "typedef logic [" << kUserWidth << "-1:0] " << p << "user_t;\n";
   os << "typedef logic [" << slvId << "-1:0] " << p << "slv_id_t;\n";
   os << "typedef logic [" << mstId << "-1:0] " << p << "mst_id_t;\n";
+  // PULP-shaped req/resp/channel typedefs, used only internally to instantiate
+  // axi_xbar.
   os << "`AXI_TYPEDEF_ALL(" << p << "slv, " << p << "addr_t, " << p
      << "slv_id_t, " << p << "data_t, " << p << "strb_t, " << p << "user_t)\n";
   os << "`AXI_TYPEDEF_ALL(" << p << "mst, " << p << "addr_t, " << p
-     << "mst_id_t, " << p << "data_t, " << p << "strb_t, " << p << "user_t)\n\n";
+     << "mst_id_t, " << p << "data_t, " << p << "strb_t, " << p << "user_t)\n";
 
-  // The data-plane interface mirrors the `sv.verbatim.module` port list.
+  // Canonical (non-PULP) per-channel payload typedefs for the boundary ports:
+  // one set per face role, differing only in id width. These mirror the
+  // `hw.struct` payload types the wrapper's typed interface declares.
+  auto emitCanonTypedef = [&](StringRef role, StringRef idTy, PortType pt,
+                              const ChannelInfo &ci) {
+    os << "typedef struct packed {";
+    for (auto &fi : getChannelPayloadType(pt, ci.channel).getElements())
+      os << " " << svChannelFieldType(fi.name.getValue(), p, idTy) << " "
+         << fi.name.getValue() << ";";
+    os << " } " << p << role << "_" << ci.token << "_t;\n";
+  };
+  std::string subId = (p + "slv_id_t");
+  std::string mstIdTy = (p + "mst_id_t");
+  for (const ChannelInfo &ci : kChannelInfos)
+    emitCanonTypedef("sub", subId, upType, ci);
+  for (const ChannelInfo &ci : kChannelInfos)
+    emitCanonTypedef("mgr", mstIdTy, downType, ci);
+  os << "\n";
+
+  // The data-plane interface mirrors the `sv.verbatim.module` port list: one
+  // struct payload port plus scalar valid/ready per channel per face (see
+  // `buildChannelPortList`, which builds the matching HW port list).
+  SmallVector<std::string> portDecls;
+  portDecls.push_back("  input  logic clk_i");
+  auto emitFacePorts = [&](StringRef role, unsigned idx, PortType pt,
+                           bool isManager) {
+    for (const ChannelInfo &ci : kChannelInfos) {
+      bool payloadDrivenByModule = (isManager == ci.isRequest);
+      StringRef fwd = payloadDrivenByModule ? "output" : "input ";
+      StringRef rev = payloadDrivenByModule ? "input " : "output";
+      std::string base = (role + Twine(idx) + "_" + ci.token).str();
+      std::string ty = (p + role + "_" + ci.token + "_t").str();
+      portDecls.push_back(("  " + fwd + " " + ty + " " + base).str());
+      portDecls.push_back(("  " + fwd + " logic " + base + "_valid").str());
+      portDecls.push_back(("  " + rev + " logic " + base + "_ready").str());
+    }
+  };
+  for (unsigned i = 0; i < numUp; ++i)
+    emitFacePorts("sub", i, upType, /*isManager=*/false);
+  for (unsigned j = 0; j < numDown; ++j)
+    emitFacePorts("mgr", j, downType, /*isManager=*/true);
   os << "module " << name << " (\n";
-  os << "  input  logic clk_i,\n";
-  os << "  input  " << p << "slv_req_t  [" << numUp << "-1:0] slv_ports_req_i,\n";
-  os << "  output " << p << "slv_resp_t [" << numUp
-     << "-1:0] slv_ports_resp_o,\n";
-  os << "  output " << p << "mst_req_t  [" << numDown
-     << "-1:0] mst_ports_req_o,\n";
-  os << "  input  " << p << "mst_resp_t [" << numDown
-     << "-1:0] mst_ports_resp_i\n";
+  os << llvm::join(portDecls, ",\n") << "\n";
   os << ");\n";
+
+  // Internal PULP-shaped req/resp arrays: the boundary ports bridge to these,
+  // and axi_xbar is wired directly to them.
+  os << "  " << p << "slv_req_t  [" << numUp << "-1:0] slv_req;\n";
+  os << "  " << p << "slv_resp_t [" << numUp << "-1:0] slv_resp;\n";
+  os << "  " << p << "mst_req_t  [" << numDown << "-1:0] mst_req;\n";
+  os << "  " << p << "mst_resp_t [" << numDown << "-1:0] mst_resp;\n";
+
+  // Bridge each face's canonical channel ports to the PULP req/resp structs,
+  // tying PULP's atop/user to 0 on the way in and dropping them on the way out.
+  auto payloadPattern = [&](StringRef lhsExpr, StringRef rhsExpr, PortType pt,
+                            const ChannelInfo &ci, bool toPulp) -> std::string {
+    std::string s = "'{";
+    bool first = true;
+    for (auto &fi : getChannelPayloadType(pt, ci.channel).getElements()) {
+      if (!first)
+        s += ", ";
+      first = false;
+      s += (fi.name.getValue() + ": " + rhsExpr + "." + fi.name.getValue())
+               .str();
+    }
+    if (toPulp) {
+      if (ci.channel == AXI4Channel::AW)
+        s += ", atop: '0";
+      s += ", user: '0";
+    }
+    s += "}";
+    return ("  assign " + lhsExpr + " = " + s + ";\n").str();
+  };
+  auto emitFaceBridge = [&](StringRef role, unsigned idx, PortType pt,
+                            bool isManager) {
+    std::string reqVar = ((isManager ? "mst_req[" : "slv_req[") + Twine(idx) +
+                          "]")
+                             .str();
+    std::string respVar = ((isManager ? "mst_resp[" : "slv_resp[") +
+                           Twine(idx) + "]")
+                              .str();
+    for (const ChannelInfo &ci : kChannelInfos) {
+      bool payloadDrivenByModule = (isManager == ci.isRequest);
+      std::string tok = ci.token.str();
+      std::string port = (role + Twine(idx) + "_" + tok).str();
+      // payload+valid live in the req struct for request channels, the resp
+      // struct for response channels; ready lives in the other one.
+      std::string pvVar = ci.isRequest ? reqVar : respVar;
+      std::string rdyVar = ci.isRequest ? respVar : reqVar;
+      if (payloadDrivenByModule) {
+        // Wrapper drives the port from PULP (drop atop/user).
+        os << payloadPattern(port, pvVar + "." + tok, pt, ci, /*toPulp=*/false);
+        os << "  assign " << port << "_valid = " << pvVar << "." << tok
+           << "_valid;\n";
+        os << "  assign " << rdyVar << "." << tok << "_ready = " << port
+           << "_ready;\n";
+      } else {
+        // Wrapper receives the port into PULP (tie atop/user to 0).
+        os << payloadPattern(pvVar + "." + tok, port, pt, ci, /*toPulp=*/true);
+        os << "  assign " << pvVar << "." << tok << "_valid = " << port
+           << "_valid;\n";
+        os << "  assign " << port << "_ready = " << rdyVar << "." << tok
+           << "_ready;\n";
+      }
+    }
+  };
+  for (unsigned i = 0; i < numUp; ++i)
+    emitFaceBridge("sub", i, upType, /*isManager=*/false);
+  for (unsigned j = 0; j < numDown; ++j)
+    emitFaceBridge("mgr", j, downType, /*isManager=*/true);
 
   // Baked-in configuration. `default: '0` covers version-specific Cfg fields
   // (e.g. PipelineStages) we don't set.
@@ -489,10 +520,10 @@ std::string buildXbarWrapperSource(StringRef name, unsigned numUp,
   os << "    // TODO: rst_ni tied high - the crossbar never resets (stopgap).\n";
   os << "    .rst_ni                (1'b1),\n";
   os << "    .test_i                (1'b0),\n";
-  os << "    .slv_ports_req_i       (slv_ports_req_i),\n";
-  os << "    .slv_ports_resp_o      (slv_ports_resp_o),\n";
-  os << "    .mst_ports_req_o       (mst_ports_req_o),\n";
-  os << "    .mst_ports_resp_i      (mst_ports_resp_i),\n";
+  os << "    .slv_ports_req_i       (slv_req),\n";
+  os << "    .slv_ports_resp_o      (slv_resp),\n";
+  os << "    .mst_ports_req_o       (mst_req),\n";
+  os << "    .mst_ports_resp_i      (mst_resp),\n";
   os << "    .addr_map_i            (AddrMap),\n";
   os << "    .en_default_mst_port_i ('0),\n";
   os << "    .default_mst_port_i    ('0)\n";
@@ -654,9 +685,17 @@ void connectPorts(PortWires &a, PortWires &b) {
 }
 
 /// Interface for wiring one port group's channels onto a module's physical
-/// ports. `FromModule` binds a module output, `ToModule` drives a module input
+/// ports. `FromModule` binds a module output, `ToModule` drives a module input.
+/// Holds the shared port lookup and scalar wiring; subclasses map each channel's
+/// payload onto the target module's ports.
 class MappingLowerer {
 public:
+  MappingLowerer(Operation *portOp, StringRef notFoundSuffix,
+                 DenseMap<StringRef, PortInfo> &portByName,
+                 DenseMap<StringRef, Value> &inputByName,
+                 SmallVectorImpl<std::pair<Wire *, StringRef>> &outs)
+      : portOp(portOp), notFoundSuffix(notFoundSuffix.str()),
+        portByName(portByName), inputByName(inputByName), outs(outs) {}
   virtual ~MappingLowerer() = default;
   virtual LogicalResult registerPayloadFromModule(const ChannelInfo &ci,
                                                   hw::StructType payloadTy,
@@ -672,36 +711,83 @@ public:
                                                 Wire &ready) = 0;
   virtual LogicalResult registerReadyToModule(const ChannelInfo &ci,
                                               Wire &ready) = 0;
+
+protected:
+  std::optional<PortInfo> lookup(const Twine &nameT,
+                                 ModulePort::Direction dir) {
+    std::string name = nameT.str();
+    auto it = portByName.find(name);
+    if (it == portByName.end()) {
+      portOp->emitError("referenced module has no port '")
+          << name << "'" << notFoundSuffix;
+      return std::nullopt;
+    }
+    if (it->second.dir != dir) {
+      portOp->emitError("module port '") << name << "' has the wrong direction";
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
+  /// Bind a single module output port (whole value) to `wire`.
+  LogicalResult registerScalarFromModule(const Twine &name, Wire &wire) {
+    auto port = lookup(name, ModulePort::Output);
+    if (!port)
+      return failure();
+    outs.emplace_back(&wire, port->name.getValue());
+    return success();
+  }
+
+  /// Drive a single module input port with `wire`'s value.
+  LogicalResult registerScalarToModule(const Twine &name, Wire &wire) {
+    auto port = lookup(name, ModulePort::Input);
+    if (!port)
+      return failure();
+    inputByName[port->name.getValue()] = wire.value;
+    return success();
+  }
+
+  /// Op used for diagnostics.
+  Operation *portOp;
+  /// Appended to the "no port" diagnostic for mapping-specific context.
+  std::string notFoundSuffix;
+  /// Module ports by name.
+  DenseMap<StringRef, PortInfo> &portByName;
+  /// Instance input drivers.
+  DenseMap<StringRef, Value> &inputByName;
+  /// Scalar outputs resolved after instantiation.
+  SmallVectorImpl<std::pair<Wire *, StringRef>> &outs;
 };
 
-/// Lowers a port group using the flat-scalar `port_wires` mapping.
+/// Lowers a port group using the flat-scalar `port_wires` mapping: each channel
+/// payload is split into one module port per field.
 class PortWiresMappingLowerer : public MappingLowerer {
 public:
   PortWiresMappingLowerer(
       Operation *portOp, bool isManager, StringRef name,
       DenseMap<StringRef, PortInfo> &portByName,
       DenseMap<StringRef, Value> &inputByName,
-      SmallVectorImpl<std::pair<Wire *, unsigned>> &outs,
-      SmallVectorImpl<std::tuple<Wire *, hw::StructType, SmallVector<unsigned>>>
+      SmallVectorImpl<std::pair<Wire *, StringRef>> &outs,
+      SmallVectorImpl<std::tuple<Wire *, hw::StructType, SmallVector<StringRef>>>
           &outStructs,
       ImplicitLocOpBuilder &builder)
-      : portOp(portOp),
+      : MappingLowerer(portOp, " required by the port_wires mapping", portByName,
+                       inputByName, outs),
         base(((isManager ? "m_axi_" : "s_axi_") + name + "_").str()),
-        portByName(portByName), inputByName(inputByName), outs(outs),
         outStructs(outStructs), builder(builder) {}
 
   LogicalResult registerPayloadFromModule(const ChannelInfo &ci,
                                           hw::StructType payloadTy,
                                           Wire &payload) override {
     std::string cbase = getChannelBase(ci);
-    SmallVector<unsigned> fieldArgs;
+    SmallVector<StringRef> fieldNames;
     for (auto &field : payloadTy.getElements()) {
       auto port = lookup(cbase + field.name.getValue(), ModulePort::Output);
       if (!port)
         return failure();
-      fieldArgs.push_back(port->argNum);
+      fieldNames.push_back(port->name.getValue());
     }
-    outStructs.emplace_back(&payload, payloadTy, std::move(fieldArgs));
+    outStructs.emplace_back(&payload, payloadTy, std::move(fieldNames));
     return success();
   }
 
@@ -723,74 +809,80 @@ public:
                                         Wire &valid) override {
     return registerScalarFromModule(getChannelBase(ci) + "valid", valid);
   }
-
   LogicalResult registerValidToModule(const ChannelInfo &ci,
                                       Wire &valid) override {
     return registerScalarToModule(getChannelBase(ci) + "valid", valid);
   }
-
   LogicalResult registerReadyFromModule(const ChannelInfo &ci,
                                         Wire &ready) override {
     return registerScalarFromModule(getChannelBase(ci) + "ready", ready);
   }
-
   LogicalResult registerReadyToModule(const ChannelInfo &ci,
                                       Wire &ready) override {
     return registerScalarToModule(getChannelBase(ci) + "ready", ready);
   }
 
 private:
-  std::optional<PortInfo> lookup(const Twine &nameT,
-                                 ModulePort::Direction dir) {
-    std::string name = nameT.str();
-    auto it = portByName.find(name);
-    if (it == portByName.end()) {
-      portOp->emitError("referenced module has no port '")
-          << name << "' required by the port_wires mapping";
-      return std::nullopt;
-    }
-    if (it->second.dir != dir) {
-      portOp->emitError("module port '") << name << "' has the wrong direction";
-      return std::nullopt;
-    }
-    return it->second;
-  }
-
   std::string getChannelBase(const ChannelInfo &ci) const {
     return base + ci.token.str();
   }
 
-  LogicalResult registerScalarFromModule(const Twine &name, Wire &wire) {
-    auto port = lookup(name, ModulePort::Output);
-    if (!port)
-      return failure();
-    outs.emplace_back(&wire, port->argNum);
-    return success();
-  }
-
-  LogicalResult registerScalarToModule(const Twine &name, Wire &wire) {
-    auto port = lookup(name, ModulePort::Input);
-    if (!port)
-      return failure();
-    inputByName[port->name.getValue()] = wire.value;
-    return success();
-  }
-
-  /// Op used for diagnostics.
-  Operation *portOp;
   /// `m_axi_`/`s_axi_` port name prefix.
   std::string base;
-  /// Module ports by name.
-  DenseMap<StringRef, PortInfo> &portByName;
-  /// Instance input drivers.
-  DenseMap<StringRef, Value> &inputByName;
-  /// Scalar outputs resolved after instantiation.
-  SmallVectorImpl<std::pair<Wire *, unsigned>> &outs;
   /// Payload outputs assembled after instantiation.
-  SmallVectorImpl<std::tuple<Wire *, hw::StructType, SmallVector<unsigned>>>
+  SmallVectorImpl<std::tuple<Wire *, hw::StructType, SmallVector<StringRef>>>
       &outStructs;
   /// Insertion point for helper ops.
   ImplicitLocOpBuilder &builder;
+};
+
+/// Lowers a port group using the struct-grouped channel-split convention: each
+/// channel is one whole-struct payload port plus scalar `valid`/`ready` ports,
+/// named `<prefix><token>`/`_valid`/`_ready` (see `buildChannelPortList`). Used
+/// for the xbar wrapper, whose interface mirrors the internal `ChannelWires`
+/// form directly rather than flattening payloads to per-field scalars.
+class ChannelPortsMappingLowerer : public MappingLowerer {
+public:
+  ChannelPortsMappingLowerer(Operation *portOp, StringRef prefix,
+                             DenseMap<StringRef, PortInfo> &portByName,
+                             DenseMap<StringRef, Value> &inputByName,
+                             SmallVectorImpl<std::pair<Wire *, StringRef>> &outs)
+      : MappingLowerer(portOp, "", portByName, inputByName, outs),
+        prefix(prefix.str()) {}
+
+  // The module port already is the whole struct; no per-field split/reassembly.
+  LogicalResult registerPayloadFromModule(const ChannelInfo &ci, hw::StructType,
+                                          Wire &payload) override {
+    return registerScalarFromModule(getChannelBase(ci), payload);
+  }
+  LogicalResult registerPayloadToModule(const ChannelInfo &ci, hw::StructType,
+                                        Wire &payload) override {
+    return registerScalarToModule(getChannelBase(ci), payload);
+  }
+  LogicalResult registerValidFromModule(const ChannelInfo &ci,
+                                        Wire &valid) override {
+    return registerScalarFromModule(getChannelBase(ci) + "_valid", valid);
+  }
+  LogicalResult registerValidToModule(const ChannelInfo &ci,
+                                      Wire &valid) override {
+    return registerScalarToModule(getChannelBase(ci) + "_valid", valid);
+  }
+  LogicalResult registerReadyFromModule(const ChannelInfo &ci,
+                                        Wire &ready) override {
+    return registerScalarFromModule(getChannelBase(ci) + "_ready", ready);
+  }
+  LogicalResult registerReadyToModule(const ChannelInfo &ci,
+                                      Wire &ready) override {
+    return registerScalarToModule(getChannelBase(ci) + "_ready", ready);
+  }
+
+private:
+  std::string getChannelBase(const ChannelInfo &ci) const {
+    return prefix + ci.token.str();
+  }
+
+  /// Per-face port name prefix (e.g. `sub0_`/`mgr0_`).
+  std::string prefix;
 };
 
 /// Populate `wires` for one port group, walking the five channels and placing
@@ -898,8 +990,8 @@ NetworkLowering::buildInstance(Operation *diag, hw::HWModuleLike moduleOp,
     portByName[p.getName()] = p;
 
   DenseMap<StringRef, Value> inputByName;
-  SmallVector<std::pair<Wire *, unsigned>> outs;
-  SmallVector<std::tuple<Wire *, hw::StructType, SmallVector<unsigned>>>
+  SmallVector<std::pair<Wire *, StringRef>> outs;
+  SmallVector<std::tuple<Wire *, hw::StructType, SmallVector<StringRef>>>
       outStructs;
 
   // Reserve so the deferred output pointers below stay valid: `outs`/`outStructs`
@@ -907,11 +999,20 @@ NetworkLowering::buildInstance(Operation *diag, hw::HWModuleLike moduleOp,
   wiresOut.reserve(specs.size());
   for (const PortGroupSpec &spec : specs) {
     wiresOut.emplace_back();
-    PortWiresMappingLowerer lowerer(spec.diag, spec.isManager, spec.name,
-                                    portByName, inputByName, outs, outStructs,
-                                    builder);
+    std::unique_ptr<MappingLowerer> lowerer;
+    switch (spec.kind) {
+    case MappingKind::PortWires:
+      lowerer = std::make_unique<PortWiresMappingLowerer>(
+          spec.diag, spec.isManager, spec.name, portByName, inputByName, outs,
+          outStructs, builder);
+      break;
+    case MappingKind::ChannelPorts:
+      lowerer = std::make_unique<ChannelPortsMappingLowerer>(
+          spec.diag, spec.name, portByName, inputByName, outs);
+      break;
+    }
     if (failed(populatePortGroup(spec.isManager, spec.portType, builder, bb,
-                                 wiresOut.back(), lowerer)))
+                                 wiresOut.back(), *lowerer)))
       return failure();
 
     auto clockPort = portByName.find(spec.clockPort);
@@ -939,13 +1040,24 @@ NetworkLowering::buildInstance(Operation *diag, hw::HWModuleLike moduleOp,
   auto inst = hw::InstanceOp::create(
       builder, moduleOp, builder.getStringAttr(instanceName), inputs);
 
+  // Instance results correspond to output ports in port-list order; map each
+  // output port name to its result index. (Resolving by name rather than
+  // PortInfo::argNum keeps this correct across module kinds - some HWModuleLike
+  // ops populate argNum with the combined port index rather than the
+  // direction-relative one.)
+  DenseMap<StringRef, unsigned> outputResult;
+  unsigned resultIdx = 0;
+  for (auto &p : moduleOp.getPortList())
+    if (p.isOutput())
+      outputResult[p.getName()] = resultIdx++;
+
   // Resolve deferred module outputs into real driving values.
-  for (auto &[wire, argNum] : outs)
-    wire->value = inst.getResult(argNum);
-  for (auto &[wire, structTy, fieldArgs] : outStructs) {
+  for (auto &[wire, name] : outs)
+    wire->value = inst.getResult(outputResult.at(name));
+  for (auto &[wire, structTy, fieldNames] : outStructs) {
     SmallVector<Value> fields;
-    for (unsigned argNum : fieldArgs)
-      fields.push_back(inst.getResult(argNum));
+    for (StringRef fn : fieldNames)
+      fields.push_back(inst.getResult(outputResult.at(fn)));
     wire->value = hw::StructCreateOp::create(builder, structTy, fields);
   }
   return success();
@@ -984,8 +1096,9 @@ LogicalResult NetworkLowering::lowerNode(NodeOp node) {
     if (!portWires)
       return portOp->emitError(
           "only the 'port_wires' port_mapping is currently supported");
-    specs.push_back({portOp, isManager, portType, portWires.getName().str(),
-                     axiClock, mapping.getClockPort().str()});
+    specs.push_back({portOp, isManager, portType, MappingKind::PortWires,
+                     portWires.getName().str(), axiClock,
+                     mapping.getClockPort().str()});
   }
 
   SmallVector<PortWires, 0> allWires;
@@ -1041,27 +1154,20 @@ NetworkLowering::getOrCreateXbarModule(unsigned numUpstream,
   for (unsigned n = 0; module.lookupSymbol(name); ++n)
     name = (shape + "_" + Twine(n)).str();
 
-  // The data-plane interface: the slave (upstream) ports face the managers, the
-  // master (downstream) ports the subordinates. Each side packs its N interfaces
-  // into an array of req/resp structs.
-  auto arrayOf = [](hw::StructType elem, unsigned n) {
-    return hw::ArrayType::get(elem, n);
-  };
-  auto port = [&](StringRef n, Type t, ModulePort::Direction d) {
-    return PortInfo{{StringAttr::get(ctx, n), t, d}};
-  };
-  hw::StructType upReq = getPulpReqType(upstreamType);
-  hw::StructType upResp = getPulpRespType(upstreamType);
-  hw::StructType downReq = getPulpReqType(downstreamType);
-  hw::StructType downResp = getPulpRespType(downstreamType);
-  SmallVector<PortInfo> ports = {
-      port("clk_i", IntegerType::get(ctx, 1), ModulePort::Input),
-      port("slv_ports_req_i", arrayOf(upReq, numUpstream), ModulePort::Input),
-      port("slv_ports_resp_o", arrayOf(upResp, numUpstream), ModulePort::Output),
-      port("mst_ports_req_o", arrayOf(downReq, numDownstream),
-           ModulePort::Output),
-      port("mst_ports_resp_i", arrayOf(downResp, numDownstream),
-           ModulePort::Input)};
+  // The data-plane interface mirrors the internal channel-split form: each
+  // upstream (subordinate-role) and downstream (manager-role) face contributes
+  // its own struct/valid/ready ports. `buildChannelPortList` is the shared
+  // source of truth with the generated SystemVerilog port declarations.
+  SmallVector<PortInfo> ports;
+  ports.push_back(
+      PortInfo{{StringAttr::get(ctx, "clk_i"), IntegerType::get(ctx, 1),
+                ModulePort::Input}});
+  for (unsigned i = 0; i < numUpstream; ++i)
+    buildChannelPortList(ctx, upstreamType, /*isManager=*/false,
+                         ("sub" + Twine(i) + "_").str(), ports);
+  for (unsigned j = 0; j < numDownstream; ++j)
+    buildChannelPortList(ctx, downstreamType, /*isManager=*/true,
+                         ("mgr" + Twine(j) + "_").str(), ports);
 
   std::string source = buildXbarWrapperSource(name, numUpstream, numDownstream,
                                               upstreamType, downstreamType, rules);
@@ -1103,70 +1209,33 @@ LogicalResult NetworkLowering::lowerXbar(XbarOp xbar) {
   auto moduleOp = getOrCreateXbarModule(numUpstream, numDownstream, upstreamType,
                                         downstreamType, rules);
 
-  // Build each face's received-signal backedges and its input-array struct.
-  // Upstream faces are subordinate-role; downstream faces are manager-role.
-  SmallVector<PortWires, 0> upWires(numUpstream), downWires(numDownstream);
-  SmallVector<Value> slvReq(numUpstream), mstResp(numDownstream);
+  // Wire each face through the shared instance builder, exactly like a node:
+  // upstream faces are subordinate-role, downstream faces manager-role, each
+  // bound via the struct-grouped channel-split convention.
+  SmallVector<PortGroupSpec> specs;
   for (unsigned i = 0; i < numUpstream; ++i)
-    slvReq[i] = buildXbarFaceInput(/*isManager=*/false, upstreamType, builder,
-                                   bb, upWires[i]);
+    specs.push_back({xbar, /*isManager=*/false, upstreamType,
+                     MappingKind::ChannelPorts, ("sub" + Twine(i) + "_").str(),
+                     xbar.getClock(), "clk_i"});
   for (unsigned j = 0; j < numDownstream; ++j)
-    mstResp[j] = buildXbarFaceInput(/*isManager=*/true, downstreamType, builder,
-                                    bb, downWires[j]);
+    specs.push_back({xbar, /*isManager=*/true, downstreamType,
+                     MappingKind::ChannelPorts, ("mgr" + Twine(j) + "_").str(),
+                     xbar.getClock(), "clk_i"});
 
-  Value clock = materializeClock(xbar.getClock(), builder.getI1Type());
-  assert(clock && "i1 clock always materializes");
-
-  // Pack the per-face structs into the arrayed slave/master ports; array_create
-  // takes elements in descending index order, so reverse.
-  auto packArray = [&](ArrayRef<Value> elems) {
-    SmallVector<Value> rev(llvm::reverse(elems));
-    return hw::ArrayCreateOp::create(builder, rev).getResult();
-  };
-  DenseMap<StringRef, Value> inputByName;
-  inputByName["clk_i"] = clock;
-  inputByName["slv_ports_req_i"] = packArray(slvReq);
-  inputByName["mst_ports_resp_i"] = packArray(mstResp);
-
-  SmallVector<Value> inputs;
-  for (auto &p : moduleOp.getPortList())
-    if (p.isInput())
-      inputs.push_back(inputByName.at(p.getName()));
-
+  SmallVector<PortWires, 0> allWires;
   std::string instName = ("xbar_" + Twine(instanceCounter++)).str();
-  auto inst = hw::InstanceOp::create(builder, moduleOp,
-                                     builder.getStringAttr(instName), inputs);
-
-  DenseMap<StringRef, Value> outputByName;
-  unsigned resultIdx = 0;
-  for (auto &p : moduleOp.getPortList())
-    if (p.isOutput())
-      outputByName[p.getName()] = inst.getResult(resultIdx++);
-
-  // Unpack the driven signals for each face from the arrayed output ports.
-  auto unpack = [&](Value array, unsigned idx, unsigned size) {
-    unsigned width = std::max(1u, llvm::Log2_64_Ceil(size));
-    Value index =
-        hw::ConstantOp::create(builder, builder.getIntegerType(width), idx);
-    return hw::ArrayGetOp::create(builder, array, index).getResult();
-  };
-  Value slvResp = outputByName.at("slv_ports_resp_o");
-  Value mstReq = outputByName.at("mst_ports_req_o");
-  for (unsigned i = 0; i < numUpstream; ++i)
-    fillXbarFaceOutputs(/*isManager=*/false, upstreamType, builder,
-                        unpack(slvResp, i, numUpstream), upWires[i]);
-  for (unsigned j = 0; j < numDownstream; ++j)
-    fillXbarFaceOutputs(/*isManager=*/true, downstreamType, builder,
-                        unpack(mstReq, j, numDownstream), downWires[j]);
+  if (failed(buildInstance(xbar, moduleOp, instName, specs, allWires)))
+    return failure();
 
   // File the wires under their edges: an upstream interface is the consumer of
   // the operand feeding it; a downstream interface is the producer of a use.
+  // `allWires` follows `specs`: upstream faces first, then downstream.
   unsigned upstreamBase = upstream.getBeginOperandIndex();
   for (unsigned i = 0; i < numUpstream; ++i)
     edges[&xbar->getOpOperand(upstreamBase + i)].consumer =
-        std::move(upWires[i]);
+        std::move(allWires[i]);
   for (unsigned j = 0; j < numDownstream; ++j)
-    edges[downstreamUses[j]].producer = std::move(downWires[j]);
+    edges[downstreamUses[j]].producer = std::move(allWires[numUpstream + j]);
   return success();
 }
 
