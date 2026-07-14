@@ -90,14 +90,18 @@ automatically (no design is currently in that state).
   distinct expected words. Waveform: `build/multi.sim/tb_axitop_multi.vcd`.
 
 - **`mixed_fanout`**: `designs/mixed_fanout.mlir` has 1 manager (`mgr_module`)
-  issuing two *sequential* 4-beat AXI4 INCR burst reads through one crossbar
-  (`xbar1`) that fans out to a direct subordinate (`sub_module_a` at address
-  0) and a chained second crossbar (`xbar2` → `sub_module_b` at address
-  4096), each subordinate with its own distinct 4-word ROM. This proves both
-  fan-out paths of the real `axi_xbar` actually work, not just single-flow
-  correctness. `run.sh` builds `sim/tb_axitop_mixed_fanout.sv`, runs it, and
-  self-checks that both sequential bursts complete with their respective,
-  distinct ROM contents. Waveform:
+  running the same 7-phase read-write-read sequence as `single.mlir`'s
+  `mgr_module` — a 4-beat AXI4 INCR read burst, a 2-beat INCR write burst
+  overwriting words 1 and 2, then a second 4-beat read burst — *sequentially
+  twice*: first through one crossbar (`xbar1`) direct to `sub_module_a` at
+  address 0, then through a chained second crossbar (`xbar2`) to
+  `sub_module_b` at address 4096, each subordinate a real 4-word read/write
+  RAM (not a ROM) preloaded via `seq.initial` with its own distinct starting
+  words. This proves both fan-out paths of the real `axi_xbar` support
+  read-after-write consistency, not just single-flow correctness. `run.sh`
+  builds `sim/tb_axitop_mixed_fanout.sv`, runs it, and self-checks both
+  sequential paths' pre-write and post-write reads against their respective,
+  distinct expected words. Waveform:
   `build/mixed_fanout.sim/tb_axitop_mixed_fanout.vcd`.
 
 Open the waveforms in gtkwave/surfer to see the AR/R handshakes (including
@@ -150,8 +154,16 @@ subordinates also ignore `wstrb` (full-word writes only, no partial-strobe
 support).
 
 `mixed_fanout.mlir`'s `mgr_module`/`sub_module_a`/`sub_module_b` carry the
-same never-reset stopgap. `mgr_module`'s two-burst sequencer is a single
-FSM (`phase_q`) driving both bursts one after another, not two independent
-instances, so unlike `multi.mlir` there genuinely is one piece of shared
-state across the two bursts — but it's a plain sequential handoff (burst B
-only ever starts after burst A's `rlast`), not a concurrency hazard.
+same never-reset stopgap. `mgr_module`'s two-sequence sequencer is a single
+14-phase FSM (`phase_q`) driving both read-write-read sequences one after
+another, not two independent instances, so unlike `multi.mlir` there
+genuinely is one piece of shared state across the two sequences — but it's a
+plain sequential handoff (sub_module_b's sequence only ever starts after
+sub_module_a's final `rlast`), not a concurrency hazard. Like `single.mlir`'s
+`sub_module`, `sub_module_a`/`sub_module_b`'s 4 RAM word registers are
+preloaded via a separate `seq.initial` region and the compreg's `initial`
+clause per word (the `reset`/`resetValue` operand is dead code here too,
+since reset is never asserted) — see `single.mlir`'s stopgap note above for
+why that's the only mechanism that actually seeds a register's
+simulation-time value. Both subordinates also ignore `wstrb` (full-word
+writes only, no partial-strobe support).
