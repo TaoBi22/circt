@@ -290,3 +290,121 @@ axi4.subordinate_port %mgr, %clk, %rst node %sub_node {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4, 4, 4>
+
+// -----
+
+// Crossbar with overlapping downstream address windows.
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mgr_node = axi4.node @mgr_module : !axi4.node
+%sub_node0 = axi4.node @sub_module : !axi4.node
+%sub_node1 = axi4.node @sub_module : !axi4.node
+%mgr = axi4.manager_port %clk, %rst node %mgr_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+// expected-error @below {{overlapping address windows in the crossbar address map}}
+%xbar = axi4.xbar %clk, %rst mgrs %mgr : (!axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 64, 4, 4, 0>
+axi4.subordinate_port %xbar, %clk, %rst node %sub_node0 {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+axi4.subordinate_port %xbar, %clk, %rst node %sub_node1 {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
+  access = [#axi4.window<base = 2048, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+
+// -----
+
+// Crossbar address width wider than the PULP rule type supports.
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mgr_node = axi4.node @mgr_module : !axi4.node
+%sub_node = axi4.node @sub_module : !axi4.node
+%mgr = axi4.manager_port %clk, %rst node %mgr_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
+} : !axi4.port<128, 64, 4, 4, 0>
+// expected-error @below {{address widths wider than 64 bits are not supported}}
+%xbar = axi4.xbar %clk, %rst mgrs %mgr : (!axi4.port<128, 64, 4, 4, 0>) -> !axi4.port<128, 64, 4, 4, 0>
+axi4.subordinate_port %xbar, %clk, %rst node %sub_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<128, 64, 4, 4, 0>
+
+// -----
+
+// Crossbar port with mismatched write and read ID widths (PULP has one ID
+// width per side).
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mgr_node = axi4.node @mgr_module : !axi4.node
+%sub_node = axi4.node @sub_module : !axi4.node
+%mgr = axi4.manager_port %clk, %rst node %mgr_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 5, 0>
+// expected-error @below {{the PULP axi_xbar uses a single ID width per side, so the upstream write ID width (4) and read ID width (5) must match}}
+%xbar = axi4.xbar %clk, %rst mgrs %mgr : (!axi4.port<32, 64, 4, 5, 0>) -> !axi4.port<32, 64, 4, 5, 0>
+axi4.subordinate_port %xbar, %clk, %rst node %sub_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 5, 0>
+
+// -----
+
+// Access window that runs past the top of the port's address space.
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mgr_node = axi4.node @mgr_module : !axi4.node
+%sub_node = axi4.node @sub_module : !axi4.node
+%mgr = axi4.manager_port %clk, %rst node %mgr_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+%xbar = axi4.xbar %clk, %rst mgrs %mgr : (!axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 64, 4, 4, 0>
+// expected-error @below {{access window [base 4294963200, size 8192) does not fit the 32-bit address space}}
+axi4.subordinate_port %xbar, %clk, %rst node %sub_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
+  access = [#axi4.window<base = 4294963200, size = 8192, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+
+// -----
+
+// Crossbar with mismatched upstream and downstream user widths (PULP routes
+// user unchanged over a single user width).
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mgr_node = axi4.node @mgr_module : !axi4.node
+%sub_node = axi4.node @sub_module : !axi4.node
+%mgr = axi4.manager_port %clk, %rst node %mgr_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 4>
+// expected-error @below {{the PULP axi_xbar routes user unchanged over a single user width, so the upstream user width (4) and master user width (2) must match}}
+%xbar = axi4.xbar %clk, %rst mgrs %mgr : (!axi4.port<32, 64, 4, 4, 4>) -> !axi4.port<32, 64, 4, 4, 2>
+axi4.subordinate_port %xbar, %clk, %rst node %sub_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 2>

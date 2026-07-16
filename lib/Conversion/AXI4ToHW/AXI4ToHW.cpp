@@ -99,6 +99,44 @@ hw::StructType getChannelPayloadType(PortType port, AXI4Channel channel) {
   return hw::StructType::get(ctx, fields);
 }
 
+/// Build channel-split ports (payload, valid, ready) for a single !axi4.port.
+void buildChannelPortList(MLIRContext *ctx, PortType portType, bool isManager,
+                          StringRef prefix, SmallVectorImpl<PortInfo> &ports) {
+  Type i1 = IntegerType::get(ctx, 1);
+  auto add = [&](const Twine &name, Type t, ModulePort::Direction d) {
+    ports.push_back(PortInfo{{StringAttr::get(ctx, name.str()), t, d}});
+  };
+  for (const ChannelInfo &ci : kChannelInfos) {
+    bool payloadDrivenByModule = (isManager == ci.isRequest);
+    ModulePort::Direction fwd =
+        payloadDrivenByModule ? ModulePort::Output : ModulePort::Input;
+    ModulePort::Direction rev =
+        payloadDrivenByModule ? ModulePort::Input : ModulePort::Output;
+    std::string base = (prefix + ci.token).str();
+    add(base, getChannelPayloadType(portType, ci.channel), fwd);
+    add(base + "_valid", i1, fwd);
+    add(base + "_ready", i1, rev);
+  }
+}
+
+/// Get the exclusive end of the window - returns nullopt if window does not fit
+/// the `addrW`-bit address space.
+std::optional<uint64_t> windowEnd(uint64_t base, uint64_t size,
+                                  unsigned addrW) {
+  uint64_t end = base + size;
+  bool overflow = end < base;
+  if (addrW >= 64) {
+    // Fits unless the sum passes 2^64.
+    if (!overflow)
+      return end;
+    return end == 0 ? std::optional<uint64_t>(0) : std::nullopt;
+  }
+  uint64_t top = 1ull << addrW;
+  if (overflow || base >= top || end > top)
+    return std::nullopt;
+  return end == top ? 0 : end;
+}
+
 } // namespace AXI4ToHW
 } // namespace circt
 
@@ -159,6 +197,20 @@ LogicalResult checkNetwork(ModuleOp module) {
     }
   };
 
+  // Access windows must fit the port's address space; otherwise the derived
+  // routing rule would wrap and silently mis-route.
+  auto checkWindows = [&](Operation *op, auto access, unsigned addrW) {
+    for (auto win : access.template getAsRange<WindowAttr>()) {
+      uint64_t base = win.getBase(), size = win.getSize();
+      if (!windowEnd(base, size, addrW)) {
+        op->emitError("access window [base ")
+            << base << ", size " << size << ") does not fit the " << addrW
+            << "-bit address space";
+        failed = true;
+      }
+    }
+  };
+
   module.walk([&](Operation *op) {
     TypeSwitch<Operation *>(op)
         .Case<ManagerPortOp>([&](ManagerPortOp mgr) {
@@ -176,6 +228,9 @@ LogicalResult checkNetwork(ModuleOp module) {
                           "supported");
             failed = true;
           }
+          checkWindows(
+              mgr, mgr.getAccess(),
+              cast<PortType>(mgr.getPort().getType()).getAddressWidth());
           checkMapping(mgr, mgr.getPortMapping());
         })
         .Case<SubordinatePortOp>([&](SubordinatePortOp sub) {
@@ -187,6 +242,9 @@ LogicalResult checkNetwork(ModuleOp module) {
             failed = true;
             return;
           }
+          checkWindows(
+              sub, sub.getAccess(),
+              cast<PortType>(sub.getUpstream().getType()).getAddressWidth());
           checkMapping(sub, sub.getPortMapping());
         })
         .Case<XbarOp>([&](XbarOp xbar) {
@@ -194,6 +252,8 @@ LogicalResult checkNetwork(ModuleOp module) {
           checkReset(xbar, xbar.getReset());
           checkRegion(xbar);
           checkUsers(xbar);
+          if (checkXbarSupported(xbar).failed())
+            failed = true;
         })
         .Case<NodeOp>([&](NodeOp node) {
           checkRegion(node);
@@ -378,6 +438,56 @@ private:
   ImplicitLocOpBuilder &builder;
 };
 
+/// Lowers a port group using the struct-grouped channel-split convention: each
+/// channel is one whole-struct payload port plus scalar `valid`/`ready` ports,
+/// named `<prefix><token>`/`_valid`/`_ready`. Used for the xbar wrapper, whose
+/// interface mirrors the internal `ChannelWires` form
+
+class ChannelPortsMappingLowerer : public MappingLowerer {
+public:
+  ChannelPortsMappingLowerer(
+      Operation *portOp, StringRef prefix,
+      DenseMap<StringRef, PortInfo> &portByName,
+      DenseMap<StringRef, Value> &inputByName,
+      SmallVectorImpl<std::pair<Wire *, StringRef>> &outs)
+      : MappingLowerer(portOp, "", portByName, inputByName, outs),
+        prefix(prefix.str()) {}
+
+  // The module port already is the whole struct; no per-field split/reassembly.
+  LogicalResult registerPayloadFromModule(const ChannelInfo &ci, hw::StructType,
+                                          Wire &payload) override {
+    return registerScalarFromModule(getChannelBase(ci), payload);
+  }
+  LogicalResult registerPayloadToModule(const ChannelInfo &ci, hw::StructType,
+                                        Wire &payload) override {
+    return registerScalarToModule(getChannelBase(ci), payload);
+  }
+  LogicalResult registerValidFromModule(const ChannelInfo &ci,
+                                        Wire &valid) override {
+    return registerScalarFromModule(getChannelBase(ci) + "_valid", valid);
+  }
+  LogicalResult registerValidToModule(const ChannelInfo &ci,
+                                      Wire &valid) override {
+    return registerScalarToModule(getChannelBase(ci) + "_valid", valid);
+  }
+  LogicalResult registerReadyFromModule(const ChannelInfo &ci,
+                                        Wire &ready) override {
+    return registerScalarFromModule(getChannelBase(ci) + "_ready", ready);
+  }
+  LogicalResult registerReadyToModule(const ChannelInfo &ci,
+                                      Wire &ready) override {
+    return registerScalarToModule(getChannelBase(ci) + "_ready", ready);
+  }
+
+private:
+  std::string getChannelBase(const ChannelInfo &ci) const {
+    return prefix + ci.token.str();
+  }
+
+  /// Per-face port name prefix (e.g. `sub0_`/`mgr0_`).
+  std::string prefix;
+};
+
 /// Populate `wires` for one port group, walking the five channels and placing
 /// backedges by direction; `mapping` supplies the mapping-specific port wiring.
 LogicalResult populatePortGroup(bool isManager, PortType portType,
@@ -469,6 +579,10 @@ LogicalResult NetworkLowering::buildInstance(
       lowerer = std::make_unique<PortWiresMappingLowerer>(
           spec.defOp, spec.isManager, spec.name, portByName, inputByName, outs,
           outStructs, builder);
+      break;
+    case MappingKind::ChannelPorts:
+      lowerer = std::make_unique<ChannelPortsMappingLowerer>(
+          spec.defOp, spec.name, portByName, inputByName, outs);
       break;
     }
     if (failed(populatePortGroup(spec.isManager, spec.portType, builder, bb,
@@ -603,21 +717,22 @@ LogicalResult NetworkLowering::run() {
 }
 
 LogicalResult NetworkLowering::lowerNetwork() {
-  WalkResult xbarWalk = module.walk([&](XbarOp xbar) {
-    xbar.emitError("xbar lowering is not yet implemented");
-    return WalkResult::interrupt();
-  });
-  if (xbarWalk.wasInterrupted())
-    return failure();
-
   // The network may sit at the top level or inside an enclosing hw.module; find
   // its ops wherever they are and emit the lowered design in the same block
   SmallVector<NodeOp> nodes;
-  module.walk([&](NodeOp node) { nodes.push_back(node); });
+  SmallVector<XbarOp> xbars;
+  module.walk([&](Operation *op) {
+    if (auto node = dyn_cast<NodeOp>(op))
+      nodes.push_back(node);
+    else if (auto xbar = dyn_cast<XbarOp>(op))
+      xbars.push_back(xbar);
+  });
 
   Block *netBlock = nullptr;
   if (!nodes.empty())
     netBlock = nodes.front()->getBlock();
+  else if (!xbars.empty())
+    netBlock = xbars.front()->getBlock();
   if (netBlock) {
     if (!netBlock->empty() &&
         netBlock->back().hasTrait<OpTrait::IsTerminator>())
@@ -628,6 +743,10 @@ LogicalResult NetworkLowering::lowerNetwork() {
 
   for (NodeOp node : nodes)
     if (failed(lowerNode(node)))
+      return failure();
+
+  for (XbarOp xbar : xbars)
+    if (failed(lowerXbar(xbar)))
       return failure();
 
   // Connect every edge's producer side to its consumer side.

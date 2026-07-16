@@ -20,9 +20,12 @@
 #include "circt/Dialect/AXI4/AXI4Types.h"
 #include "circt/Dialect/HW/HWOps.h"
 #include "circt/Dialect/HW/HWTypes.h"
+#include "circt/Dialect/HW/PortImplementation.h"
+#include "circt/Dialect/SV/SVOps.h"
 #include "circt/Support/BackedgeBuilder.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringMap.h"
 #include <array>
 #include <optional>
 
@@ -69,6 +72,10 @@ struct EdgeWires {
 enum class MappingKind {
   /// Flat per-field scalar ports (port_wires attribute)
   PortWires,
+  /// Struct-grouped channel-split ports (used as the interface for IP wrappers
+  /// since it's close to the intermediate format we used, and sits in-between
+  /// flat and everything being wrapped in one struct)
+  ChannelPorts,
 };
 
 /// One AXI interface to wire on an instance
@@ -114,6 +121,27 @@ extern const ChannelInfo kChannelInfos[kNumChannels];
 /// Build the `hw.struct` payload type for one channel of an `!axi4.port`.
 hw::StructType getChannelPayloadType(axi4::PortType port, AXI4Channel channel);
 
+/// Append channel-split ports (payload, valid, ready) for a single !axi4.port.
+void buildChannelPortList(mlir::MLIRContext *ctx, axi4::PortType portType,
+                          bool isManager, llvm::StringRef prefix,
+                          llvm::SmallVectorImpl<hw::PortInfo> &ports);
+
+/// Get the exclusive end of the window - returns nullopt if it does not fit the
+/// `addrW`-bit address space.
+std::optional<uint64_t> windowEnd(uint64_t base, uint64_t size, unsigned addrW);
+
+/// Reject crossbars the PULP axi_xbar backend cannot represent.
+mlir::LogicalResult checkXbarSupported(axi4::XbarOp xbar);
+
+/// One `xbar_rule_*_t` entry: requests in [start, end) route to master port
+/// `idx`. Following PULP's addr_decode, `end == 0` means "to the end of the
+/// address space".
+struct AddrRule {
+  unsigned idx;
+  uint64_t start;
+  uint64_t end;
+};
+
 //===----------------------------------------------------------------------===//
 // NetworkLowering context
 //
@@ -133,6 +161,14 @@ public:
 private:
   mlir::LogicalResult lowerNetwork();
   mlir::LogicalResult lowerNode(axi4::NodeOp node);
+  mlir::LogicalResult lowerXbar(axi4::XbarOp xbar);
+  /// Get (or create) the PULP `axi_xbar` wrapper for this crossbar shape and
+  /// address map, deduplicated by their combined signature.
+  sv::SVVerbatimModuleOp getOrCreateXbarModule(unsigned numUpstream,
+                                               unsigned numDownstream,
+                                               axi4::PortType upstreamType,
+                                               axi4::PortType downstreamType,
+                                               llvm::ArrayRef<AddrRule> rules);
   /// Instantiate `moduleOp`, wiring each interface in `specs`; returns the
   /// per-interface wires in `wiresOut`.
   mlir::LogicalResult buildInstance(mlir::Operation *diag,
@@ -151,6 +187,8 @@ private:
   llvm::DenseMap<mlir::OpOperand *, EdgeWires> edges;
   llvm::DenseMap<mlir::Value, mlir::Value> clockCache;
   llvm::DenseMap<mlir::Value, mlir::Value> resetCache;
+  /// Emitted xbar wrappers, keyed by shape+address-map signature.
+  llvm::StringMap<sv::SVVerbatimModuleOp> xbarWrappers;
   unsigned instanceCounter = 0;
 };
 
