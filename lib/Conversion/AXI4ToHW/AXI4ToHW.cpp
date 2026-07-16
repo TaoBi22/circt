@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AXI4ToHWInternals.h"
 #include "circt/Conversion/AXI4ToHW.h"
+#include "AXI4ToHWInternals.h"
 #include "circt/Dialect/AXI4/AXI4Attributes.h"
 #include "circt/Dialect/AXI4/AXI4Dialect.h"
 #include "circt/Dialect/AXI4/AXI4Ops.h"
@@ -83,8 +83,7 @@ hw::StructType getChannelPayloadType(PortType port, AXI4Channel channel) {
     break;
   case AXI4Channel::W:
     fields = {field("data", port.getDataWidth()),
-              field("strb", port.getDataWidth() / 8),
-              field("last", kLastWidth),
+              field("strb", port.getDataWidth() / 8), field("last", kLastWidth),
               field("user", port.getUserWidth())};
     break;
   case AXI4Channel::B:
@@ -611,8 +610,21 @@ LogicalResult NetworkLowering::lowerNetwork() {
   if (xbarWalk.wasInterrupted())
     return failure();
 
+  // The network may sit at the top level or inside an enclosing hw.module; find
+  // its ops wherever they are and emit the lowered design in the same block
   SmallVector<NodeOp> nodes;
   module.walk([&](NodeOp node) { nodes.push_back(node); });
+
+  Block *netBlock = nullptr;
+  if (!nodes.empty())
+    netBlock = nodes.front()->getBlock();
+  if (netBlock) {
+    if (!netBlock->empty() &&
+        netBlock->back().hasTrait<OpTrait::IsTerminator>())
+      builder.setInsertionPoint(&netBlock->back());
+    else
+      builder.setInsertionPointToEnd(netBlock);
+  }
 
   for (NodeOp node : nodes)
     if (failed(lowerNode(node)))
