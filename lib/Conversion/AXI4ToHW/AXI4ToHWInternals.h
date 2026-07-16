@@ -1,0 +1,160 @@
+//===- AXI4ToHWInternals.h - Shared AXI4-to-HW lowering internals ---------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// Types and the NetworkLowering context for the AXI4-to-HW lowering, factored
+// into a header so they can be shared across the pass's translation units.
+//
+//===----------------------------------------------------------------------===//
+
+// NOLINTNEXTLINE(llvm-header-guard)
+#ifndef CONVERSION_AXI4TOHW_AXI4TOHWINTERNALS_H
+#define CONVERSION_AXI4TOHW_AXI4TOHWINTERNALS_H
+
+#include "circt/Conversion/AXI4ToHW.h"
+#include "circt/Dialect/AXI4/AXI4Ops.h"
+#include "circt/Dialect/AXI4/AXI4Types.h"
+#include "circt/Dialect/HW/HWOps.h"
+#include "circt/Dialect/HW/HWTypes.h"
+#include "circt/Support/BackedgeBuilder.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "llvm/ADT/DenseMap.h"
+#include <array>
+#include <optional>
+
+namespace circt {
+namespace AXI4ToHW {
+
+//===----------------------------------------------------------------------===//
+// Canonical network signal representation
+//===----------------------------------------------------------------------===//
+
+/// One network signal that may or may not be a backedge.
+struct Wire {
+  mlir::Value value;
+  std::optional<Backedge> backedge;
+  bool isBackedge() const { return backedge.has_value(); }
+};
+
+enum class AXI4Channel { AW, W, B, AR, R };
+constexpr unsigned kNumChannels = 5;
+
+/// One AXI4 channel's three signals. `ready` flows opposite to
+/// `payload`/`valid`.
+struct ChannelWires {
+  Wire payload;
+  Wire valid;
+  Wire ready;
+};
+
+/// A port's five channels, in canonical order (AW, W, B, AR, R).
+using PortWires = std::array<ChannelWires, kNumChannels>;
+
+/// The two sides of one AXI edge, keyed by the consuming operand. Each side is
+/// set when its endpoint is lowered; both exist by the time we connect.
+struct EdgeWires {
+  std::optional<PortWires> producer;
+  std::optional<PortWires> consumer;
+};
+
+//===----------------------------------------------------------------------===//
+// Port group / channel metadata
+//===----------------------------------------------------------------------===//
+
+/// How a port group's channels map onto the instantiated module's ports.
+enum class MappingKind {
+  /// Flat per-field scalar ports (port_wires attribute)
+  PortWires,
+};
+
+/// One AXI interface to wire on an instance
+struct PortGroupSpec {
+  // Defining op for diagnostics
+  mlir::Operation *defOp;
+  bool isManager;
+  axi4::PortType portType;
+  MappingKind kind;
+  // Prefix for port names according to mapping
+  std::string name;
+  mlir::Value axiClock;
+  std::string clockPort;
+  mlir::Value axiReset;
+  std::string resetPort;
+};
+
+// Fixed AXI4 field widths (bits).
+constexpr unsigned kLenWidth = 8;
+constexpr unsigned kSizeWidth = 3;
+constexpr unsigned kBurstWidth = 2;
+constexpr unsigned kLockWidth = 1;
+constexpr unsigned kCacheWidth = 4;
+constexpr unsigned kProtWidth = 3;
+constexpr unsigned kQosWidth = 4;
+constexpr unsigned kRegionWidth = 4;
+constexpr unsigned kRespWidth = 2;
+constexpr unsigned kLastWidth = 1;
+
+/// Per-channel lowering metadata. `token` is the port-name infix ("aw", "w",
+/// etc); `isRequest` is true for channels a manager drives (AW, W, AR).
+struct ChannelInfo {
+  AXI4Channel channel;
+  llvm::StringRef token;
+  bool isRequest;
+};
+extern const ChannelInfo kChannelInfos[kNumChannels];
+
+//===----------------------------------------------------------------------===//
+// Shared helpers
+//===----------------------------------------------------------------------===//
+
+/// Build the `hw.struct` payload type for one channel of an `!axi4.port`.
+hw::StructType getChannelPayloadType(axi4::PortType port, AXI4Channel channel);
+
+//===----------------------------------------------------------------------===//
+// NetworkLowering context
+//
+// Orchestrates lowering the whole AXI4 network.
+//===----------------------------------------------------------------------===//
+
+class NetworkLowering {
+public:
+  NetworkLowering(mlir::ModuleOp module)
+      : module(module), builder(module.getLoc(), module.getContext()),
+        bb(builder, module.getLoc()) {
+    builder.setInsertionPointToEnd(module.getBody());
+  }
+
+  mlir::LogicalResult run();
+
+private:
+  mlir::LogicalResult lowerNetwork();
+  mlir::LogicalResult lowerNode(axi4::NodeOp node);
+  /// Instantiate `moduleOp`, wiring each interface in `specs`; returns the
+  /// per-interface wires in `wiresOut`.
+  mlir::LogicalResult buildInstance(mlir::Operation *diag,
+                                    hw::HWModuleLike moduleOp,
+                                    llvm::StringRef instanceName,
+                                    llvm::ArrayRef<PortGroupSpec> specs,
+                                    llvm::SmallVectorImpl<PortWires> &wiresOut);
+  /// Materialize an `!axi4.clock` value as the module clock port's type.
+  mlir::Value materializeClock(mlir::Value axiClock, mlir::Type portType);
+  /// Materialize an `!axi4.reset` value as the module reset port's type.
+  mlir::Value materializeReset(mlir::Value axiReset, mlir::Type portType);
+
+  mlir::ModuleOp module;
+  mlir::ImplicitLocOpBuilder builder;
+  BackedgeBuilder bb;
+  llvm::DenseMap<mlir::OpOperand *, EdgeWires> edges;
+  llvm::DenseMap<mlir::Value, mlir::Value> clockCache;
+  llvm::DenseMap<mlir::Value, mlir::Value> resetCache;
+  unsigned instanceCounter = 0;
+};
+
+} // namespace AXI4ToHW
+} // namespace circt
+
+#endif // CONVERSION_AXI4TOHW_AXI4TOHWINTERNALS_H

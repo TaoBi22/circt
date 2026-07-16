@@ -1,25 +1,28 @@
-//===- AXI4ToHW.cpp - Translate AXI4 into HW
-//-------------------------------===//
+//===- AXI4ToHW.cpp - Translate AXI4 into HW ------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
-//===----------------------------------------------------------------------===//
-//
-// This is the main AXI4 to HW Conversion Pass Implementation. It lowers the
-// abstract AXI4 network dialect into instantiated hardware, wiring each node
-// and crossbar together according to the network's SSA edges.
 //
 //===----------------------------------------------------------------------===//
+//
+// Lowers abstract networks in the AXI4 dialect to HW, wiring each node together
+// according to the network's SSA edges.
+//
+//===----------------------------------------------------------------------===//
 
+#include "AXI4ToHWInternals.h"
 #include "circt/Conversion/AXI4ToHW.h"
 #include "circt/Dialect/AXI4/AXI4Attributes.h"
 #include "circt/Dialect/AXI4/AXI4Dialect.h"
 #include "circt/Dialect/AXI4/AXI4Ops.h"
 #include "circt/Dialect/AXI4/AXI4Types.h"
 #include "circt/Dialect/HW/HWDialect.h"
+#include "circt/Dialect/HW/HWOps.h"
 #include "circt/Dialect/HW/HWTypes.h"
+#include "circt/Dialect/HW/PortImplementation.h"
+#include "circt/Support/BackedgeBuilder.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -31,35 +34,16 @@ namespace circt {
 using namespace mlir;
 using namespace circt;
 using namespace circt::axi4;
-
-//===----------------------------------------------------------------------===//
-// Canonical channel representation
-//===----------------------------------------------------------------------===//
+using namespace circt::hw;
+using namespace circt::AXI4ToHW;
 
 namespace circt {
 namespace AXI4ToHW {
-
-/// One AXI4 channel's three RTL signals
-struct ChannelWires {
-  Value payload;
-  Value valid;
-  Value ready;
-};
-
-// Fixed AXI4 field widths (bits).
-constexpr unsigned kLenWidth = 8;
-constexpr unsigned kSizeWidth = 3;
-constexpr unsigned kBurstWidth = 2;
-constexpr unsigned kLockWidth = 1;
-constexpr unsigned kCacheWidth = 4;
-constexpr unsigned kProtWidth = 3;
-constexpr unsigned kQosWidth = 4;
-constexpr unsigned kRegionWidth = 4;
-constexpr unsigned kRespWidth = 2;
-constexpr unsigned kLastWidth = 1;
-
-/// The five AXI4 channels, in canonical order.
-enum class AXI4Channel { AW, W, B, AR, R };
+const ChannelInfo kChannelInfos[kNumChannels] = {{AXI4Channel::AW, "aw", true},
+                                                 {AXI4Channel::W, "w", true},
+                                                 {AXI4Channel::B, "b", false},
+                                                 {AXI4Channel::AR, "ar", true},
+                                                 {AXI4Channel::R, "r", false}};
 
 /// Build the `hw.struct` payload type for one channel of an `!axi4.port`.
 hw::StructType getChannelPayloadType(PortType port, AXI4Channel channel) {
@@ -146,6 +130,18 @@ LogicalResult checkNetwork(ModuleOp module) {
     }
   };
 
+  // The whole network is lowered into one block; a split-region network would
+  // otherwise emit instances that can't reach their peers.
+  Region *commonRegion = nullptr;
+  auto checkRegion = [&](Operation *op) {
+    if (!commonRegion)
+      commonRegion = op->getParentRegion();
+    else if (op->getParentRegion() != commonRegion) {
+      op->emitError("all axi4 network operations must be in the same region");
+      failed = true;
+    }
+  };
+
   auto checkUsers = [&](Operation *op) {
     for (Operation *user : op->getUsers())
       if (!isa_and_nonnull<AXI4Dialect>(user->getDialect())) {
@@ -169,6 +165,7 @@ LogicalResult checkNetwork(ModuleOp module) {
         .Case<ManagerPortOp>([&](ManagerPortOp mgr) {
           checkClock(mgr, mgr.getClock());
           checkReset(mgr, mgr.getReset());
+          checkRegion(mgr);
           checkUsers(mgr);
           if (!mgr.getNode()) {
             mgr.emitError("nodeless ports are not yet supported");
@@ -185,6 +182,7 @@ LogicalResult checkNetwork(ModuleOp module) {
         .Case<SubordinatePortOp>([&](SubordinatePortOp sub) {
           checkClock(sub, sub.getClock());
           checkReset(sub, sub.getReset());
+          checkRegion(sub);
           if (!sub.getNode()) {
             sub.emitError("nodeless ports are not yet supported");
             failed = true;
@@ -195,14 +193,460 @@ LogicalResult checkNetwork(ModuleOp module) {
         .Case<XbarOp>([&](XbarOp xbar) {
           checkClock(xbar, xbar.getClock());
           checkReset(xbar, xbar.getReset());
+          checkRegion(xbar);
           checkUsers(xbar);
         })
-        .Case<NodeOp>([&](NodeOp node) { checkUsers(node); });
+        .Case<NodeOp>([&](NodeOp node) {
+          checkRegion(node);
+          checkUsers(node);
+        });
   });
 
   return failure(failed);
 }
 
+//===----------------------------------------------------------------------===//
+// Network synthesis
+//===----------------------------------------------------------------------===//
+
+/// Bind the backedge side of an edge to the value driven by the other side.
+void connectWire(Wire &a, Wire &b) {
+  assert(a.isBackedge() != b.isBackedge() &&
+         "exactly one side of an AXI4 wire must be a backedge");
+  if (a.isBackedge())
+    a.backedge->setValue(b.value);
+  else
+    b.backedge->setValue(a.value);
+}
+
+void connectPorts(PortWires &a, PortWires &b) {
+  for (unsigned i = 0; i < kNumChannels; ++i) {
+    connectWire(a[i].payload, b[i].payload);
+    connectWire(a[i].valid, b[i].valid);
+    connectWire(a[i].ready, b[i].ready);
+  }
+}
+
+/// Interface for wiring one port group's channels onto a module's physical
+/// ports. `FromModule` binds a module output, `ToModule` drives a module input.
+/// Holds the shared port lookup and scalar wiring; subclasses map each
+/// channel's payload onto the target module's ports.
+class MappingLowerer {
+public:
+  MappingLowerer(Operation *portOp, StringRef notFoundSuffix,
+                 DenseMap<StringRef, PortInfo> &portByName,
+                 DenseMap<StringRef, Value> &inputByName,
+                 SmallVectorImpl<std::pair<Wire *, StringRef>> &outs)
+      : portOp(portOp), notFoundSuffix(notFoundSuffix.str()),
+        portByName(portByName), inputByName(inputByName), outs(outs) {}
+  virtual ~MappingLowerer() = default;
+  virtual LogicalResult registerPayloadFromModule(const ChannelInfo &ci,
+                                                  hw::StructType payloadTy,
+                                                  Wire &payload) = 0;
+  virtual LogicalResult registerPayloadToModule(const ChannelInfo &ci,
+                                                hw::StructType payloadTy,
+                                                Wire &payload) = 0;
+  virtual LogicalResult registerValidFromModule(const ChannelInfo &ci,
+                                                Wire &valid) = 0;
+  virtual LogicalResult registerValidToModule(const ChannelInfo &ci,
+                                              Wire &valid) = 0;
+  virtual LogicalResult registerReadyFromModule(const ChannelInfo &ci,
+                                                Wire &ready) = 0;
+  virtual LogicalResult registerReadyToModule(const ChannelInfo &ci,
+                                              Wire &ready) = 0;
+
+protected:
+  std::optional<PortInfo> lookup(const Twine &nameT,
+                                 ModulePort::Direction dir) {
+    std::string name = nameT.str();
+    auto it = portByName.find(name);
+    if (it == portByName.end()) {
+      portOp->emitError("referenced module has no port '")
+          << name << "'" << notFoundSuffix;
+      return std::nullopt;
+    }
+    if (it->second.dir != dir) {
+      portOp->emitError("module port '") << name << "' has the wrong direction";
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
+  /// Bind a single module output port (whole value) to `wire`.
+  LogicalResult registerScalarFromModule(const Twine &name, Wire &wire) {
+    auto port = lookup(name, ModulePort::Output);
+    if (!port)
+      return failure();
+    outs.emplace_back(&wire, port->name.getValue());
+    return success();
+  }
+
+  /// Drive a single module input port with `wire`'s value.
+  LogicalResult registerScalarToModule(const Twine &name, Wire &wire) {
+    auto port = lookup(name, ModulePort::Input);
+    if (!port)
+      return failure();
+    inputByName[port->name.getValue()] = wire.value;
+    return success();
+  }
+
+  /// Op used for diagnostics.
+  Operation *portOp;
+  /// Appended to the "no port" diagnostic for mapping-specific context.
+  std::string notFoundSuffix;
+  /// Module ports by name.
+  DenseMap<StringRef, PortInfo> &portByName;
+  /// Instance input drivers.
+  DenseMap<StringRef, Value> &inputByName;
+  /// Scalar outputs resolved after instantiation.
+  SmallVectorImpl<std::pair<Wire *, StringRef>> &outs;
+};
+
+/// Lowers a port group using the flat-scalar `port_wires` mapping: each channel
+/// payload is split into one module port per field.
+class PortWiresMappingLowerer : public MappingLowerer {
+public:
+  PortWiresMappingLowerer(
+      Operation *portOp, bool isManager, StringRef name,
+      DenseMap<StringRef, PortInfo> &portByName,
+      DenseMap<StringRef, Value> &inputByName,
+      SmallVectorImpl<std::pair<Wire *, StringRef>> &outs,
+      SmallVectorImpl<std::tuple<Wire *, hw::StructType,
+                                 SmallVector<StringRef>>> &outStructs,
+      ImplicitLocOpBuilder &builder)
+      : MappingLowerer(portOp, " required by the port_wires mapping",
+                       portByName, inputByName, outs),
+        base(((isManager ? "m_axi_" : "s_axi_") + name + "_").str()),
+        outStructs(outStructs), builder(builder) {}
+
+  LogicalResult registerPayloadFromModule(const ChannelInfo &ci,
+                                          hw::StructType payloadTy,
+                                          Wire &payload) override {
+    std::string cbase = getChannelBase(ci);
+    SmallVector<StringRef> fieldNames;
+    for (auto &field : payloadTy.getElements()) {
+      auto port = lookup(cbase + field.name.getValue(), ModulePort::Output);
+      if (!port)
+        return failure();
+      fieldNames.push_back(port->name.getValue());
+    }
+    outStructs.emplace_back(&payload, payloadTy, std::move(fieldNames));
+    return success();
+  }
+
+  LogicalResult registerPayloadToModule(const ChannelInfo &ci,
+                                        hw::StructType payloadTy,
+                                        Wire &payload) override {
+    std::string cbase = getChannelBase(ci);
+    for (auto &field : payloadTy.getElements()) {
+      auto port = lookup(cbase + field.name.getValue(), ModulePort::Input);
+      if (!port)
+        return failure();
+      inputByName[port->name.getValue()] =
+          hw::StructExtractOp::create(builder, payload.value, field.name);
+    }
+    return success();
+  }
+
+  LogicalResult registerValidFromModule(const ChannelInfo &ci,
+                                        Wire &valid) override {
+    return registerScalarFromModule(getChannelBase(ci) + "valid", valid);
+  }
+  LogicalResult registerValidToModule(const ChannelInfo &ci,
+                                      Wire &valid) override {
+    return registerScalarToModule(getChannelBase(ci) + "valid", valid);
+  }
+  LogicalResult registerReadyFromModule(const ChannelInfo &ci,
+                                        Wire &ready) override {
+    return registerScalarFromModule(getChannelBase(ci) + "ready", ready);
+  }
+  LogicalResult registerReadyToModule(const ChannelInfo &ci,
+                                      Wire &ready) override {
+    return registerScalarToModule(getChannelBase(ci) + "ready", ready);
+  }
+
+private:
+  std::string getChannelBase(const ChannelInfo &ci) const {
+    return base + ci.token.str();
+  }
+
+  /// `m_axi_`/`s_axi_` port name prefix.
+  std::string base;
+  /// Payload outputs assembled after instantiation.
+  SmallVectorImpl<std::tuple<Wire *, hw::StructType, SmallVector<StringRef>>>
+      &outStructs;
+  /// Insertion point for helper ops.
+  ImplicitLocOpBuilder &builder;
+};
+
+/// Populate `wires` for one port group, walking the five channels and placing
+/// backedges by direction; `mapping` supplies the mapping-specific port wiring.
+LogicalResult populatePortGroup(bool isManager, PortType portType,
+                                ImplicitLocOpBuilder &builder,
+                                BackedgeBuilder &bb, PortWires &wires,
+                                MappingLowerer &mapping) {
+  Type i1 = builder.getI1Type();
+
+  for (auto [idx, ci] : llvm::enumerate(kChannelInfos)) {
+    hw::StructType payloadTy = getChannelPayloadType(portType, ci.channel);
+    bool payloadDrivenByModule = (isManager == ci.isRequest);
+    ChannelWires &cw = wires[idx];
+
+    if (payloadDrivenByModule) {
+      if (failed(mapping.registerPayloadFromModule(ci, payloadTy, cw.payload)))
+        return failure();
+      if (failed(mapping.registerValidFromModule(ci, cw.valid)))
+        return failure();
+
+      Backedge ready = bb.get(i1);
+      cw.ready = {ready, ready};
+      if (failed(mapping.registerReadyToModule(ci, cw.ready)))
+        return failure();
+      continue;
+    }
+
+    Backedge payload = bb.get(payloadTy);
+    cw.payload = {payload, payload};
+    if (failed(mapping.registerPayloadToModule(ci, payloadTy, cw.payload)))
+      return failure();
+
+    Backedge valid = bb.get(i1);
+    cw.valid = {valid, valid};
+    if (failed(mapping.registerValidToModule(ci, cw.valid)))
+      return failure();
+
+    if (failed(mapping.registerReadyFromModule(ci, cw.ready)))
+      return failure();
+  }
+  return success();
+}
+
+} // namespace
+
+// Materialize clocks as i1 since that's what'll be coming through the Slang
+// frontend (at time of writing)
+Value NetworkLowering::materializeClock(Value axiClock, Type portType) {
+  if (!portType.isInteger(1))
+    return {};
+  Value &clock = clockCache[axiClock];
+  if (!clock)
+    clock = UnrealizedConversionCastOp::create(builder, portType, axiClock)
+                .getResult(0);
+  return clock;
+}
+
+// Materialize resets as i1, mirroring materializeClock.
+Value NetworkLowering::materializeReset(Value axiReset, Type portType) {
+  if (!portType.isInteger(1))
+    return {};
+  Value &reset = resetCache[axiReset];
+  if (!reset)
+    reset = UnrealizedConversionCastOp::create(builder, portType, axiReset)
+                .getResult(0);
+  return reset;
+}
+
+LogicalResult NetworkLowering::buildInstance(
+    Operation *diag, hw::HWModuleLike moduleOp, StringRef instanceName,
+    ArrayRef<PortGroupSpec> specs, SmallVectorImpl<PortWires> &wiresOut) {
+  DenseMap<StringRef, PortInfo> portByName;
+  for (auto &p : moduleOp.getPortList())
+    portByName[p.getName()] = p;
+
+  DenseMap<StringRef, Value> inputByName;
+  SmallVector<std::pair<Wire *, StringRef>> outs;
+  SmallVector<std::tuple<Wire *, hw::StructType, SmallVector<StringRef>>>
+      outStructs;
+
+  // Reserve so the deferred output pointers below stay valid:
+  // `outs`/`outStructs` hold Wire pointers into these elements until we resolve
+  // them post-instance.
+  wiresOut.reserve(specs.size());
+  for (const PortGroupSpec &spec : specs) {
+    wiresOut.emplace_back();
+    std::unique_ptr<MappingLowerer> lowerer;
+    switch (spec.kind) {
+    case MappingKind::PortWires:
+      lowerer = std::make_unique<PortWiresMappingLowerer>(
+          spec.defOp, spec.isManager, spec.name, portByName, inputByName, outs,
+          outStructs, builder);
+      break;
+    }
+    if (failed(populatePortGroup(spec.isManager, spec.portType, builder, bb,
+                                 wiresOut.back(), *lowerer)))
+      return failure();
+
+    auto clockPort = portByName.find(spec.clockPort);
+    if (clockPort == portByName.end())
+      return spec.defOp->emitError("referenced module has no clock port '")
+             << spec.clockPort << "'";
+    Value clock = materializeClock(spec.axiClock, clockPort->second.type);
+    if (!clock)
+      return spec.defOp->emitError("unsupported clock port type");
+    inputByName[clockPort->second.name.getValue()] = clock;
+
+    auto resetPort = portByName.find(spec.resetPort);
+    if (resetPort == portByName.end())
+      return spec.defOp->emitError("referenced module has no reset port '")
+             << spec.resetPort << "'";
+    Value reset = materializeReset(spec.axiReset, resetPort->second.type);
+    if (!reset)
+      return spec.defOp->emitError("unsupported reset port type");
+    inputByName[resetPort->second.name.getValue()] = reset;
+  }
+
+  // Assemble instance inputs in the module's input-port order.
+  SmallVector<Value> inputs;
+  for (auto &p : moduleOp.getPortList()) {
+    if (!p.isInput())
+      continue;
+    auto it = inputByName.find(p.getName());
+    if (it == inputByName.end())
+      return diag->emitError("module input port '")
+             << p.getName() << "' is not driven by any AXI4 port";
+    inputs.push_back(it->second);
+  }
+
+  auto inst = hw::InstanceOp::create(
+      builder, moduleOp, builder.getStringAttr(instanceName), inputs);
+
+  // Instance results correspond to output ports in port-list order; map each
+  // output port name to its result index. (Resolving by name rather than
+  // PortInfo::argNum keeps this correct across module kinds - some HWModuleLike
+  // ops populate argNum with the combined port index rather than the
+  // direction-relative one.)
+  DenseMap<StringRef, unsigned> outputResult;
+  unsigned resultIdx = 0;
+  for (auto &p : moduleOp.getPortList())
+    if (p.isOutput())
+      outputResult[p.getName()] = resultIdx++;
+
+  // Resolve deferred module outputs into real driving values.
+  for (auto &[wire, name] : outs)
+    wire->value = inst.getResult(outputResult.at(name));
+  for (auto &[wire, structTy, fieldNames] : outStructs) {
+    SmallVector<Value> fields;
+    for (StringRef fn : fieldNames)
+      fields.push_back(inst.getResult(outputResult.at(fn)));
+    wire->value = hw::StructCreateOp::create(builder, structTy, fields);
+  }
+  return success();
+}
+
+LogicalResult NetworkLowering::lowerNode(NodeOp node) {
+  SmallVector<Operation *> ports(node.getNode().getUsers());
+  if (ports.empty())
+    return success();
+
+  // The NodeOp verifier guarantees the symbol resolves to an hw.module.
+  auto moduleOp = module.lookupSymbol<hw::HWModuleLike>(node.getModuleAttr());
+  assert(moduleOp && "node symbol does not map to module");
+
+  builder.setLoc(node.getLoc());
+
+  // One interface per attached port.
+  SmallVector<PortGroupSpec> specs;
+  for (Operation *portOp : ports) {
+    Value axiClock, axiReset;
+    PortType portType;
+    AXI4PortMappingAttrInterface mapping;
+    if (auto mgr = dyn_cast<ManagerPortOp>(portOp)) {
+      axiClock = mgr.getClock();
+      axiReset = mgr.getReset();
+      portType = cast<PortType>(mgr.getPort().getType());
+      mapping = *mgr.getPortMapping();
+    } else {
+      auto sub = cast<SubordinatePortOp>(portOp);
+      axiClock = sub.getClock();
+      axiReset = sub.getReset();
+      portType = cast<PortType>(sub.getUpstream().getType());
+      mapping = *sub.getPortMapping();
+    }
+
+    auto portWires = dyn_cast<PortWiresAttr>(mapping);
+    if (!portWires)
+      return portOp->emitError(
+          "only the 'port_wires' port_mapping is supported");
+    specs.push_back({portOp, isa<ManagerPortOp>(portOp), portType,
+                     MappingKind::PortWires, portWires.getName().str(),
+                     axiClock, mapping.getClockPort().str(), axiReset,
+                     mapping.getResetPort().str()});
+  }
+
+  SmallVector<PortWires, 0> allWires;
+  std::string instName =
+      (node.getModule() + "_" + Twine(instanceCounter++)).str();
+  if (failed(buildInstance(node, moduleOp, instName, specs, allWires)))
+    return failure();
+
+  // File each port's wires under the edge it forms: a manager is the producer
+  // for its result's (single) use; a subordinate is the consumer for its
+  // upstream operand.
+  for (auto [portOp, wires] : llvm::zip(ports, allWires)) {
+    if (auto mgr = dyn_cast<ManagerPortOp>(portOp))
+      edges[&*mgr.getPort().use_begin()].producer = wires;
+    else
+      edges[&portOp->getOpOperand(0)].consumer = wires;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Pass driver
+//===----------------------------------------------------------------------===//
+
+LogicalResult NetworkLowering::run() {
+  if (succeeded(lowerNetwork()))
+    return success();
+  // Avoid spurious backedge errors
+  bb.abandon();
+  return failure();
+}
+
+LogicalResult NetworkLowering::lowerNetwork() {
+  WalkResult xbarWalk = module.walk([&](XbarOp xbar) {
+    xbar.emitError("xbar lowering is not yet implemented");
+    return WalkResult::interrupt();
+  });
+  if (xbarWalk.wasInterrupted())
+    return failure();
+
+  SmallVector<NodeOp> nodes;
+  module.walk([&](NodeOp node) { nodes.push_back(node); });
+
+  for (NodeOp node : nodes)
+    if (failed(lowerNode(node)))
+      return failure();
+
+  // Connect every edge's producer side to its consumer side.
+  for (auto &[operand, edge] : edges) {
+    assert(edge.producer && edge.consumer &&
+           "both endpoints of an AXI edge must be lowered");
+    connectPorts(*edge.producer, *edge.consumer);
+  }
+
+  // Erase the abstract ops. Repeatedly drop those with no remaining uses; the
+  // SSA DAG guarantees each pass removes at least the current sinks.
+  SmallVector<Operation *> dead;
+  module.walk([&](Operation *op) {
+    if (isa_and_nonnull<AXI4Dialect>(op->getDialect()))
+      dead.push_back(op);
+  });
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (Operation *&op : dead)
+      if (op && op->use_empty()) {
+        op->erase();
+        op = nullptr;
+        changed = true;
+      }
+  }
+
+  return success();
+}
+
+namespace {
 struct AXI4ToHWPass : public circt::impl::AXI4ToHWBase<AXI4ToHWPass> {
   void runOnOperation() override;
 };
@@ -211,10 +655,8 @@ struct AXI4ToHWPass : public circt::impl::AXI4ToHWBase<AXI4ToHWPass> {
 void AXI4ToHWPass::runOnOperation() {
   if (failed(checkNetwork(getOperation())))
     return signalPassFailure();
-
-  // TODO: network synthesis and the port_wires adapter.
-  getOperation().emitError("lower-axi4-to-hw: pass not yet implemented");
-  signalPassFailure();
+  if (failed(NetworkLowering(getOperation()).run()))
+    return signalPassFailure();
 }
 
 std::unique_ptr<mlir::Pass> circt::createAXI4ToHWPass() {
