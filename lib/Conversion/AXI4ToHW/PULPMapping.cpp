@@ -17,6 +17,7 @@
 #include "circt/Dialect/AXI4/AXI4Attributes.h"
 #include "circt/Dialect/HW/HWAttributes.h"
 #include "circt/Dialect/SV/SVOps.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 
 using namespace mlir;
@@ -39,19 +40,31 @@ unsigned pulpUserWidth(PortType pt) {
 }
 
 /// Append the [start, end) address ranges served by one downstream endpoint of
-/// a crossbar.
+/// a crossbar. A subordinate contributes its access windows; a chained crossbar
+/// contributes the union of the ranges served by *its* downstreams, recursively,
+/// so a crossbar can fan out to subordinates and further crossbars at once.
 void collectDownstreamRanges(
     Operation *consumer, unsigned addrW,
-    SmallVectorImpl<std::pair<uint64_t, uint64_t>> &ranges) {
-  if (auto sub = dyn_cast<SubordinatePortOp>(consumer))
+    SmallVectorImpl<std::pair<uint64_t, uint64_t>> &ranges,
+    SmallPtrSetImpl<Operation *> &visited) {
+  if (auto sub = dyn_cast<SubordinatePortOp>(consumer)) {
     for (auto win : sub.getAccess().getAsRange<WindowAttr>())
       ranges.push_back(
           {win.getBase(),
            windowEnd(win.getBase(), win.getSize(), addrW).value_or(0)});
+    return;
+  }
+  if (auto xbar = dyn_cast<XbarOp>(consumer)) {
+    if (!visited.insert(xbar).second)
+      return; // Guard against pathological cycles.
+    for (OpOperand &use : xbar.getPort().getUses())
+      collectDownstreamRanges(use.getOwner(), addrW, ranges, visited);
+  }
 }
 
 /// Derive the crossbar's address map: one rule per address range served by each
-/// downstream endpoint.
+/// downstream endpoint, indexed by master-port (use-list) order to match how
+/// `lowerXbar` packs the arrays.
 SmallVector<AddrRule> deriveXbarAddrMap(XbarOp xbar) {
   auto downType = cast<PortType>(xbar.getPort().getType());
   unsigned addrW = downType.getAddressWidth();
@@ -59,7 +72,8 @@ SmallVector<AddrRule> deriveXbarAddrMap(XbarOp xbar) {
   unsigned idx = 0;
   for (OpOperand &use : xbar.getPort().getUses()) {
     SmallVector<std::pair<uint64_t, uint64_t>> ranges;
-    collectDownstreamRanges(use.getOwner(), addrW, ranges);
+    SmallPtrSet<Operation *, 4> visited;
+    collectDownstreamRanges(use.getOwner(), addrW, ranges, visited);
     for (auto [start, end] : ranges)
       rules.push_back({idx, start, end});
     ++idx;
