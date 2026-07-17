@@ -85,6 +85,9 @@ axi4.subordinate_port %xbar, %c, %r node %sub_node {
 // CHECK: axi4.cdc %[[XBAR]] from [%[[CLK]], %[[RST]]] to [%[[CLK]], %[[RST]]] : !axi4.port<32, 64, 5, 5, 0>
 %cdc = axi4.cdc %xbar from [%c, %r] to [%c, %r] : !axi4.port<32, 64, 5, 5, 0>
 
+// CHECK: axi4.data_width_converter %[[CLK]], %[[RST]], %[[XBAR]] : (!axi4.port<32, 64, 5, 5, 0>) -> !axi4.port<32, 32, 5, 5, 0>
+%dwc = axi4.data_width_converter %c, %r, %xbar : (!axi4.port<32, 64, 5, 5, 0>) -> !axi4.port<32, 32, 5, 5, 0>
+
 //===----------------------------------------------------------------------===//
 // Nodeless ports
 //===----------------------------------------------------------------------===//

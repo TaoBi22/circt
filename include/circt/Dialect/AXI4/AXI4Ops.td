@@ -224,4 +224,17 @@ let assemblyFormat = "$upstream `from` ` ` `[` $upstream_clock `,` $upstream_res
   let hasVerifier = 1;
 }
 
+def DWConverterOp : AXI4Op<"data_width_converter", []> {
+  let summary = "An AXI4 data width converter";
+  let description = [{
+    Modifies the data width of an upstream AXI port
+  }];
+
+  let arguments = (ins PortType:$upstream, ClockType:$clock, ResetType:$reset);
+  let results = (outs PortType:$downstream);
+
+  let assemblyFormat = "$clock `,` $reset `,` $upstream attr-dict `:` functional-type($upstream, $downstream)";
+  let hasVerifier = 1;
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
