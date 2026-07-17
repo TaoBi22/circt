@@ -162,6 +162,7 @@ private:
   mlir::LogicalResult lowerNetwork();
   mlir::LogicalResult lowerNode(axi4::NodeOp node);
   mlir::LogicalResult lowerXbar(axi4::XbarOp xbar);
+  mlir::LogicalResult lowerCut(axi4::CutOp cut);
   /// Get (or create) the PULP `axi_xbar` wrapper for this crossbar shape and
   /// address map, deduplicated by their combined signature.
   sv::SVVerbatimModuleOp getOrCreateXbarModule(unsigned numUpstream,
@@ -169,6 +170,9 @@ private:
                                                axi4::PortType upstreamType,
                                                axi4::PortType downstreamType,
                                                llvm::ArrayRef<AddrRule> rules);
+  /// Get (or create) the PULP `axi_cut` wrapper for this port shape,
+  /// deduplicated by shape.
+  sv::SVVerbatimModuleOp getOrCreateCutModule(axi4::PortType pt);
   /// Instantiate `moduleOp`, wiring each interface in `specs`; returns the
   /// per-interface wires in `wiresOut`.
   mlir::LogicalResult buildInstance(mlir::Operation *diag,
@@ -189,6 +193,8 @@ private:
   llvm::DenseMap<mlir::Value, mlir::Value> resetCache;
   /// Emitted xbar wrappers, keyed by shape+address-map signature.
   llvm::StringMap<sv::SVVerbatimModuleOp> xbarWrappers;
+  /// Emitted cut wrappers, keyed by port shape.
+  llvm::StringMap<sv::SVVerbatimModuleOp> cutWrappers;
   unsigned instanceCounter = 0;
 };
 

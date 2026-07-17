@@ -408,3 +408,18 @@ axi4.subordinate_port %xbar, %clk, %rst node %sub_node {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4, 4, 2>
+
+// -----
+
+// Cut with no downstream port: nothing to register into.
+hw.module.extern @mgr_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mgr_node = axi4.node @mgr_module : !axi4.node
+%mgr = axi4.manager_port %clk, %rst node %mgr_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+// expected-error @below {{axi4.cut result must feed a downstream port}}
+%cut = axi4.cut %clk, %rst at %mgr : !axi4.port<32, 64, 4, 4, 0>

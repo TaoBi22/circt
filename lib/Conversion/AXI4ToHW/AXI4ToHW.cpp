@@ -255,6 +255,18 @@ LogicalResult checkNetwork(ModuleOp module) {
           if (checkXbarSupported(xbar).failed())
             failed = true;
         })
+        .Case<CutOp>([&](CutOp cut) {
+          checkClock(cut, cut.getClock());
+          checkReset(cut, cut.getReset());
+          checkRegion(cut);
+          checkUsers(cut);
+          // The verifier already caps the result at one use; a cut with none
+          // has no downstream port to register into.
+          if (cut.getDownstream().use_empty()) {
+            cut.emitError("axi4.cut result must feed a downstream port");
+            failed = true;
+          }
+        })
         .Case<NodeOp>([&](NodeOp node) {
           checkRegion(node);
           checkUsers(node);
@@ -721,11 +733,14 @@ LogicalResult NetworkLowering::lowerNetwork() {
   // its ops wherever they are and emit the lowered design in the same block
   SmallVector<NodeOp> nodes;
   SmallVector<XbarOp> xbars;
+  SmallVector<CutOp> cuts;
   module.walk([&](Operation *op) {
     if (auto node = dyn_cast<NodeOp>(op))
       nodes.push_back(node);
     else if (auto xbar = dyn_cast<XbarOp>(op))
       xbars.push_back(xbar);
+    else if (auto cut = dyn_cast<CutOp>(op))
+      cuts.push_back(cut);
   });
 
   Block *netBlock = nullptr;
@@ -733,6 +748,8 @@ LogicalResult NetworkLowering::lowerNetwork() {
     netBlock = nodes.front()->getBlock();
   else if (!xbars.empty())
     netBlock = xbars.front()->getBlock();
+  else if (!cuts.empty())
+    netBlock = cuts.front()->getBlock();
   if (netBlock) {
     if (!netBlock->empty() &&
         netBlock->back().hasTrait<OpTrait::IsTerminator>())
@@ -747,6 +764,10 @@ LogicalResult NetworkLowering::lowerNetwork() {
 
   for (XbarOp xbar : xbars)
     if (failed(lowerXbar(xbar)))
+      return failure();
+
+  for (CutOp cut : cuts)
+    if (failed(lowerCut(cut)))
       return failure();
 
   // Connect every edge's producer side to its consumer side.
