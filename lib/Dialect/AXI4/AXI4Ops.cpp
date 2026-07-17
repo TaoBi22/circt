@@ -191,6 +191,25 @@ LogicalResult XbarOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// DWConverterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DWConverterOp::verify() {
+  auto up = cast<PortType>(getUpstream().getType());
+  auto down = cast<PortType>(getDownstream().getType());
+  // A data width converter changes only the data width; the address, ID, and
+  // user widths must be preserved.
+  if (up.getAddressWidth() != down.getAddressWidth())
+    return emitOpError("upstream and downstream address widths must match");
+  if (up.getWriteIdWidth() != down.getWriteIdWidth() ||
+      up.getReadIdWidth() != down.getReadIdWidth())
+    return emitOpError("upstream and downstream ID widths must match");
+  if (up.getUserWidth() != down.getUserWidth())
+    return emitOpError("upstream and downstream user widths must match");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen generated logic.
 //===----------------------------------------------------------------------===//
 

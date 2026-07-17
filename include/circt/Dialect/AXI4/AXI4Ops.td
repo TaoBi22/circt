@@ -240,6 +240,7 @@ def DWConverterOp : AXI4Op<"data_width_converter", [ResultsAtMostOneUse]> {
   let results = (outs PortType:$downstream);
 
   let assemblyFormat = "$clock `,` $reset `,` $upstream attr-dict `:` functional-type($upstream, $downstream)";
+  let hasVerifier = 1;
 }
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
