@@ -440,3 +440,41 @@ hw.module.extern @mgr_module()
 } : !axi4.port<32, 64, 4, 4, 0>
 // expected-error @below {{axi4.cdc result must feed a downstream port}}
 %cdc = axi4.cdc %mgr from [%clkA, %rstA] to [%clkB, %rstB] : !axi4.port<32, 64, 4, 4, 0>
+
+// -----
+
+// Data width converter with no downstream port: nothing to convert into.
+hw.module.extern @mgr_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mgr_node = axi4.node @mgr_module : !axi4.node
+%mgr = axi4.manager_port %clk, %rst node %mgr_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+// expected-error @below {{axi4.data_width_converter result must feed a downstream port}}
+%dwc = axi4.data_width_converter %clk, %rst, %mgr : (!axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 32, 4, 4, 0>
+
+// -----
+
+// Data width converter with mismatched write/read ID widths (PULP uses a single
+// ID width).
+hw.module.extern @mgr_module()
+hw.module.extern @sub_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mgr_node = axi4.node @mgr_module : !axi4.node
+%sub_node = axi4.node @sub_module : !axi4.node
+%mgr = axi4.manager_port %clk, %rst node %mgr_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_reads = 4 : ui32, outstanding_writes = 4 : ui32
+} : !axi4.port<32, 64, 4, 5, 0>
+// expected-error @below {{the PULP axi_dw_converter uses a single ID width, so the write ID width (4) and read ID width (5) must match}}
+%dwc = axi4.data_width_converter %clk, %rst, %mgr : (!axi4.port<32, 64, 4, 5, 0>) -> !axi4.port<32, 32, 4, 5, 0>
+axi4.subordinate_port %dwc, %clk, %rst node %sub_node {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 32, 4, 5, 0>

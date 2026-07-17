@@ -133,6 +133,11 @@ std::optional<uint64_t> windowEnd(uint64_t base, uint64_t size, unsigned addrW);
 /// Reject crossbars the PULP axi_xbar backend cannot represent.
 mlir::LogicalResult checkXbarSupported(axi4::XbarOp xbar);
 
+/// Reject data width converters the PULP axi_dw_converter backend cannot
+/// represent (it only resizes data; ID/address/user must be preserved and it
+/// uses a single ID width).
+mlir::LogicalResult checkDwConverterSupported(axi4::DWConverterOp dwc);
+
 /// One `xbar_rule_*_t` entry: requests in [start, end) route to master port
 /// `idx`. Following PULP's addr_decode, `end == 0` means "to the end of the
 /// address space".
@@ -164,6 +169,7 @@ private:
   mlir::LogicalResult lowerXbar(axi4::XbarOp xbar);
   mlir::LogicalResult lowerCut(axi4::CutOp cut);
   mlir::LogicalResult lowerCdc(axi4::CDCOp cdc);
+  mlir::LogicalResult lowerDwConverter(axi4::DWConverterOp dwc);
   /// Get (or create) the PULP `axi_xbar` wrapper for this crossbar shape and
   /// address map, deduplicated by their combined signature.
   sv::SVVerbatimModuleOp getOrCreateXbarModule(unsigned numUpstream,
@@ -177,6 +183,10 @@ private:
   /// Get (or create) the PULP `axi_cdc` wrapper for this port shape,
   /// deduplicated by shape.
   sv::SVVerbatimModuleOp getOrCreateCdcModule(axi4::PortType pt);
+  /// Get (or create) the PULP `axi_dw_converter` wrapper for this
+  /// upstream/downstream port shape, deduplicated by shape.
+  sv::SVVerbatimModuleOp getOrCreateDwConverterModule(axi4::PortType upType,
+                                                      axi4::PortType downType);
   /// Instantiate `moduleOp`, wiring each interface in `specs`; returns the
   /// per-interface wires in `wiresOut`.
   mlir::LogicalResult buildInstance(mlir::Operation *diag,
@@ -201,6 +211,8 @@ private:
   llvm::StringMap<sv::SVVerbatimModuleOp> cutWrappers;
   /// Emitted cdc wrappers, keyed by port shape.
   llvm::StringMap<sv::SVVerbatimModuleOp> cdcWrappers;
+  /// Emitted data-width-converter wrappers, keyed by up/down port shape.
+  llvm::StringMap<sv::SVVerbatimModuleOp> dwConverterWrappers;
   unsigned instanceCounter = 0;
 };
 
