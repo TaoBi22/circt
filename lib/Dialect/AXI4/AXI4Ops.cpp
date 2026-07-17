@@ -77,6 +77,13 @@ static LogicalResult verifyNodePortMapping(Operation *op, Value node,
   return success();
 }
 
+static LogicalResult verifyZeroOrOneUse(Operation *op, Value v) {
+  if (v.hasNUsesOrMore(2))
+    return op->emitOpError("result must have at most one use; route through an "
+                           "'axi4.xbar' to fan out to multiple endpoints");
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // NodeOp
 //===----------------------------------------------------------------------===//
@@ -91,7 +98,7 @@ LogicalResult NodeOp::verify() {
   // '!axi4.reset' operand.
   llvm::StringMap<Value> clockOfPort, resetOfPort;
   auto checkShared = [&](llvm::StringMap<Value> &seen, StringRef port,
-                        Value operand, StringRef kind) -> LogicalResult {
+                         Value operand, StringRef kind) -> LogicalResult {
     auto [it, inserted] = seen.try_emplace(port, operand);
     if (!inserted && it->second != operand)
       return emitOpError("ports sharing the ")
@@ -117,11 +124,11 @@ LogicalResult NodeOp::verify() {
     if (!mapping)
       continue;
 
-    if (failed(checkShared(clockOfPort, mapping.getClockPort(), clock,
-                           "clock")))
+    if (failed(
+            checkShared(clockOfPort, mapping.getClockPort(), clock, "clock")))
       return failure();
-    if (failed(checkShared(resetOfPort, mapping.getResetPort(), reset,
-                           "reset")))
+    if (failed(
+            checkShared(resetOfPort, mapping.getResetPort(), reset, "reset")))
       return failure();
   }
   return success();
@@ -137,9 +144,8 @@ LogicalResult ManagerPortOp::verify() {
   if (failed(verifyAccessWindows(*this, getAccess())))
     return failure();
   // Managers fanning out to multiple endpoints must go through an 'axi4.xbar'.
-  if (getPort().hasNUsesOrMore(2))
-    return emitOpError("result must have at most one use; route through an "
-                       "'axi4.xbar' to fan out to multiple endpoints");
+  if (failed(verifyZeroOrOneUse(*this, getResult())))
+    return failure();
   auto port = cast<PortType>(getPort().getType());
   if (failed(verifyOutstanding(*this, port.getReadIdWidth(),
                                getOutstandingReads(), "outstanding_reads")))
@@ -170,10 +176,10 @@ static LogicalResult verifyXbarIdWidth(Operation *op, uint32_t upstreamWidth,
                                        size_t numManagers, StringRef name) {
   uint32_t minWidth = upstreamWidth + llvm::Log2_64_Ceil(numManagers);
   if (downstreamWidth < minWidth)
-    return op->emitError()
-           << "xbar return type's " << name << " must be at least the input "
-           << name << " + ceil(log2(number of managers)) (i.e., " << minWidth
-           << ")";
+    return op->emitError() << "xbar return type's " << name
+                           << " must be at least the input " << name
+                           << " + ceil(log2(number of managers)) (i.e., "
+                           << minWidth << ")";
   return success();
 }
 
@@ -192,6 +198,16 @@ LogicalResult XbarOp::verify() {
   return verifyXbarIdWidth(*this, firstPortTy.getReadIdWidth(),
                            downstream.getReadIdWidth(), upstream.size(),
                            "read id width");
+}
+
+//===----------------------------------------------------------------------===//
+// CutOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult CutOp::verify() {
+  if (failed(verifyZeroOrOneUse(*this, getResult())))
+    return failure();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

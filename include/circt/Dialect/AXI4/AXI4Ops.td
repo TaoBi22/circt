@@ -203,6 +203,7 @@ def CutOp : AXI4Op<"cut", [
   let results = (outs PortType:$downstream);
 
   let assemblyFormat = "$clock `,` $reset `at` $upstream attr-dict `:` qualified(type($upstream))";
+  let hasVerifier = 1;
 }
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

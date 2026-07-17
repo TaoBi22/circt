@@ -170,3 +170,19 @@ axi4.subordinate_port %mgr, %clk, %rstB node %node {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4, 4, 0>
+
+// -----
+
+%port = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+// expected-error @below {{'axi4.cut' op result must have at most one use; route through an 'axi4.xbar' to fan out to multiple endpoints}}
+%cut = axi4.cut %clk, %rst at %port : !axi4.port<32, 64, 4, 4, 0>
+axi4.subordinate_port %cut, %clk, %rst {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
+axi4.subordinate_port %cut, %clk, %rst {
+  access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
+  outstanding_requests = 4 : ui32
+} : !axi4.port<32, 64, 4, 4, 0>
