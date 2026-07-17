@@ -149,24 +149,6 @@ namespace {
 LogicalResult checkNetwork(ModuleOp module) {
   bool failed = false;
 
-  Value commonClock, commonReset;
-  auto checkClock = [&](Operation *op, Value clock) {
-    if (!commonClock)
-      commonClock = clock;
-    else if (clock != commonClock) {
-      op->emitError("multiple clock domains are not yet supported");
-      failed = true;
-    }
-  };
-  auto checkReset = [&](Operation *op, Value reset) {
-    if (!commonReset)
-      commonReset = reset;
-    else if (reset != commonReset) {
-      op->emitError("multiple reset domains are not yet supported");
-      failed = true;
-    }
-  };
-
   // The whole network is lowered into one block; a split-region network would
   // otherwise emit instances that can't reach their peers.
   Region *commonRegion = nullptr;
@@ -211,11 +193,39 @@ LogicalResult checkNetwork(ModuleOp module) {
     }
   };
 
+  // The (clock, reset) domain of the face on `def` that produces a port value.
+  auto producerDomain = [](Operation *def) -> std::pair<Value, Value> {
+    if (auto mgr = dyn_cast_or_null<ManagerPortOp>(def))
+      return {mgr.getClock(), mgr.getReset()};
+    if (auto xbar = dyn_cast_or_null<XbarOp>(def))
+      return {xbar.getClock(), xbar.getReset()};
+    if (auto cut = dyn_cast_or_null<CutOp>(def))
+      return {cut.getClock(), cut.getReset()};
+    if (auto cdc = dyn_cast_or_null<CDCOp>(def))
+      return {cdc.getDownstreamClock(), cdc.getDownstreamReset()};
+    return {nullptr, nullptr};
+  };
+
+  // Every port operand of `consumer` must come from a producer in the same
+  // clock/reset domain. A cdc is the only op whose two faces may differ, so a
+  // mismatch here is a domain crossing that skips an axi4.cdc.
+  auto checkEdgesInto = [&](Operation *consumer, Value clock, Value reset) {
+    for (Value operand : consumer->getOperands()) {
+      if (!isa<PortType>(operand.getType()))
+        continue;
+      auto [prodClock, prodReset] = producerDomain(operand.getDefiningOp());
+      if ((prodClock && prodClock != clock) ||
+          (prodReset && prodReset != reset)) {
+        consumer->emitError("clock/reset domain crossing without an axi4.cdc; "
+                            "insert an axi4.cdc to cross domains");
+        failed = true;
+      }
+    }
+  };
+
   module.walk([&](Operation *op) {
     TypeSwitch<Operation *>(op)
         .Case<ManagerPortOp>([&](ManagerPortOp mgr) {
-          checkClock(mgr, mgr.getClock());
-          checkReset(mgr, mgr.getReset());
           checkRegion(mgr);
           checkUsers(mgr);
           if (!mgr.getNode()) {
@@ -234,8 +244,6 @@ LogicalResult checkNetwork(ModuleOp module) {
           checkMapping(mgr, mgr.getPortMapping());
         })
         .Case<SubordinatePortOp>([&](SubordinatePortOp sub) {
-          checkClock(sub, sub.getClock());
-          checkReset(sub, sub.getReset());
           checkRegion(sub);
           if (!sub.getNode()) {
             sub.emitError("nodeless ports are not yet supported");
@@ -246,18 +254,16 @@ LogicalResult checkNetwork(ModuleOp module) {
               sub, sub.getAccess(),
               cast<PortType>(sub.getUpstream().getType()).getAddressWidth());
           checkMapping(sub, sub.getPortMapping());
+          checkEdgesInto(sub, sub.getClock(), sub.getReset());
         })
         .Case<XbarOp>([&](XbarOp xbar) {
-          checkClock(xbar, xbar.getClock());
-          checkReset(xbar, xbar.getReset());
           checkRegion(xbar);
           checkUsers(xbar);
           if (checkXbarSupported(xbar).failed())
             failed = true;
+          checkEdgesInto(xbar, xbar.getClock(), xbar.getReset());
         })
         .Case<CutOp>([&](CutOp cut) {
-          checkClock(cut, cut.getClock());
-          checkReset(cut, cut.getReset());
           checkRegion(cut);
           checkUsers(cut);
           // The verifier already caps the result at one use; a cut with none
@@ -266,6 +272,21 @@ LogicalResult checkNetwork(ModuleOp module) {
             cut.emitError("axi4.cut result must feed a downstream port");
             failed = true;
           }
+          checkEdgesInto(cut, cut.getClock(), cut.getReset());
+        })
+        .Case<CDCOp>([&](CDCOp cdc) {
+          checkRegion(cdc);
+          checkUsers(cdc);
+          // As for a cut, the verifier caps the result at one use; a cdc with
+          // none has no downstream port to cross into.
+          if (cdc.getDownstream().use_empty()) {
+            cdc.emitError("axi4.cdc result must feed a downstream port");
+            failed = true;
+          }
+          // The cdc bridges domains, so its upstream face is checked against
+          // the source domain here; its downstream face is checked at whatever
+          // consumes its result.
+          checkEdgesInto(cdc, cdc.getUpstreamClock(), cdc.getUpstreamReset());
         })
         .Case<NodeOp>([&](NodeOp node) {
           checkRegion(node);
@@ -734,6 +755,7 @@ LogicalResult NetworkLowering::lowerNetwork() {
   SmallVector<NodeOp> nodes;
   SmallVector<XbarOp> xbars;
   SmallVector<CutOp> cuts;
+  SmallVector<CDCOp> cdcs;
   module.walk([&](Operation *op) {
     if (auto node = dyn_cast<NodeOp>(op))
       nodes.push_back(node);
@@ -741,6 +763,8 @@ LogicalResult NetworkLowering::lowerNetwork() {
       xbars.push_back(xbar);
     else if (auto cut = dyn_cast<CutOp>(op))
       cuts.push_back(cut);
+    else if (auto cdc = dyn_cast<CDCOp>(op))
+      cdcs.push_back(cdc);
   });
 
   Block *netBlock = nullptr;
@@ -750,6 +774,8 @@ LogicalResult NetworkLowering::lowerNetwork() {
     netBlock = xbars.front()->getBlock();
   else if (!cuts.empty())
     netBlock = cuts.front()->getBlock();
+  else if (!cdcs.empty())
+    netBlock = cdcs.front()->getBlock();
   if (netBlock) {
     if (!netBlock->empty() &&
         netBlock->back().hasTrait<OpTrait::IsTerminator>())
@@ -768,6 +794,10 @@ LogicalResult NetworkLowering::lowerNetwork() {
 
   for (CutOp cut : cuts)
     if (failed(lowerCut(cut)))
+      return failure();
+
+  for (CDCOp cdc : cdcs)
+    if (failed(lowerCdc(cdc)))
       return failure();
 
   // Connect every edge's producer side to its consumer side.
