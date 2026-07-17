@@ -220,3 +220,30 @@ axi4.subordinate_port %dwc, %clk, %rst {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4, 4, 0>
+
+// -----
+
+// A data width converter changes only the data width: address preserved.
+%port = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+// expected-error @below {{'axi4.data_width_converter' op upstream and downstream address widths must match}}
+%dwc = axi4.data_width_converter %clk, %rst, %port : (!axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<16, 32, 4, 4, 0>
+
+// -----
+
+// A data width converter changes only the data width: ID preserved.
+%port = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+// expected-error @below {{'axi4.data_width_converter' op upstream and downstream ID widths must match}}
+%dwc = axi4.data_width_converter %clk, %rst, %port : (!axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 32, 5, 5, 0>
+
+// -----
+
+// A data width converter changes only the data width: user preserved.
+%port = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 2>
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+// expected-error @below {{'axi4.data_width_converter' op upstream and downstream user widths must match}}
+%dwc = axi4.data_width_converter %clk, %rst, %port : (!axi4.port<32, 64, 4, 4, 2>) -> !axi4.port<32, 32, 4, 4, 4>
