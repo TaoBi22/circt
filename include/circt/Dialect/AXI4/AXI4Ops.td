@@ -189,4 +189,20 @@ def GenericOutputOp : AXI4Op<"generic_output"> {
   let assemblyFormat = "$port `node` $node attr-dict `:` type($output)";
 }
 
+def CutOp : AXI4Op<"cut", [
+  TypesMatchWith<"upstream and downstream types must match",
+                    "upstream", "downstream", "$_self">,
+]> {
+  let summary = "An AXI4 cut";
+  let description = [{
+    Breaks combinational paths between two !axi4.ports.
+  }];
+
+  let arguments = (ins ClockType:$clock, ResetType:$reset,
+                       PortType:$upstream);
+  let results = (outs PortType:$downstream);
+
+  let assemblyFormat = "$clock `,` $reset `at` $upstream attr-dict `:` qualified(type($upstream))";
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

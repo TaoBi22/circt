@@ -79,6 +79,9 @@ axi4.subordinate_port %xbar, %c, %r node %sub_node {
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 5, 5, 0>
 
+// CHECK: axi4.cut %[[CLK]], %[[RST]] at %[[XBAR]] : !axi4.port<32, 64, 5, 5, 0>
+%cut = axi4.cut %c, %r at %xbar : !axi4.port<32, 64, 5, 5, 0>
+
 //===----------------------------------------------------------------------===//
 // Nodeless ports
 //===----------------------------------------------------------------------===//
