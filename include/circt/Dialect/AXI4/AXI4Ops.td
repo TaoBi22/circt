@@ -206,4 +206,22 @@ def CutOp : AXI4Op<"cut", [
   let hasVerifier = 1;
 }
 
+def CDCOp : AXI4Op<"cdc", [
+  TypesMatchWith<"upstream and downstream types must match",
+                    "upstream", "downstream", "$_self">,
+]> {
+  let summary = "An AXI4 clock domain crossing";
+  let description = [{
+    Allows an AXI4 signal to traverse clock (but not reset) domains.
+  }];
+
+  let arguments = (ins PortType:$upstream, ClockType:$upstream_clock,
+                      ResetType:$upstream_reset, ClockType:$downstream_clock,
+                      ResetType:$downstream_reset);
+  let results = (outs PortType:$downstream);
+
+let assemblyFormat = "$upstream `from` ` ` `[` $upstream_clock `,` $upstream_reset `]` ` ` `to` ` ` `[` $downstream_clock `,` $downstream_reset `]` attr-dict `:` qualified(type($upstream))";
+  let hasVerifier = 1;
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
