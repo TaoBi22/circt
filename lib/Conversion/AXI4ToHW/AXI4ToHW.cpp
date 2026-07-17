@@ -203,6 +203,8 @@ LogicalResult checkNetwork(ModuleOp module) {
       return {cut.getClock(), cut.getReset()};
     if (auto cdc = dyn_cast_or_null<CDCOp>(def))
       return {cdc.getDownstreamClock(), cdc.getDownstreamReset()};
+    if (auto dwc = dyn_cast_or_null<DWConverterOp>(def))
+      return {dwc.getClock(), dwc.getReset()};
     return {nullptr, nullptr};
   };
 
@@ -287,6 +289,18 @@ LogicalResult checkNetwork(ModuleOp module) {
           // the source domain here; its downstream face is checked at whatever
           // consumes its result.
           checkEdgesInto(cdc, cdc.getUpstreamClock(), cdc.getUpstreamReset());
+        })
+        .Case<DWConverterOp>([&](DWConverterOp dwc) {
+          checkRegion(dwc);
+          checkUsers(dwc);
+          if (dwc.getDownstream().use_empty()) {
+            dwc.emitError("axi4.data_width_converter result must feed a "
+                          "downstream port");
+            failed = true;
+          }
+          if (checkDwConverterSupported(dwc).failed())
+            failed = true;
+          checkEdgesInto(dwc, dwc.getClock(), dwc.getReset());
         })
         .Case<NodeOp>([&](NodeOp node) {
           checkRegion(node);
@@ -756,6 +770,7 @@ LogicalResult NetworkLowering::lowerNetwork() {
   SmallVector<XbarOp> xbars;
   SmallVector<CutOp> cuts;
   SmallVector<CDCOp> cdcs;
+  SmallVector<DWConverterOp> dwConverters;
   module.walk([&](Operation *op) {
     if (auto node = dyn_cast<NodeOp>(op))
       nodes.push_back(node);
@@ -765,6 +780,8 @@ LogicalResult NetworkLowering::lowerNetwork() {
       cuts.push_back(cut);
     else if (auto cdc = dyn_cast<CDCOp>(op))
       cdcs.push_back(cdc);
+    else if (auto dwc = dyn_cast<DWConverterOp>(op))
+      dwConverters.push_back(dwc);
   });
 
   Block *netBlock = nullptr;
@@ -776,6 +793,8 @@ LogicalResult NetworkLowering::lowerNetwork() {
     netBlock = cuts.front()->getBlock();
   else if (!cdcs.empty())
     netBlock = cdcs.front()->getBlock();
+  else if (!dwConverters.empty())
+    netBlock = dwConverters.front()->getBlock();
   if (netBlock) {
     if (!netBlock->empty() &&
         netBlock->back().hasTrait<OpTrait::IsTerminator>())
@@ -798,6 +817,10 @@ LogicalResult NetworkLowering::lowerNetwork() {
 
   for (CDCOp cdc : cdcs)
     if (failed(lowerCdc(cdc)))
+      return failure();
+
+  for (DWConverterOp dwc : dwConverters)
+    if (failed(lowerDwConverter(dwc)))
       return failure();
 
   // Connect every edge's producer side to its consumer side.

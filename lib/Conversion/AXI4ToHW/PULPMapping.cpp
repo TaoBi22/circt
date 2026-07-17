@@ -340,6 +340,111 @@ std::string buildXbarWrapperSource(StringRef name, unsigned numUp,
   return text;
 }
 
+/// Policy giving the SystemVerilog type name of one non-user boundary-struct
+/// field (`id`, `addr`, `data`, `strb`, or a control field) on a given channel.
+using FieldTypeFn =
+    llvm::function_ref<std::string(StringRef field, const ChannelInfo &ci)>;
+
+/// Emit one face's boundary channel-struct typedefs (`<p><role>_<tok>_t`), one
+/// per channel. `fieldType` supplies each non-user field's SV type; the user
+/// field is emitted as raw logic and skipped entirely when the width is 0.
+void emitBoundaryTypedefs(llvm::raw_string_ostream &os, StringRef p,
+                          PortType pt, StringRef role, FieldTypeFn fieldType) {
+  for (const ChannelInfo &ci : kChannelInfos) {
+    os << "typedef struct packed {";
+    for (auto &fi : getChannelPayloadType(pt, ci.channel).getElements()) {
+      StringRef fname = fi.name.getValue();
+      if (fname == "user") {
+        unsigned w = pt.getUserWidth();
+        if (w == 0)
+          continue; // no user bits on this interface
+        os << " logic [" << w << "-1:0] user;";
+        continue;
+      }
+      os << " " << fieldType(fname, ci) << " " << fname << ";";
+    }
+    os << " } " << p << role << "_" << ci.token << "_t;\n";
+  }
+}
+
+/// Append one face's channel-split port declarations (payload struct, valid,
+/// ready per channel) to `portDecls`, named `<role>0_<tok>` and typed
+/// `<p><role>_<tok>_t`, matching buildChannelPortList's directions.
+void emitFacePorts(SmallVectorImpl<std::string> &portDecls, StringRef p,
+                   StringRef role, bool isManager) {
+  for (const ChannelInfo &ci : kChannelInfos) {
+    bool payloadDrivenByModule = (isManager == ci.isRequest);
+    StringRef fwd = payloadDrivenByModule ? "output" : "input ";
+    StringRef rev = payloadDrivenByModule ? "input " : "output";
+    std::string base = (role + "0_" + ci.token).str();
+    std::string ty = (p + role + "_" + ci.token + "_t").str();
+    portDecls.push_back(("  " + fwd + " " + ty + " " + base).str());
+    portDecls.push_back(("  " + fwd + " logic " + base + "_valid").str());
+    portDecls.push_back(("  " + rev + " logic " + base + "_ready").str());
+  }
+}
+
+/// Emit the `assign` bridges between one face's boundary channel ports and its
+/// PULP req/resp struct variables (`slv_*` for a subordinate face, `mst_*` for
+/// a manager face). `pt` is that face's port type. The canonical user width
+/// equals PULP's user_t, so user copies straight across (tied off when the
+/// interface carries no user); PULP's atop is tied to 0.
+void emitFaceBridge(llvm::raw_string_ostream &os, PortType pt, StringRef role,
+                    bool isManager) {
+  auto payloadPattern = [&](StringRef lhsExpr, StringRef rhsExpr,
+                            const ChannelInfo &ci, bool toPulp) -> std::string {
+    unsigned uW = pt.getUserWidth();
+    std::string s = "'{";
+    bool first = true;
+    for (auto &fi : getChannelPayloadType(pt, ci.channel).getElements()) {
+      StringRef fname = fi.name.getValue();
+      if (fname == "user")
+        continue; // handled below (absent from the PULP struct when width 0)
+      if (!first)
+        s += ", ";
+      first = false;
+      s += (fname + ": " + rhsExpr + "." + fname).str();
+    }
+    if (toPulp) {
+      if (ci.channel == AXI4Channel::AW)
+        s += ", atop: '0";
+      s += uW == 0 ? ", user: '0" : (", user: " + rhsExpr + ".user").str();
+    } else if (uW != 0) {
+      s += (", user: " + rhsExpr + ".user").str();
+    }
+    s += "}";
+    return ("  assign " + lhsExpr + " = " + s + ";\n").str();
+  };
+  StringRef reqVar = isManager ? "mst_req" : "slv_req";
+  StringRef respVar = isManager ? "mst_resp" : "slv_resp";
+  for (const ChannelInfo &ci : kChannelInfos) {
+    bool payloadDrivenByModule = (isManager == ci.isRequest);
+    std::string tok = ci.token.str();
+    std::string port = (role + "0_" + tok).str();
+    // payload+valid live in the req struct for request channels, the resp
+    // struct for response channels; ready lives in the other one.
+    StringRef pvVar = ci.isRequest ? reqVar : respVar;
+    StringRef rdyVar = ci.isRequest ? respVar : reqVar;
+    if (payloadDrivenByModule) {
+      // Wrapper drives the port from PULP.
+      os << payloadPattern(port, (pvVar + "." + tok).str(), ci,
+                           /*toPulp=*/false);
+      os << "  assign " << port << "_valid = " << pvVar << "." << tok
+         << "_valid;\n";
+      os << "  assign " << rdyVar << "." << tok << "_ready = " << port
+         << "_ready;\n";
+    } else {
+      // Wrapper receives the port into PULP.
+      os << payloadPattern((pvVar + "." + tok).str(), port, ci,
+                           /*toPulp=*/true);
+      os << "  assign " << pvVar << "." << tok << "_valid = " << port
+         << "_valid;\n";
+      os << "  assign " << port << "_ready = " << rdyVar << "." << tok
+         << "_ready;\n";
+    }
+  }
+}
+
 /// Emit the shared body of a symmetric (cut/cdc-like) PULP wrapper into `os`:
 /// the file header, name-prefixed typedefs, boundary channel structs, the
 /// module port list (the given clock/reset input ports, then the sub0/mgr0
@@ -379,7 +484,7 @@ void emitSymmetricWrapperBody(llvm::raw_string_ostream &os, StringRef name,
   os << "typedef logic [" << ridW << "-1:0] " << p << "rid_t;\n";
   // PULP-shaped channel/req/resp typedefs, built per channel so the write and
   // read ID widths stay independent. Used only internally to instantiate
-  // axi_cut.
+  // the IP.
   os << "`AXI_TYPEDEF_AW_CHAN_T(" << p << "aw_chan_t, " << p << "addr_t, " << p
      << "wid_t, " << p << "user_t)\n";
   os << "`AXI_TYPEDEF_W_CHAN_T(" << p << "w_chan_t, " << p << "data_t, " << p
@@ -395,120 +500,33 @@ void emitSymmetricWrapperBody(llvm::raw_string_ostream &os, StringRef name,
   os << "`AXI_TYPEDEF_RESP_T(" << p << "axi_resp_t, " << p << "b_chan_t, " << p
      << "r_chan_t)\n";
 
-  // Typedefs for the channel structs we use as wrapper ports. Their user field
-  // is the port's user width, which equals the PULP-internal user_t above.
-  auto emitCanonTypedef = [&](StringRef role, const ChannelInfo &ci) {
-    os << "typedef struct packed {";
-    for (auto &fi : getChannelPayloadType(pt, ci.channel).getElements()) {
-      StringRef fname = fi.name.getValue();
-      if (fname == "user") {
-        unsigned w = pt.getUserWidth();
-        if (w == 0)
-          continue; // no user bits on this interface
-        os << " logic [" << w << "-1:0] user;";
-        continue;
-      }
-      os << " " << svChannelFieldType(fname, p, idTyFor(ci)) << " " << fname
-         << ";";
-    }
-    os << " } " << p << role << "_" << ci.token << "_t;\n";
+  // Boundary channel structs: id is per-channel (write/read), everything else
+  // via the shared field helper.
+  auto fieldType = [&](StringRef fname, const ChannelInfo &ci) -> std::string {
+    return svChannelFieldType(fname, p, idTyFor(ci));
   };
-  for (const ChannelInfo &ci : kChannelInfos)
-    emitCanonTypedef("sub", ci);
-  for (const ChannelInfo &ci : kChannelInfos)
-    emitCanonTypedef("mgr", ci);
+  emitBoundaryTypedefs(os, p, pt, "sub", fieldType);
+  emitBoundaryTypedefs(os, p, pt, "mgr", fieldType);
   os << "\n";
 
-  // Mirror the representation of channel payloads that we use between
-  // components (matching buildChannelPortList).
   SmallVector<std::string> portDecls;
   for (StringRef port : clkRstPorts)
     portDecls.push_back(port.str());
-  auto emitFacePorts = [&](StringRef role, bool isManager) {
-    for (const ChannelInfo &ci : kChannelInfos) {
-      bool payloadDrivenByModule = (isManager == ci.isRequest);
-      StringRef fwd = payloadDrivenByModule ? "output" : "input ";
-      StringRef rev = payloadDrivenByModule ? "input " : "output";
-      std::string base = (role + "0_" + ci.token).str();
-      std::string ty = (p + role + "_" + ci.token + "_t").str();
-      portDecls.push_back(("  " + fwd + " " + ty + " " + base).str());
-      portDecls.push_back(("  " + fwd + " logic " + base + "_valid").str());
-      portDecls.push_back(("  " + rev + " logic " + base + "_ready").str());
-    }
-  };
-  emitFacePorts("sub", /*isManager=*/false);
-  emitFacePorts("mgr", /*isManager=*/true);
+  emitFacePorts(portDecls, p, "sub", /*isManager=*/false);
+  emitFacePorts(portDecls, p, "mgr", /*isManager=*/true);
   os << "module " << name << " (\n";
   os << llvm::join(portDecls, ",\n") << "\n";
   os << ");\n";
 
   // Internal PULP-shaped req/resp structs: the boundary ports bridge to these,
-  // and axi_cut is wired directly to them.
+  // and the IP is wired directly to them.
   os << "  " << p << "axi_req_t  slv_req;\n";
   os << "  " << p << "axi_resp_t slv_resp;\n";
   os << "  " << p << "axi_req_t  mst_req;\n";
   os << "  " << p << "axi_resp_t mst_resp;\n";
 
-  // Bridge each face's canonical channel ports to the PULP req/resp structs.
-  // The canonical user width equals PULP's user_t, so user copies straight
-  // across (tied off when the interface carries no user). PULP's atop is tied
-  // to 0.
-  auto payloadPattern = [&](StringRef lhsExpr, StringRef rhsExpr,
-                            const ChannelInfo &ci, bool toPulp) -> std::string {
-    unsigned uW = pt.getUserWidth();
-    std::string s = "'{";
-    bool first = true;
-    for (auto &fi : getChannelPayloadType(pt, ci.channel).getElements()) {
-      StringRef fname = fi.name.getValue();
-      if (fname == "user")
-        continue; // handled below (absent from the PULP struct when width 0)
-      if (!first)
-        s += ", ";
-      first = false;
-      s += (fname + ": " + rhsExpr + "." + fname).str();
-    }
-    if (toPulp) {
-      if (ci.channel == AXI4Channel::AW)
-        s += ", atop: '0";
-      s += uW == 0 ? ", user: '0" : (", user: " + rhsExpr + ".user").str();
-    } else if (uW != 0) {
-      s += (", user: " + rhsExpr + ".user").str();
-    }
-    s += "}";
-    return ("  assign " + lhsExpr + " = " + s + ";\n").str();
-  };
-  auto emitFaceBridge = [&](StringRef role, bool isManager) {
-    StringRef reqVar = isManager ? "mst_req" : "slv_req";
-    StringRef respVar = isManager ? "mst_resp" : "slv_resp";
-    for (const ChannelInfo &ci : kChannelInfos) {
-      bool payloadDrivenByModule = (isManager == ci.isRequest);
-      std::string tok = ci.token.str();
-      std::string port = (role + "0_" + tok).str();
-      // payload+valid live in the req struct for request channels, the resp
-      // struct for response channels; ready lives in the other one.
-      StringRef pvVar = ci.isRequest ? reqVar : respVar;
-      StringRef rdyVar = ci.isRequest ? respVar : reqVar;
-      if (payloadDrivenByModule) {
-        // Wrapper drives the port from PULP.
-        os << payloadPattern(port, (pvVar + "." + tok).str(), ci,
-                             /*toPulp=*/false);
-        os << "  assign " << port << "_valid = " << pvVar << "." << tok
-           << "_valid;\n";
-        os << "  assign " << rdyVar << "." << tok << "_ready = " << port
-           << "_ready;\n";
-      } else {
-        // Wrapper receives the port into PULP.
-        os << payloadPattern((pvVar + "." + tok).str(), port, ci,
-                             /*toPulp=*/true);
-        os << "  assign " << pvVar << "." << tok << "_valid = " << port
-           << "_valid;\n";
-        os << "  assign " << port << "_ready = " << rdyVar << "." << tok
-           << "_ready;\n";
-      }
-    }
-  };
-  emitFaceBridge("sub", /*isManager=*/false);
-  emitFaceBridge("mgr", /*isManager=*/true);
+  emitFaceBridge(os, pt, "sub", /*isManager=*/false);
+  emitFaceBridge(os, pt, "mgr", /*isManager=*/true);
 }
 
 /// SystemVerilog wrapper for one cut configuration: a symmetric register slice
@@ -584,6 +602,124 @@ std::string buildCdcWrapperSource(StringRef name, PortType pt) {
   return text;
 }
 
+/// SystemVerilog wrapper for one data-width-converter configuration. Asymmetric:
+/// the upstream (slave) and downstream (master) data/strobe widths differ, while
+/// ID/address/user are shared (PULP's axi_dw_converter preserves them and uses a
+/// single ID width). Single clock/reset domain.
+std::string buildDwConverterWrapperSource(StringRef name, PortType upType,
+                                          PortType downType) {
+  // checkDwConverterSupported has verified addr/id/user match across the sides
+  // and that the write and read ID widths are equal.
+  unsigned addrW = upType.getAddressWidth();
+  unsigned idW = upType.getWriteIdWidth();
+  unsigned userW = pulpUserWidth(upType);
+  unsigned slvDataW = upType.getDataWidth();
+  unsigned mstDataW = downType.getDataWidth();
+  std::string p = (name + "_").str();
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  os << "// Generated by --lower-axi4-to-hw: wrapper instantiating PULP "
+        "axi_dw_converter.\n";
+  os << "`include \"axi/typedef.svh\"\n\n";
+
+  // Shared address/id/user typedefs; only the data/strobe widths differ.
+  os << "typedef logic [" << addrW << "-1:0] " << p << "addr_t;\n";
+  os << "typedef logic [" << idW << "-1:0] " << p << "id_t;\n";
+  os << "typedef logic [" << userW << "-1:0] " << p << "user_t;\n";
+  os << "typedef logic [" << slvDataW << "-1:0] " << p << "slv_data_t;\n";
+  os << "typedef logic [" << slvDataW << "/8-1:0] " << p << "slv_strb_t;\n";
+  os << "typedef logic [" << mstDataW << "-1:0] " << p << "mst_data_t;\n";
+  os << "typedef logic [" << mstDataW << "/8-1:0] " << p << "mst_strb_t;\n";
+  // PULP-shaped typedefs: AW/AR/B shared, W/R split per side by data width.
+  os << "`AXI_TYPEDEF_AW_CHAN_T(" << p << "aw_chan_t, " << p << "addr_t, " << p
+     << "id_t, " << p << "user_t)\n";
+  os << "`AXI_TYPEDEF_W_CHAN_T(" << p << "slv_w_chan_t, " << p << "slv_data_t, "
+     << p << "slv_strb_t, " << p << "user_t)\n";
+  os << "`AXI_TYPEDEF_W_CHAN_T(" << p << "mst_w_chan_t, " << p << "mst_data_t, "
+     << p << "mst_strb_t, " << p << "user_t)\n";
+  os << "`AXI_TYPEDEF_B_CHAN_T(" << p << "b_chan_t, " << p << "id_t, " << p
+     << "user_t)\n";
+  os << "`AXI_TYPEDEF_AR_CHAN_T(" << p << "ar_chan_t, " << p << "addr_t, " << p
+     << "id_t, " << p << "user_t)\n";
+  os << "`AXI_TYPEDEF_R_CHAN_T(" << p << "slv_r_chan_t, " << p << "slv_data_t, "
+     << p << "id_t, " << p << "user_t)\n";
+  os << "`AXI_TYPEDEF_R_CHAN_T(" << p << "mst_r_chan_t, " << p << "mst_data_t, "
+     << p << "id_t, " << p << "user_t)\n";
+  os << "`AXI_TYPEDEF_REQ_T(" << p << "axi_slv_req_t, " << p << "aw_chan_t, "
+     << p << "slv_w_chan_t, " << p << "ar_chan_t)\n";
+  os << "`AXI_TYPEDEF_RESP_T(" << p << "axi_slv_resp_t, " << p << "b_chan_t, "
+     << p << "slv_r_chan_t)\n";
+  os << "`AXI_TYPEDEF_REQ_T(" << p << "axi_mst_req_t, " << p << "aw_chan_t, "
+     << p << "mst_w_chan_t, " << p << "ar_chan_t)\n";
+  os << "`AXI_TYPEDEF_RESP_T(" << p << "axi_mst_resp_t, " << p << "b_chan_t, "
+     << p << "mst_r_chan_t)\n";
+
+  // Boundary channel structs: id/addr/control shared; data/strb per side.
+  std::string idTy = (p + "id_t");
+  auto subField = [&](StringRef fname, const ChannelInfo &ci) -> std::string {
+    return fname == "data"   ? p + "slv_data_t"
+           : fname == "strb" ? p + "slv_strb_t"
+                             : svChannelFieldType(fname, p, idTy);
+  };
+  auto mgrField = [&](StringRef fname, const ChannelInfo &ci) -> std::string {
+    return fname == "data"   ? p + "mst_data_t"
+           : fname == "strb" ? p + "mst_strb_t"
+                             : svChannelFieldType(fname, p, idTy);
+  };
+  emitBoundaryTypedefs(os, p, upType, "sub", subField);
+  emitBoundaryTypedefs(os, p, downType, "mgr", mgrField);
+  os << "\n";
+
+  SmallVector<std::string> portDecls;
+  portDecls.push_back("  input  logic clk_i");
+  portDecls.push_back("  input  logic rst_ni");
+  emitFacePorts(portDecls, p, "sub", /*isManager=*/false);
+  emitFacePorts(portDecls, p, "mgr", /*isManager=*/true);
+  os << "module " << name << " (\n";
+  os << llvm::join(portDecls, ",\n") << "\n";
+  os << ");\n";
+
+  // Internal PULP req/resp structs, one pair per side.
+  os << "  " << p << "axi_slv_req_t  slv_req;\n";
+  os << "  " << p << "axi_slv_resp_t slv_resp;\n";
+  os << "  " << p << "axi_mst_req_t  mst_req;\n";
+  os << "  " << p << "axi_mst_resp_t mst_resp;\n";
+
+  emitFaceBridge(os, upType, "sub", /*isManager=*/false);
+  emitFaceBridge(os, downType, "mgr", /*isManager=*/true);
+
+  // Instantiate the converter. AxiMaxReads is fixed at a modest default; the
+  // axi4.data_width_converter op carries no knob for it yet.
+  os << "  axi_dw_converter #(\n";
+  os << "    .AxiMaxReads         (4),\n";
+  os << "    .AxiSlvPortDataWidth (" << slvDataW << "),\n";
+  os << "    .AxiMstPortDataWidth (" << mstDataW << "),\n";
+  os << "    .AxiAddrWidth        (" << addrW << "),\n";
+  os << "    .AxiIdWidth          (" << idW << "),\n";
+  os << "    .aw_chan_t           (" << p << "aw_chan_t),\n";
+  os << "    .mst_w_chan_t        (" << p << "mst_w_chan_t),\n";
+  os << "    .slv_w_chan_t        (" << p << "slv_w_chan_t),\n";
+  os << "    .b_chan_t            (" << p << "b_chan_t),\n";
+  os << "    .ar_chan_t           (" << p << "ar_chan_t),\n";
+  os << "    .mst_r_chan_t        (" << p << "mst_r_chan_t),\n";
+  os << "    .slv_r_chan_t        (" << p << "slv_r_chan_t),\n";
+  os << "    .axi_mst_req_t       (" << p << "axi_mst_req_t),\n";
+  os << "    .axi_mst_resp_t      (" << p << "axi_mst_resp_t),\n";
+  os << "    .axi_slv_req_t       (" << p << "axi_slv_req_t),\n";
+  os << "    .axi_slv_resp_t      (" << p << "axi_slv_resp_t)\n";
+  os << "  ) i_dw_converter (\n";
+  os << "    .clk_i      (clk_i),\n";
+  os << "    .rst_ni     (rst_ni),\n";
+  os << "    .slv_req_i  (slv_req),\n";
+  os << "    .slv_resp_o (slv_resp),\n";
+  os << "    .mst_req_o  (mst_req),\n";
+  os << "    .mst_resp_i (mst_resp)\n";
+  os << "  );\n";
+  os << "endmodule\n";
+  return text;
+}
+
 } // namespace
 
 namespace circt {
@@ -630,6 +766,19 @@ LogicalResult checkXbarSupported(XbarOp xbar) {
                               "address map (master ports ")
                << rules[i].idx << " and " << rules[k].idx
                << "); the PULP axi_xbar requires disjoint address rules";
+  return success();
+}
+
+LogicalResult checkDwConverterSupported(DWConverterOp dwc) {
+  // The op verifier already guarantees address/ID/user are preserved across the
+  // two sides; only the PULP-specific single-ID-width restriction remains. PULP's
+  // axi_dw_converter uses a single AxiIdWidth, so write and read ID must match.
+  auto upType = cast<PortType>(dwc.getUpstream().getType());
+  if (upType.getWriteIdWidth() != upType.getReadIdWidth())
+    return dwc.emitError("the PULP axi_dw_converter uses a single ID width, so "
+                         "the write ID width (")
+           << upType.getWriteIdWidth() << ") and read ID width ("
+           << upType.getReadIdWidth() << ") must match";
   return success();
 }
 
@@ -885,6 +1034,86 @@ LogicalResult NetworkLowering::lowerCdc(CDCOp cdc) {
   // File the wires under their edges: the upstream face is the consumer of the
   // operand feeding it; the downstream face is the producer of the result use.
   edges[&cdc.getUpstreamMutable()].consumer = allWires[0];
+  edges[&downstreamUse].producer = allWires[1];
+  return success();
+}
+
+sv::SVVerbatimModuleOp
+NetworkLowering::getOrCreateDwConverterModule(PortType upType,
+                                              PortType downType) {
+  MLIRContext *ctx = module.getContext();
+  // addr/id/user are shared across the sides (checkDwConverterSupported); only
+  // the data widths distinguish one converter shape from another.
+  std::string shape =
+      ("axi_dw_converter_a" + Twine(upType.getAddressWidth()) + "_i" +
+       Twine(upType.getWriteIdWidth()) + "_u" + Twine(upType.getUserWidth()) +
+       "_sd" + Twine(upType.getDataWidth()) + "_md" +
+       Twine(downType.getDataWidth()))
+          .str();
+  if (auto existing = dwConverterWrappers.lookup(shape))
+    return existing;
+
+  // Name after the shape; disambiguate against unrelated symbols.
+  std::string name = shape;
+  for (unsigned n = 0; module.lookupSymbol(name); ++n)
+    name = (shape + "_" + Twine(n)).str();
+
+  // Port interface mirrors the ChannelWires form: the sub0 face carries the
+  // upstream data width, the mgr0 face the downstream data width.
+  SmallVector<PortInfo> ports;
+  Type i1 = IntegerType::get(ctx, 1);
+  ports.push_back(
+      PortInfo{{StringAttr::get(ctx, "clk_i"), i1, ModulePort::Input}});
+  ports.push_back(
+      PortInfo{{StringAttr::get(ctx, "rst_ni"), i1, ModulePort::Input}});
+  buildChannelPortList(ctx, upType, /*isManager=*/false, "sub0_", ports);
+  buildChannelPortList(ctx, downType, /*isManager=*/true, "mgr0_", ports);
+
+  std::string source = buildDwConverterWrapperSource(name, upType, downType);
+
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(module.getBody());
+  auto srcOp = sv::SVVerbatimSourceOp::create(
+      builder, StringAttr::get(ctx, name + "_source"), source,
+      hw::OutputFileAttr::getFromFilename(ctx, name + ".sv"),
+      builder.getArrayAttr({}), /*additional_files=*/nullptr,
+      builder.getStringAttr(name));
+  auto modOp = sv::SVVerbatimModuleOp::create(
+      builder, StringAttr::get(ctx, name), ports, FlatSymbolRefAttr::get(srcOp),
+      builder.getArrayAttr({}), builder.getStringAttr(name));
+  dwConverterWrappers[shape] = modOp;
+  return modOp;
+}
+
+LogicalResult NetworkLowering::lowerDwConverter(DWConverterOp dwc) {
+  builder.setLoc(dwc.getLoc());
+
+  // checkNetwork has verified the result feeds exactly one downstream port and
+  // that the sides differ only in data width.
+  auto upType = cast<PortType>(dwc.getUpstream().getType());
+  auto downType = cast<PortType>(dwc.getDownstream().getType());
+  OpOperand &downstreamUse = *dwc.getDownstream().getUses().begin();
+
+  auto moduleOp = getOrCreateDwConverterModule(upType, downType);
+
+  // The upstream face is subordinate-role, the downstream face manager-role,
+  // both in the converter's single clock/reset domain.
+  SmallVector<PortGroupSpec> specs;
+  specs.push_back({dwc, /*isManager=*/false, upType, MappingKind::ChannelPorts,
+                   "sub0_", dwc.getClock(), "clk_i", dwc.getReset(),
+                   "rst_ni"});
+  specs.push_back({dwc, /*isManager=*/true, downType, MappingKind::ChannelPorts,
+                   "mgr0_", dwc.getClock(), "clk_i", dwc.getReset(),
+                   "rst_ni"});
+
+  SmallVector<PortWires, 0> allWires;
+  std::string instName = ("dw_converter_" + Twine(instanceCounter++)).str();
+  if (failed(buildInstance(dwc, moduleOp, instName, specs, allWires)))
+    return failure();
+
+  // File the wires under their edges: the upstream face is the consumer of the
+  // operand feeding it; the downstream face is the producer of the result use.
+  edges[&dwc.getUpstreamMutable()].consumer = allWires[0];
   edges[&downstreamUse].producer = allWires[1];
   return success();
 }
