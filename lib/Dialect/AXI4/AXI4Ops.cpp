@@ -77,13 +77,6 @@ static LogicalResult verifyNodePortMapping(Operation *op, Value node,
   return success();
 }
 
-static LogicalResult verifyZeroOrOneUse(Operation *op, Value v) {
-  if (v.hasNUsesOrMore(2))
-    return op->emitOpError("result must have at most one use; route through an "
-                           "'axi4.xbar' to fan out to multiple endpoints");
-  return success();
-}
-
 //===----------------------------------------------------------------------===//
 // NodeOp
 //===----------------------------------------------------------------------===//
@@ -143,9 +136,6 @@ LogicalResult ManagerPortOp::verify() {
     return failure();
   if (failed(verifyAccessWindows(*this, getAccess())))
     return failure();
-  // Managers fanning out to multiple endpoints must go through an 'axi4.xbar'.
-  if (failed(verifyZeroOrOneUse(*this, getResult())))
-    return failure();
   auto port = cast<PortType>(getPort().getType());
   if (failed(verifyOutstanding(*this, port.getReadIdWidth(),
                                getOutstandingReads(), "outstanding_reads")))
@@ -198,36 +188,6 @@ LogicalResult XbarOp::verify() {
   return verifyXbarIdWidth(*this, firstPortTy.getReadIdWidth(),
                            downstream.getReadIdWidth(), upstream.size(),
                            "read id width");
-}
-
-//===----------------------------------------------------------------------===//
-// CutOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CutOp::verify() {
-  if (failed(verifyZeroOrOneUse(*this, getResult())))
-    return failure();
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// CDCOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CDCOp::verify() {
-  if (failed(verifyZeroOrOneUse(*this, getResult())))
-    return failure();
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// DWConverterOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult DWConverterOp::verify() {
-  if (failed(verifyZeroOrOneUse(*this, getResult())))
-    return failure();
-  return success();
 }
 
 //===----------------------------------------------------------------------===//

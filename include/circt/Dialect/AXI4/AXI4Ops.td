@@ -24,6 +24,12 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 class AXI4Op<string mnemonic, list<Trait> traits = []> :
     Op<AXI4Dialect, mnemonic, traits>;
 
+// Constrains each result to at most one use; fan-out must go through an
+// `axi4.xbar`.
+def ResultsAtMostOneUse : NativeOpTrait<"ResultsAtMostOneUse"> {
+  let cppNamespace = "::circt::axi4::OpTrait";
+}
+
 def NodeOp : AXI4Op<"node", [
     DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "An AXI4 node referencing a blackbox hardware module";
@@ -48,7 +54,7 @@ def NodeOp : AXI4Op<"node", [
 
 def WindowArrayAttr : TypedArrayAttrBase<WindowAttr, "array of access windows">;
 
-def ManagerPortOp : AXI4Op<"manager_port"> {
+def ManagerPortOp : AXI4Op<"manager_port", [ResultsAtMostOneUse]> {
   let summary = "An AXI4 manager endpoint";
   let description = [{
     Describes a manager endpoint port. The `access` windows specify the
@@ -190,6 +196,7 @@ def GenericOutputOp : AXI4Op<"generic_output"> {
 }
 
 def CutOp : AXI4Op<"cut", [
+  ResultsAtMostOneUse,
   TypesMatchWith<"upstream and downstream types must match",
                     "upstream", "downstream", "$_self">,
 ]> {
@@ -203,10 +210,10 @@ def CutOp : AXI4Op<"cut", [
   let results = (outs PortType:$downstream);
 
   let assemblyFormat = "$clock `,` $reset `at` $upstream attr-dict `:` qualified(type($upstream))";
-  let hasVerifier = 1;
 }
 
 def CDCOp : AXI4Op<"cdc", [
+  ResultsAtMostOneUse,
   TypesMatchWith<"upstream and downstream types must match",
                     "upstream", "downstream", "$_self">,
 ]> {
@@ -221,10 +228,9 @@ def CDCOp : AXI4Op<"cdc", [
   let results = (outs PortType:$downstream);
 
 let assemblyFormat = "$upstream `from` ` ` `[` $upstream_clock `,` $upstream_reset `]` ` ` `to` ` ` `[` $downstream_clock `,` $downstream_reset `]` attr-dict `:` qualified(type($upstream))";
-  let hasVerifier = 1;
 }
 
-def DWConverterOp : AXI4Op<"data_width_converter", []> {
+def DWConverterOp : AXI4Op<"data_width_converter", [ResultsAtMostOneUse]> {
   let summary = "An AXI4 data width converter";
   let description = [{
     Modifies the data width of an upstream AXI port
@@ -234,7 +240,6 @@ def DWConverterOp : AXI4Op<"data_width_converter", []> {
   let results = (outs PortType:$downstream);
 
   let assemblyFormat = "$clock `,` $reset `,` $upstream attr-dict `:` functional-type($upstream, $downstream)";
-  let hasVerifier = 1;
 }
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
