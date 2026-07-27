@@ -3,96 +3,130 @@
 // A subordinate handling addresses outside what any reaching manager issues to.
 hw.module.extern @mgr_module()
 hw.module.extern @sub_module()
-%m = axi4.manager @mgr_module {
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mn = axi4.node @mgr_module : !axi4.node
+%sn = axi4.node @sub_module : !axi4.node
+%m = axi4.manager_port %clk, %rst node %mn {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
   access = [#axi4.window<base = 0, size = 16, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
-} : !axi4.port<32, 64, 4>
+} : !axi4.port<32, 64, 4, 4, 0>
 // expected-error @below {{handles addresses [0, 32) that no manager issues to}}
-axi4.subordinate %m @sub_module {
+axi4.subordinate_port %m, %clk, %rst node %sn {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
   access = [#axi4.window<base = 0, size = 32, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
-} : !axi4.port<32, 64, 4>
+} : !axi4.port<32, 64, 4, 4, 0>
 
 // -----
 
 // A subordinate that doesn't support a burst kind a manager issues.
 hw.module.extern @mgr_module()
 hw.module.extern @sub_module()
-%m = axi4.manager @mgr_module {
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mn = axi4.node @mgr_module : !axi4.node
+%sn = axi4.node @sub_module : !axi4.node
+%m = axi4.manager_port %clk, %rst node %mn {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
   access = [#axi4.window<base = 0, size = 16, burst_specs = [<incr, len = 4>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
-} : !axi4.port<32, 64, 4>
+} : !axi4.port<32, 64, 4, 4, 0>
 // expected-error @below {{does not support the 'incr' burst issued by @mgr_module to addresses [0, 16)}}
-axi4.subordinate %m @sub_module {
+axi4.subordinate_port %m, %clk, %rst node %sn {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
   access = [#axi4.window<base = 0, size = 16, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
-} : !axi4.port<32, 64, 4>
+} : !axi4.port<32, 64, 4, 4, 0>
 
 // -----
 
 // A manager issuing to addresses no subordinate handles.
 hw.module.extern @mgr_module()
 hw.module.extern @sub_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mn = axi4.node @mgr_module : !axi4.node
+%sn = axi4.node @sub_module : !axi4.node
 // expected-error @below {{issues to addresses [0, 32) that are not handled by any subordinate}}
-%m = axi4.manager @mgr_module {
+%m = axi4.manager_port %clk, %rst node %mn {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
   access = [#axi4.window<base = 0, size = 32, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
-} : !axi4.port<32, 64, 4>
-axi4.subordinate %m @sub_module {
+} : !axi4.port<32, 64, 4, 4, 0>
+axi4.subordinate_port %m, %clk, %rst node %sn {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
   access = [#axi4.window<base = 0, size = 16, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
-} : !axi4.port<32, 64, 4>
+} : !axi4.port<32, 64, 4, 4, 0>
 
 // -----
 
 // A manager issuing to an address two subordinates both claim.
 hw.module.extern @mgr_module()
 hw.module.extern @sub_module()
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%mn = axi4.node @mgr_module : !axi4.node
+%sn0 = axi4.node @sub_module : !axi4.node
+%sn1 = axi4.node @sub_module : !axi4.node
 // expected-error @below {{issues to addresses [8, 12) that are handled by multiple subordinates}}
-%m = axi4.manager @mgr_module {
+%m = axi4.manager_port %clk, %rst node %mn {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
   access = [#axi4.window<base = 0, size = 16, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
-} : !axi4.port<32, 64, 4>
-%x = axi4.xbar %m : !axi4.port<32, 64, 4>
-axi4.subordinate %x @sub_module {
+} : !axi4.port<32, 64, 4, 4, 0>
+%x = axi4.xbar %clk, %rst mgrs %m : (!axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 64, 4, 4, 0>
+axi4.subordinate_port %x, %clk, %rst node %sn0 {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
   access = [#axi4.window<base = 0, size = 12, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
-} : !axi4.port<32, 64, 4>
-axi4.subordinate %x @sub_module {
+} : !axi4.port<32, 64, 4, 4, 0>
+axi4.subordinate_port %x, %clk, %rst node %sn1 {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "s0">,
   access = [#axi4.window<base = 8, size = 8, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
-} : !axi4.port<32, 64, 4>
+} : !axi4.port<32, 64, 4, 4, 0>
 
 // -----
 
 // Two managers whose windows overlap where they merge at an xbar.
 hw.module.extern @m0()
 hw.module.extern @m1()
-%a = axi4.manager @m0 {
+%clk = unrealized_conversion_cast to !axi4.clock
+%rst = unrealized_conversion_cast to !axi4.reset
+%n0 = axi4.node @m0 : !axi4.node
+%n1 = axi4.node @m1 : !axi4.node
+%a = axi4.manager_port %clk, %rst node %n0 {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
   access = [#axi4.window<base = 0, size = 16, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
-} : !axi4.port<32, 64, 4>
-%b = axi4.manager @m1 {
+} : !axi4.port<32, 64, 4, 4, 0>
+%b = axi4.manager_port %clk, %rst node %n1 {
+  port_mapping = #axi4.port_wires<"clk", "rst_ni", "m0">,
   access = [#axi4.window<base = 8, size = 16, burst_specs = [<fixed>]>],
   outstanding_reads = 4 : ui32,
   outstanding_writes = 4 : ui32
-} : !axi4.port<32, 64, 4>
+} : !axi4.port<32, 64, 4, 4, 0>
 // expected-error @below {{address range [8, 24) is reachable from both @m1 and @m0}}
-%x = axi4.xbar %a, %b : !axi4.port<32, 64, 4>
+%x = axi4.xbar %clk, %rst mgrs %a, %b : (!axi4.port<32, 64, 4, 4, 0>, !axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 64, 5, 5, 0>
 
 // -----
 
 // A cyclic network: two xbars feeding each other.
 hw.module @cyclic() {
+  %clk = builtin.unrealized_conversion_cast to !axi4.clock
+  %rst = builtin.unrealized_conversion_cast to !axi4.reset
   // expected-error @below {{is part of a cyclic AXI4 network}}
-  %x0 = axi4.xbar %x1 : !axi4.port<32, 64, 4>
+  %x0 = axi4.xbar %clk, %rst mgrs %x1 : (!axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 64, 4, 4, 0>
   // expected-error @below {{is part of a cyclic AXI4 network}}
-  %x1 = axi4.xbar %x0 : !axi4.port<32, 64, 4>
+  %x1 = axi4.xbar %clk, %rst mgrs %x0 : (!axi4.port<32, 64, 4, 4, 0>) -> !axi4.port<32, 64, 4, 4, 0>
   hw.output
 }
 
@@ -100,4 +134,4 @@ hw.module @cyclic() {
 
 // An op the pass doesn't know how to route addresses through.
 // expected-error @below {{unsupported AXI4 network op; cannot verify how it routes addresses}}
-%p = unrealized_conversion_cast to !axi4.port<32, 64, 4>
+%p = unrealized_conversion_cast to !axi4.port<32, 64, 4, 4, 0>
