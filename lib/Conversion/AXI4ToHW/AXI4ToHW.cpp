@@ -23,6 +23,7 @@
 #include "circt/Dialect/HW/PortImplementation.h"
 #include "circt/Support/BackedgeBuilder.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/RegionKindInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -258,6 +259,17 @@ LogicalResult checkNetwork(ModuleOp module) {
         .Case<NodeOp>([&](NodeOp node) {
           checkRegion(node);
           checkUsers(node);
+        })
+        .Case<GenericOutputOp>([&](GenericOutputOp gen) {
+          checkRegion(gen);
+          // A graph region places no ordering constraint on the instance
+          // result we RAUW into; an SSACFG region would, since the instance
+          // is emitted at the end of the block.
+          if (mayHaveSSADominance(*gen->getParentRegion())) {
+            gen.emitError("axi4.generic_output is only supported inside graph "
+                          "regions (e.g. hw.module)");
+            failed = true;
+          }
         });
   });
 
@@ -557,7 +569,9 @@ Value NetworkLowering::materializeReset(Value axiReset, Type portType) {
 
 LogicalResult NetworkLowering::buildInstance(
     Operation *diag, hw::HWModuleLike moduleOp, StringRef instanceName,
-    ArrayRef<PortGroupSpec> specs, SmallVectorImpl<PortWires> &wiresOut) {
+    ArrayRef<PortGroupSpec> specs, ArrayRef<GenericInputOp> genInputs,
+    ArrayRef<GenericOutputOp> genOutputs,
+    SmallVectorImpl<PortWires> &wiresOut) {
   DenseMap<StringRef, PortInfo> portByName;
   for (auto &p : moduleOp.getPortList())
     portByName[p.getName()] = p;
@@ -608,6 +622,26 @@ LogicalResult NetworkLowering::buildInstance(
     inputByName[resetPort->second.name.getValue()] = reset;
   }
 
+  // Non-AXI inputs: drive the named module input port directly.
+  for (GenericInputOp gen : genInputs) {
+    StringRef portName = gen.getPort();
+    auto it = portByName.find(portName);
+    if (it == portByName.end())
+      return gen.emitError("referenced module has no port '")
+             << portName << "'";
+    const PortInfo &p = it->second;
+    if (!p.isInput())
+      return gen.emitError("port '")
+             << portName << "' is not an input of the referenced module";
+    if (gen.getInput().getType() != p.type)
+      return gen.emitError("generic input type ")
+             << gen.getInput().getType() << " does not match module port '"
+             << portName << "' type " << p.type;
+    if (!inputByName.insert({p.getName(), gen.getInput()}).second)
+      return gen.emitError("module input port '")
+             << portName << "' is driven by multiple sources";
+  }
+
   // Assemble instance inputs in the module's input-port order.
   SmallVector<Value> inputs;
   for (auto &p : moduleOp.getPortList()) {
@@ -643,6 +677,24 @@ LogicalResult NetworkLowering::buildInstance(
       fields.push_back(inst.getResult(outputResult.at(fn)));
     wire->value = hw::StructCreateOp::create(builder, structTy, fields);
   }
+
+  // Non-AXI outputs: forward the named module output port to the op's result.
+  for (GenericOutputOp gen : genOutputs) {
+    StringRef portName = gen.getPort();
+    auto it = portByName.find(portName);
+    if (it == portByName.end())
+      return gen.emitError("referenced module has no port '")
+             << portName << "'";
+    const PortInfo &p = it->second;
+    if (!p.isOutput())
+      return gen.emitError("port '")
+             << portName << "' is not an output of the referenced module";
+    if (gen.getOutput().getType() != p.type)
+      return gen.emitError("generic output type ")
+             << gen.getOutput().getType() << " does not match module port '"
+             << portName << "' type " << p.type;
+    gen.getOutput().replaceAllUsesWith(inst.getResult(outputResult.at(portName)));
+  }
   return success();
 }
 
@@ -657,9 +709,21 @@ LogicalResult NetworkLowering::lowerNode(NodeOp node) {
 
   builder.setLoc(node.getLoc());
 
-  // One interface per attached port.
+  // One interface per attached AXI port; generic ports wire scalar signals.
   SmallVector<PortGroupSpec> specs;
+  SmallVector<Operation *> axiPortOps; // parallel to specs, for the edge zip
+  SmallVector<GenericInputOp> genInputs;
+  SmallVector<GenericOutputOp> genOutputs;
   for (Operation *portOp : ports) {
+    if (auto gen = dyn_cast<GenericInputOp>(portOp)) {
+      genInputs.push_back(gen);
+      continue;
+    }
+    if (auto gen = dyn_cast<GenericOutputOp>(portOp)) {
+      genOutputs.push_back(gen);
+      continue;
+    }
+
     Value axiClock, axiReset;
     PortType portType;
     AXI4PortMappingAttrInterface mapping;
@@ -684,18 +748,20 @@ LogicalResult NetworkLowering::lowerNode(NodeOp node) {
                      MappingKind::PortWires, portWires.getName().str(),
                      axiClock, mapping.getClockPort().str(), axiReset,
                      mapping.getResetPort().str()});
+    axiPortOps.push_back(portOp);
   }
 
   SmallVector<PortWires, 0> allWires;
   std::string instName =
       (node.getModule() + "_" + Twine(instanceCounter++)).str();
-  if (failed(buildInstance(node, moduleOp, instName, specs, allWires)))
+  if (failed(buildInstance(node, moduleOp, instName, specs, genInputs,
+                           genOutputs, allWires)))
     return failure();
 
   // File each port's wires under the edge it forms: a manager is the producer
   // for its result's (single) use; a subordinate is the consumer for its
   // upstream operand.
-  for (auto [portOp, wires] : llvm::zip(ports, allWires)) {
+  for (auto [portOp, wires] : llvm::zip(axiPortOps, allWires)) {
     if (auto mgr = dyn_cast<ManagerPortOp>(portOp))
       edges[&*mgr.getPort().use_begin()].producer = wires;
     else

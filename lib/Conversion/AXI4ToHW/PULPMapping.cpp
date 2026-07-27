@@ -483,7 +483,8 @@ LogicalResult NetworkLowering::lowerXbar(XbarOp xbar) {
 
   SmallVector<PortWires, 0> allWires;
   std::string instName = ("xbar_" + Twine(instanceCounter++)).str();
-  if (failed(buildInstance(xbar, moduleOp, instName, specs, allWires)))
+  if (failed(buildInstance(xbar, moduleOp, instName, specs, /*genInputs=*/{},
+                           /*genOutputs=*/{}, allWires)))
     return failure();
 
   // File the wires under their edges: an upstream interface is the consumer of

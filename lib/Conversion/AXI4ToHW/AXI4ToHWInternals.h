@@ -169,13 +169,16 @@ private:
                                                axi4::PortType upstreamType,
                                                axi4::PortType downstreamType,
                                                llvm::ArrayRef<AddrRule> rules);
-  /// Instantiate `moduleOp`, wiring each interface in `specs`; returns the
-  /// per-interface wires in `wiresOut`.
-  mlir::LogicalResult buildInstance(mlir::Operation *diag,
-                                    hw::HWModuleLike moduleOp,
-                                    llvm::StringRef instanceName,
-                                    llvm::ArrayRef<PortGroupSpec> specs,
-                                    llvm::SmallVectorImpl<PortWires> &wiresOut);
+  /// Instantiate `moduleOp`, wiring each AXI interface in `specs` and each
+  /// non-AXI port in `genInputs`/`genOutputs`; returns the per-interface wires
+  /// in `wiresOut`.
+  mlir::LogicalResult
+  buildInstance(mlir::Operation *diag, hw::HWModuleLike moduleOp,
+                llvm::StringRef instanceName,
+                llvm::ArrayRef<PortGroupSpec> specs,
+                llvm::ArrayRef<axi4::GenericInputOp> genInputs,
+                llvm::ArrayRef<axi4::GenericOutputOp> genOutputs,
+                llvm::SmallVectorImpl<PortWires> &wiresOut);
   /// Materialize an `!axi4.clock` value as the module clock port's type.
   mlir::Value materializeClock(mlir::Value axiClock, mlir::Type portType);
   /// Materialize an `!axi4.reset` value as the module reset port's type.

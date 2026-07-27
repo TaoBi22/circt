@@ -408,3 +408,54 @@ axi4.subordinate_port %xbar, %clk, %rst node %sub_node {
   access = [#axi4.window<base = 0, size = 4096, burst_specs = [<fixed>]>],
   outstanding_requests = 4 : ui32
 } : !axi4.port<32, 64, 4, 4, 2>
+
+// -----
+
+// generic_input naming a port the module does not have.
+hw.module.extern @gen_module(in %clk : i1, in %rst_ni : i1)
+%clk = unrealized_conversion_cast to !axi4.clock
+%val = unrealized_conversion_cast to i8
+%node = axi4.node @gen_module : !axi4.node
+// expected-error @below {{referenced module has no port 'nope'}}
+axi4.generic_input %val, "nope" node %node : i8
+
+// -----
+
+// generic_input naming an output port.
+hw.module.extern @gen_module(in %clk : i1, in %rst_ni : i1, out foo_o : i8)
+%clk = unrealized_conversion_cast to !axi4.clock
+%val = unrealized_conversion_cast to i8
+%node = axi4.node @gen_module : !axi4.node
+// expected-error @below {{port 'foo_o' is not an input of the referenced module}}
+axi4.generic_input %val, "foo_o" node %node : i8
+
+// -----
+
+// generic_input whose value type mismatches the module port.
+hw.module.extern @gen_module(in %clk : i1, in %rst_ni : i1, in %foo_i : i8)
+%clk = unrealized_conversion_cast to !axi4.clock
+%val = unrealized_conversion_cast to i16
+%node = axi4.node @gen_module : !axi4.node
+// expected-error @below {{generic input type 'i16' does not match module port 'foo_i' type 'i8'}}
+axi4.generic_input %val, "foo_i" node %node : i16
+
+// -----
+
+// generic_output naming an input port.
+hw.module.extern @gen_module(in %foo_i : i8)
+%val = unrealized_conversion_cast to i8
+%node = axi4.node @gen_module : !axi4.node
+axi4.generic_input %val, "foo_i" node %node : i8
+// expected-error @below {{port 'foo_i' is not an output of the referenced module}}
+%out = axi4.generic_output "foo_i" node %node : i8
+
+// -----
+
+// generic_output inside an SSACFG region is rejected by the prepass.
+hw.module.extern @gen_module(in %clk : i1, in %rst_ni : i1, out foo_o : i8)
+func.func @in_ssacfg() {
+  %node = axi4.node @gen_module : !axi4.node
+  // expected-error @below {{axi4.generic_output is only supported inside graph regions (e.g. hw.module)}}
+  %out = axi4.generic_output "foo_o" node %node : i8
+  return
+}
