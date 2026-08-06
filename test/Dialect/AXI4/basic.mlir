@@ -125,3 +125,47 @@ hw.module @Manager(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port,
       aw %aw_ready w %w_ready b %b, %b_valid
       ar %ar_ready r %r, %r_valid : !port
 }
+
+// Typedefs for a core and a debug unit sharing a memory and a peripheral, with
+// the debug unit also reachable as a subordinate
+!core_mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfffffff, burst_specs = <<incr, len = 16>>>, <base = 0x10000000, last = 0x10000fff, burst_specs = <<fixed, len = 4>>>, <base = 0x20000000, last = 0x20000fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!debug_mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfffffff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 2, outstanding_reads = 2>
+!mem_sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfffffff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 6, outstanding_reads = 6>
+!periph_sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x10000000, last = 0x10000fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!debug_sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x20000000, last = 0x20000fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @Crossbar
+hw.module @Crossbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: %[[CORE:.+]] = axi4.abstract_manager
+  %core = axi4.abstract_manager %clk, %rst_ni : !core_mgr
+  // CHECK: %[[DEBUG:.+]] = axi4.abstract_manager
+  %debug = axi4.abstract_manager %clk, %rst_ni : !debug_mgr
+  // CHECK: %[[XBAR:.+]]:3 = axi4.xbar %clk, %rst_ni mgrs %[[CORE]], %[[DEBUG]] : (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfffffff, burst_specs = <<incr, len = 16>>>, <base = 0x10000000, last = 0x10000fff, burst_specs = <<fixed, len = 4>>>, <base = 0x20000000, last = 0x20000fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfffffff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 2, outstanding_reads = 2>) -> (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfffffff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 6, outstanding_reads = 6>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x10000000, last = 0x10000fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x20000000, last = 0x20000fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>)
+  %mem, %periph, %dbg = axi4.xbar %clk, %rst_ni mgrs %core, %debug
+    : (!core_mgr, !debug_mgr) -> (!mem_sub, !periph_sub, !debug_sub)
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#0 :
+  axi4.abstract_subordinate %clk, %rst_ni, %mem : !mem_sub
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#1 :
+  axi4.abstract_subordinate %clk, %rst_ni, %periph : !periph_sub
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#2 :
+  axi4.abstract_subordinate %clk, %rst_ni, %dbg : !debug_sub
+}
+
+// Typedefs for a manager whose window is split across two subordinates
+!split_mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
+!split_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
+!split_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
+
+// Check a single manager needs no additional ID bits, and that its windows need
+// not line up with the downstream ones
+// CHECK-LABEL: hw.module @SplitWindow
+hw.module @SplitWindow(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: %[[MGR:.+]] = axi4.abstract_manager
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !split_mgr
+  // CHECK: %[[XBAR:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %[[MGR]] : (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>) -> (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>)
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr : (!split_mgr) -> (!split_lo, !split_hi)
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#0 :
+  axi4.abstract_subordinate %clk, %rst_ni, %lo : !split_lo
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#1 :
+  axi4.abstract_subordinate %clk, %rst_ni, %hi : !split_hi
+}
