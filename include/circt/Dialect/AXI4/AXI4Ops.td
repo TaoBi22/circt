@@ -14,12 +14,64 @@
 #define CIRCT_DIALECT_AXI4_AXI4OPS_TD
 
 include "circt/Dialect/AXI4/AXI4Dialect.td"
+include "circt/Dialect/AXI4/AXI4Types.td"
+include "circt/Dialect/Seq/SeqTypes.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for the operations in this dialect.
 class AXI4Op<string mnemonic, list<Trait> traits = []> :
     Op<AXI4Dialect, mnemonic, traits>;
 
-// Operations will be added here.
+// Constrains each `!axi4.port` result to at most one use
+def PortResultsAtMostOneUse : NativeOpTrait<"PortResultsAtMostOneUse"> {
+  let cppNamespace = "::circt::axi4::OpTrait";
+}
+
+def AbstractManagerOp : AXI4Op<"abstract_manager", [PortResultsAtMostOneUse]> {
+  let summary = "A stand-alone AXI4 manager endpoint";
+  let description = [{
+    Models a manager endpoint with no concrete implementation, for abstract
+    network modelling. Returns the `!axi4.port` it drives.
+
+    Example:
+    ```mlir
+    %mgr = axi4.abstract_manager %clk, %rst_ni
+      : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4,
+                   read_id_width = 4, user_width = 0,
+                   windows = <<base = 0x0, last = 0xfff,
+                              burst_specs = <<fixed, len = 4>>>>,
+                   outstanding_writes = 4, outstanding_reads = 4>
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset);
+  let results = (outs PortType:$port);
+
+  let assemblyFormat =
+      "$clock `,` $reset attr-dict `:` qualified(type($port))";
+}
+
+def AbstractSubordinateOp : AXI4Op<"abstract_subordinate"> {
+  let summary = "A stand-alone AXI4 subordinate endpoint";
+  let description = [{
+    Models a subordinate endpoint with no concrete implementation, for abstract
+    network modelling. Takes the upstream `!axi4.port` it responds to.
+
+    Example:
+    ```mlir
+    axi4.abstract_subordinate %clk, %rst_ni, %mgr
+      : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4,
+                   read_id_width = 4, user_width = 0,
+                   windows = <<base = 0x0, last = 0xfff,
+                              burst_specs = <<fixed, len = 4>>>>,
+                   outstanding_writes = 4, outstanding_reads = 4>
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream);
+
+  let assemblyFormat =
+      "$clock `,` $reset `,` $upstream attr-dict `:` qualified(type($upstream))";
+}
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
