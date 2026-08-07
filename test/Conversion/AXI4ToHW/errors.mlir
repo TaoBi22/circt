@@ -13,21 +13,6 @@ hw.module @AbstractNetwork(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
-!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-
-hw.module.extern @Manager(out axi : !mgr)
-hw.module.extern @Subordinate(in %axi : !sub)
-
-hw.module @Crossbar(in %clk : !seq.clock, in %rst_ni : i1) {
-  %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
-  // expected-error @below {{'axi4.xbar' op lowering is not yet implemented}}
-  %s = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub)
-  hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
-}
-
-// -----
-
 !port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 
 hw.module.extern @Manager(out axi : !port)
