@@ -84,6 +84,79 @@ static SmallVector<Type> portTypes(ArrayRef<hw::PortInfo> ports) {
 }
 
 //===----------------------------------------------------------------------===//
+// Crossbars
+//===----------------------------------------------------------------------===//
+
+/// The ports of the module implementing `xbar`. A crossbar is the subordinate
+/// to its upstream managers, so upstream ports are inputs and downstream ports
+/// are outputs.
+static SmallVector<hw::ModulePort> xbarPorts(XbarOp xbar) {
+  MLIRContext *context = xbar.getContext();
+  SmallVector<hw::ModulePort> ports{
+      {StringAttr::get(context, "clk_i"), seq::ClockType::get(context),
+       hw::ModulePort::Direction::Input},
+      {StringAttr::get(context, "rst_ni"), IntegerType::get(context, 1),
+       hw::ModulePort::Direction::Input}};
+  for (auto [index, type] : llvm::enumerate(xbar.getUpstream().getTypes()))
+    ports.push_back({StringAttr::get(context, "mgr" + Twine(index)), type,
+                     hw::ModulePort::Direction::Input});
+  for (auto [index, type] : llvm::enumerate(xbar.getDownstream().getTypes()))
+    ports.push_back({StringAttr::get(context, "sub" + Twine(index)), type,
+                     hw::ModulePort::Direction::Output});
+  return ports;
+}
+
+/// A name describing `xbar`'s shape.
+static StringAttr xbarModuleName(XbarOp xbar) {
+  auto upstream = cast<PortType>(xbar.getUpstream().front().getType());
+  auto downstream = cast<PortType>(xbar.getDownstream().front().getType());
+  return StringAttr::get(xbar.getContext(),
+                         "axi_xbar_" + Twine(xbar.getUpstream().size()) + "u" +
+                             Twine(xbar.getDownstream().size()) + "d_a" +
+                             Twine(upstream.getAddrWidth()) + "_d" +
+                             Twine(upstream.getDataWidth()) + "_i" +
+                             Twine(upstream.getWriteIdWidth()) + "_o" +
+                             Twine(downstream.getWriteIdWidth()));
+}
+
+/// Replace every crossbar with an instance of an external module of its shape,
+/// shared by crossbars whose ports match.
+static void lowerCrossbars(ModuleOp module) {
+  SmallVector<XbarOp> xbars;
+  module.walk([&](XbarOp xbar) { xbars.push_back(xbar); });
+
+  DenseMap<hw::ModuleType, hw::HWModuleExternOp> shapes;
+  DenseMap<Operation *, unsigned> instanceCounts;
+  SymbolTable symbolTable(module);
+  auto b =
+      ImplicitLocOpBuilder::atBlockBegin(module.getLoc(), module.getBody());
+  for (XbarOp xbar : xbars) {
+    SmallVector<hw::ModulePort> ports = xbarPorts(xbar);
+    hw::HWModuleExternOp &shape =
+        shapes[hw::ModuleType::get(module.getContext(), ports)];
+    if (!shape) {
+      shape = hw::HWModuleExternOp::create(
+          b, xbarModuleName(xbar),
+          llvm::map_to_vector(
+              ports, [](hw::ModulePort port) { return hw::PortInfo{port}; }));
+      // Two shapes can want the same name, so let the symbol table unique it.
+      symbolTable.insert(shape);
+    }
+
+    SmallVector<Value> inputs{xbar.getClock(), xbar.getReset()};
+    llvm::append_range(inputs, xbar.getUpstream());
+    ImplicitLocOpBuilder xbarBuilder(xbar.getLoc(), xbar);
+    auto instance = hw::InstanceOp::create(
+        xbarBuilder, shape,
+        xbarBuilder.getStringAttr("xbar" +
+                                  Twine(instanceCounts[xbar->getParentOp()]++)),
+        inputs);
+    xbar->replaceAllUsesWith(instance.getResults());
+    xbar.erase();
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // Bridges
 //===----------------------------------------------------------------------===//
 
@@ -439,9 +512,6 @@ void AXI4ToHWPass::runOnOperation() {
     if (isa<AbstractManagerOp, AbstractSubordinateOp>(op)) {
       op->emitOpError("models an endpoint with no RTL, so cannot be lowered");
       anyFailed = true;
-    } else if (isa<XbarOp>(op)) {
-      op->emitOpError("lowering is not yet implemented");
-      anyFailed = true;
     }
 
     for (Value result : op->getResults())
@@ -455,6 +525,10 @@ void AXI4ToHWPass::runOnOperation() {
     return signalPassFailure();
 
   warnPortsChanging(module);
+
+  // Crossbars become instances, so they have to land before the instance graph
+  // analysis is generated
+  lowerCrossbars(module);
 
   FillerDomain filler;
   hw::InstanceGraph &instanceGraph = getAnalysis<hw::InstanceGraph>();
