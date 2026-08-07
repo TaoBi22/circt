@@ -130,6 +130,36 @@ void VerifyAXI4NetworksPass::runOnOperation() {
     }
   });
 
+  // Warn on bottlenecks where a downstream port cannot concurrently handle all
+  // the possible concurrent requests from upstream ports
+  module.walk([](XbarOp xbar) {
+    for (auto [i, value] : llvm::enumerate(xbar.getDownstream())) {
+      auto downstream = cast<PortType>(value.getType());
+
+      uint64_t writes = 0, reads = 0;
+      for (Value upstream : xbar.getUpstream()) {
+        auto manager = cast<PortType>(upstream.getType());
+        if (!manager.getWindows().overlaps(downstream.getWindows()))
+          continue;
+        writes += manager.getOutstandingWrites();
+        reads += manager.getOutstandingReads();
+      }
+
+      if (downstream.getOutstandingWrites() < writes)
+        xbar.emitWarning() << "downstream port #" << i
+                           << " can hold fewer outstanding writes than the "
+                              "managers reaching it can issue ("
+                           << downstream.getOutstandingWrites() << " < "
+                           << writes << ")";
+      if (downstream.getOutstandingReads() < reads)
+        xbar.emitWarning() << "downstream port #" << i
+                           << " can hold fewer outstanding reads than the "
+                              "managers reaching it can issue ("
+                           << downstream.getOutstandingReads() << " < " << reads
+                           << ")";
+    }
+  });
+
   if (anyFailed)
     signalPassFailure();
 }
