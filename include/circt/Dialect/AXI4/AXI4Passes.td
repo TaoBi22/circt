@@ -25,6 +25,11 @@ def VerifyAXI4Networks : Pass<"verify-axi4-networks", "mlir::ModuleOp"> {
 
     Assumes a network occupies a single clock and reset domain, and compares
     domains by SSA value.
+
+    Also warns where an `axi4.xbar` downstream port can hold fewer outstanding
+    requests than the managers reaching it can issue. This costs throughput
+    rather than correctness, since AXI4 flow control stalls the manager rather
+    than overrunning the subordinate.
   }];
 
   let dependentDialects = ["circt::axi4::AXI4Dialect"];

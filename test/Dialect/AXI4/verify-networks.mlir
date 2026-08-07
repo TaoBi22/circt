@@ -61,3 +61,32 @@ hw.module @ResetCrossing(in %clk : !seq.clock, in %rst_ni : i1, in %other_rst_ni
   // expected-error @below {{'axi4.abstract_subordinate' op is in a different reset domain to the 'axi4.abstract_manager' connected to it}}
   axi4.abstract_subordinate %clk, %other_rst_ni, %mgr : !port
 }
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 5, outstanding_reads = 8>
+
+hw.module @Undersized(in %clk : !seq.clock, in %rst_ni : i1) {
+  %a = axi4.abstract_manager %clk, %rst_ni : !mgr
+  %b = axi4.abstract_manager %clk, %rst_ni : !mgr
+  // expected-warning @below {{downstream port #0 can hold fewer outstanding writes than the managers reaching it can issue (5 < 8)}}
+  %sub = axi4.xbar %clk, %rst_ni mgrs %a, %b : (!mgr, !mgr) -> !sub
+  axi4.abstract_subordinate %clk, %rst_ni, %sub : !sub
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!other_mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!other_sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// Ensure only the managers whose windows reach a port count towards its total
+hw.module @DisjointManagers(in %clk : !seq.clock, in %rst_ni : i1) {
+  %a = axi4.abstract_manager %clk, %rst_ni : !mgr
+  %b = axi4.abstract_manager %clk, %rst_ni : !other_mgr
+  %sub, %other = axi4.xbar %clk, %rst_ni mgrs %a, %b : (!mgr, !other_mgr) -> (!sub, !other_sub)
+  axi4.abstract_subordinate %clk, %rst_ni, %sub : !sub
+  axi4.abstract_subordinate %clk, %rst_ni, %other : !other_sub
+}
