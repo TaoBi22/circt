@@ -1,5 +1,6 @@
 add_circt_conversion_library(CIRCTAXI4ToHW
   AXI4ToHW.cpp
+  PULPMapping.cpp
 
   DEPENDS
   CIRCTConversionPassIncGen
