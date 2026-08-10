@@ -32,6 +32,7 @@ constexpr unsigned kCacheWidth = 4;
 constexpr unsigned kProtWidth = 3;
 constexpr unsigned kQosWidth = 4;
 constexpr unsigned kRegionWidth = 4;
+constexpr unsigned kAtopWidth = 6;
 constexpr unsigned kRespWidth = 2;
 constexpr unsigned kLastWidth = 1;
 

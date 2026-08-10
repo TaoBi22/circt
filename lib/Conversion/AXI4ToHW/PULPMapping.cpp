@@ -93,6 +93,7 @@ static StringRef pulpFieldType(StringRef field) {
       .Case("prot", "axi_pkg::prot_t")
       .Case("qos", "axi_pkg::qos_t")
       .Case("region", "axi_pkg::region_t")
+      .Case("atop", "axi_pkg::atop_t")
       .Case("resp", "axi_pkg::resp_t")
       // The rest have no axi_pkg type, so the caller names them itself
       .Default("");
@@ -206,9 +207,8 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
   os << "  " << prefix << "mst_resp_t [" << numDownstream
      << "-1:0] mst_resp;\n";
 
-  // Bridge each port group to PULP's req/resp structs. PULP's atop is tied off,
-  // and if PULP has a user field that the port does not, the bridge drives it
-  // with zeroes.
+  // Bridge each port group to PULP's req/resp structs. If PULP has a user field
+  // that the port does not, the bridge drives it with zeroes.
   auto payloadAssign = [&](const Twine &lhs, const Twine &rhs, PortType port,
                            const ChannelInfo &info, bool toPulp) {
     SmallVector<std::string> fields;
@@ -222,13 +222,9 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
         continue;
       fields.push_back((fieldName + ": " + rhs + "." + fieldName).str());
     }
-    if (toPulp) {
-      if (info.channel == AXI4Channel::AW)
-        fields.push_back("atop: '0");
-      // PULP's user_t is a bit wide even when the port carries no user.
-      if (port.getUserWidth() == 0)
-        fields.push_back("user: '0");
-    }
+    // PULP's user_t is a bit wide even when the port carries no user.
+    if (toPulp && port.getUserWidth() == 0)
+      fields.push_back("user: '0");
     os << "  assign " << lhs << " = '{" << llvm::join(fields, ", ") << "};\n";
   };
   auto emitBridge = [&](StringRef role, unsigned index, PortType port,

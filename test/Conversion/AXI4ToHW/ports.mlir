@@ -6,7 +6,7 @@
 !port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 !narrow = !axi4.port<addr_width = 16, data_width = 8, write_id_width = 1, read_id_width = 1, user_width = 0, windows = <<base = 0x0, last = 0xff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
 
-!aw = !hw.struct<id: i5, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, user: i4>
+!aw = !hw.struct<id: i5, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, atop: i6, user: i4>
 !w = !hw.struct<data: i64, strb: i8, last: i1, user: i4>
 !ar = !hw.struct<id: i3, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, user: i4>
 !b = !hw.struct<id: i5, resp: i2, user: i4>
@@ -21,7 +21,7 @@
 // CHECK-SAME:    in %axi_b : !hw.struct<id: i5, resp: i2, user: i4>, in %axi_bvalid : i1,
 // CHECK-SAME:    in %axi_arready : i1,
 // CHECK-SAME:    in %axi_r : !hw.struct<id: i3, data: i64, resp: i2, last: i1, user: i4>, in %axi_rvalid : i1,
-// CHECK-SAME:    out axi_aw : !hw.struct<id: i5, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, user: i4>, out axi_awvalid : i1,
+// CHECK-SAME:    out axi_aw : !hw.struct<id: i5, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, atop: i6, user: i4>, out axi_awvalid : i1,
 // CHECK-SAME:    out axi_w : !hw.struct<data: i64, strb: i8, last: i1, user: i4>, out axi_wvalid : i1,
 // CHECK-SAME:    out axi_bready : i1,
 // CHECK-SAME:    out axi_ar : !hw.struct<id: i3, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, user: i4>, out axi_arvalid : i1,
@@ -51,7 +51,7 @@ hw.module.extern @ExternSubordinate(in %clk : !seq.clock, in %rst_ni : i1, in %a
 // CHECK-LABEL: hw.module.extern @MultiPort(
 // CHECK-SAME:    in %up_aw : !hw.struct<id: i5, addr: i32,
 // CHECK-SAME:    in %up_rready : i1,
-// CHECK-SAME:    in %narrow_up_aw : !hw.struct<id: i1, addr: i16, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, user: i0>, in %narrow_up_awvalid : i1,
+// CHECK-SAME:    in %narrow_up_aw : !hw.struct<id: i1, addr: i16, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, atop: i6, user: i0>, in %narrow_up_awvalid : i1,
 // CHECK-SAME:    in %narrow_up_w : !hw.struct<data: i8, strb: i1, last: i1, user: i0>, in %narrow_up_wvalid : i1,
 // CHECK-SAME:    in %narrow_up_bready : i1,
 // CHECK-SAME:    in %narrow_up_ar : !hw.struct<id: i1, addr: i16,

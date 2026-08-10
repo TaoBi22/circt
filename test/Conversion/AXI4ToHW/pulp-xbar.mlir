@@ -70,7 +70,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 // CHECK:      sv.verbatim.source
 // CHECK-SAME:   typedef logic [1-1:0] axi_xbar_1u1d_a32_d64_i4_o4_user_t;\0A
 // CHECK-SAME:   assign slv_req[0].aw = '{id: mgr0_aw.id,
-// CHECK-SAME:     region: mgr0_aw.region, atop: '0, user: '0};\0A
+// CHECK-SAME:     atop: mgr0_aw.atop, user: '0};\0A
 // CHECK-SAME:   assign mgr0_b = '{id: slv_resp[0].b.id, resp: slv_resp[0].b.resp};\0A
 hw.module @NoUser(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
@@ -80,7 +80,7 @@ hw.module @NoUser(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
-// With a user field both sides carry it, and PULP's atop is still tied off
+// With a user field both sides carry it
 !mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 3, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 !sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 3, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 
@@ -90,7 +90,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 // CHECK:      sv.verbatim.source
 // CHECK-SAME:   typedef logic [3-1:0] axi_xbar_1u1d_a32_d64_i4_o4_user_t;\0A
 // CHECK-SAME:   assign slv_req[0].aw = '{id: mgr0_aw.id,
-// CHECK-SAME:     user: mgr0_aw.user, atop: '0};\0A
+// CHECK-SAME:     atop: mgr0_aw.atop, user: mgr0_aw.user};\0A
 // CHECK-SAME:   assign mgr0_b = '{id: slv_resp[0].b.id, resp: slv_resp[0].b.resp, user: slv_resp[0].b.user};\0A
 hw.module @WithUser(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)

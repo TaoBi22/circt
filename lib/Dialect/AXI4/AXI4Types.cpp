@@ -59,29 +59,29 @@ hw::StructType axi4::getChannelPayloadType(PortType port, AXI4Channel channel) {
     return hw::StructType::FieldInfo{StringAttr::get(ctx, name),
                                      IntegerType::get(ctx, width)};
   };
-  // Address channels differ only in which ID width they carry.
-  auto addressFields = [&](unsigned idWidth) {
-    return SmallVector<hw::StructType::FieldInfo>{
-        field("id", idWidth),
-        field("addr", port.getAddrWidth()),
-        field("len", kLenWidth),
-        field("size", kSizeWidth),
-        field("burst", kBurstWidth),
-        field("lock", kLockWidth),
-        field("cache", kCacheWidth),
-        field("prot", kProtWidth),
-        field("qos", kQosWidth),
-        field("region", kRegionWidth),
-        field("user", port.getUserWidth())};
+  // Address channels differ in which ID width they carry, and in that only AW
+  // carries `atop`, the AXI4+ATOP atomic operation.
+  auto addressFields = [&](unsigned idWidth, bool atop) {
+    SmallVector<hw::StructType::FieldInfo> fields{
+        field("id", idWidth),        field("addr", port.getAddrWidth()),
+        field("len", kLenWidth),     field("size", kSizeWidth),
+        field("burst", kBurstWidth), field("lock", kLockWidth),
+        field("cache", kCacheWidth), field("prot", kProtWidth),
+        field("qos", kQosWidth),     field("region", kRegionWidth),
+    };
+    if (atop)
+      fields.push_back(field("atop", kAtopWidth));
+    fields.push_back(field("user", port.getUserWidth()));
+    return fields;
   };
 
   SmallVector<hw::StructType::FieldInfo> fields;
   switch (channel) {
   case AXI4Channel::AW:
-    fields = addressFields(port.getWriteIdWidth());
+    fields = addressFields(port.getWriteIdWidth(), /*atop=*/true);
     break;
   case AXI4Channel::AR:
-    fields = addressFields(port.getReadIdWidth());
+    fields = addressFields(port.getReadIdWidth(), /*atop=*/false);
     break;
   case AXI4Channel::W:
     fields = {field("data", port.getDataWidth()),
