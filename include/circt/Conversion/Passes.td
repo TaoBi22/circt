@@ -59,6 +59,12 @@ def AXI4ToHW : Pass<"lower-axi4-to-hw", "mlir::ModuleOp"> {
 
   let dependentDialects = ["circt::hw::HWDialect", "circt::seq::SeqDialect",
                            "circt::sv::SVDialect"];
+
+  let options = [
+    Option<"pulpMapping", "pulp-mapping", "bool", "false",
+           "Map components onto the PULP Platform AXI library, emitting a "
+           "SystemVerilog wrapper implementing each external module">
+  ];
 }
 
 //===----------------------------------------------------------------------===//
