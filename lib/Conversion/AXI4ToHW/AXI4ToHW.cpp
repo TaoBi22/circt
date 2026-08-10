@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/Conversion/AXI4ToHW.h"
+#include "AXI4ToHWInternals.h"
 #include "circt/Dialect/AXI4/AXI4Dialect.h"
 #include "circt/Dialect/AXI4/AXI4Ops.h"
 #include "circt/Dialect/AXI4/AXI4Types.h"
@@ -31,25 +32,10 @@ namespace circt {
 using namespace circt;
 using namespace axi4;
 using namespace mlir;
+using namespace circt::AXI4ToHW;
 
 // axi4.ports split into fifteen signals - a valid, a ready and a payload for
 // each channel
-
-namespace {
-/// An AXI4 channel's name, and whether a manager drives its payload.
-struct ChannelInfo {
-  AXI4Channel channel;
-  StringLiteral name;
-  bool isRequest;
-};
-} // namespace
-
-static constexpr ChannelInfo kChannels[] = {
-    {AXI4Channel::AW, StringLiteral("aw"), true},
-    {AXI4Channel::W, StringLiteral("w"), true},
-    {AXI4Channel::B, StringLiteral("b"), false},
-    {AXI4Channel::AR, StringLiteral("ar"), true},
-    {AXI4Channel::R, StringLiteral("r"), false}};
 
 namespace {
 /// One of the signals an `!axi4.port` explodes into.
@@ -121,7 +107,7 @@ static StringAttr xbarModuleName(XbarOp xbar) {
 
 /// Replace every crossbar with an instance of an external module of its shape,
 /// shared by crossbars whose ports match.
-static void lowerCrossbars(ModuleOp module) {
+static LogicalResult lowerCrossbars(ModuleOp module, bool pulpMapping) {
   SmallVector<XbarOp> xbars;
   module.walk([&](XbarOp xbar) { xbars.push_back(xbar); });
 
@@ -131,6 +117,9 @@ static void lowerCrossbars(ModuleOp module) {
   auto b =
       ImplicitLocOpBuilder::atBlockBegin(module.getLoc(), module.getBody());
   for (XbarOp xbar : xbars) {
+    if (pulpMapping && failed(checkPulpSupported(xbar)))
+      return failure();
+
     SmallVector<hw::ModulePort> ports = xbarPorts(xbar);
     hw::HWModuleExternOp &shape =
         shapes[hw::ModuleType::get(module.getContext(), ports)];
@@ -141,6 +130,8 @@ static void lowerCrossbars(ModuleOp module) {
               ports, [](hw::ModulePort port) { return hw::PortInfo{port}; }));
       // Two shapes can want the same name, so let the symbol table unique it.
       symbolTable.insert(shape);
+      if (pulpMapping)
+        attachPulpSource(b, shape, xbar);
     }
 
     SmallVector<Value> inputs{xbar.getClock(), xbar.getReset()};
@@ -154,6 +145,7 @@ static void lowerCrossbars(ModuleOp module) {
     xbar->replaceAllUsesWith(instance.getResults());
     xbar.erase();
   }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -499,6 +491,8 @@ static void warnPortsChanging(ModuleOp module) {
 
 namespace {
 struct AXI4ToHWPass : public circt::impl::AXI4ToHWBase<AXI4ToHWPass> {
+  using AXI4ToHWBase::AXI4ToHWBase;
+
   void runOnOperation() override;
 };
 } // namespace
@@ -528,7 +522,8 @@ void AXI4ToHWPass::runOnOperation() {
 
   // Crossbars become instances, so they have to land before the instance graph
   // analysis is generated
-  lowerCrossbars(module);
+  if (failed(lowerCrossbars(module, pulpMapping)))
+    return signalPassFailure();
 
   FillerDomain filler;
   hw::InstanceGraph &instanceGraph = getAnalysis<hw::InstanceGraph>();
