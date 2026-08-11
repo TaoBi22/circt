@@ -31,16 +31,28 @@ namespace {
 struct Domain {
   Value clock, reset;
 };
+
+/// The domains an AXI4 op takes its upstream ports in and drives its downstream
+/// ports in. Only an `axi4.cdc` differs between the two.
+struct Domains {
+  Domain upstream, downstream;
+};
 } // namespace
 
-/// The domain of an AXI4 op, or failure for one this pass does not know.
-static FailureOr<Domain> getDomain(Operation *op) {
-  return TypeSwitch<Operation *, FailureOr<Domain>>(op)
+/// The domains of an AXI4 op, or failure for one this pass does not know.
+static FailureOr<Domains> getDomains(Operation *op) {
+  return TypeSwitch<Operation *, FailureOr<Domains>>(op)
       .Case<AbstractManagerOp, AbstractSubordinateOp, ChannelStructsToPortOp,
-            PortToChannelStructsOp, XbarOp>([](auto op) {
-        return Domain{op.getClock(), op.getReset()};
+            PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp>([](auto op) {
+        Domain domain{op.getClock(), op.getReset()};
+        return Domains{domain, domain};
       })
-      .Default([](Operation *op) -> FailureOr<Domain> {
+      .Case<CDCOp>([](CDCOp op) {
+        // A crossing changes clock but not reset
+        return Domains{{op.getUpstreamClock(), op.getReset()},
+                       {op.getDownstreamClock(), op.getReset()}};
+      })
+      .Default([](Operation *op) -> FailureOr<Domains> {
         op->emitOpError("unsupported AXI4 network op; cannot verify which "
                         "clock and reset domain it is in");
         return failure();
@@ -72,6 +84,24 @@ static void emitDomainCrossing(Operation *op, Operation *other,
   diag.attachNote(other->getLoc()) << "connected operation here";
 }
 
+/// Report a `downstream` port that cannot hold as many outstanding transactions
+/// as the `writes` and `reads` reaching it from upstream. Flow control makes
+/// the manager wait, so this costs throughput rather than correctness.
+static void warnBottleneck(Operation *op, const Twine &portDesc,
+                           PortType downstream, uint64_t writes, uint64_t reads,
+                           const Twine &sourceDesc) {
+  if (downstream.getOutstandingWrites() < writes)
+    op->emitWarning() << portDesc << " can hold fewer outstanding writes than "
+                      << sourceDesc << " can issue ("
+                      << downstream.getOutstandingWrites() << " < " << writes
+                      << ")";
+  if (downstream.getOutstandingReads() < reads)
+    op->emitWarning() << portDesc << " can hold fewer outstanding reads than "
+                      << sourceDesc << " can issue ("
+                      << downstream.getOutstandingReads() << " < " << reads
+                      << ")";
+}
+
 namespace {
 struct VerifyAXI4NetworksPass
     : public circt::axi4::impl::VerifyAXI4NetworksBase<VerifyAXI4NetworksPass> {
@@ -100,8 +130,8 @@ void VerifyAXI4NetworksPass::runOnOperation() {
   module.walk([&](Operation *op) {
     if (op->getDialect() != axi4Dialect)
       return;
-    FailureOr<Domain> domain = getDomain(op);
-    if (failed(domain)) {
+    FailureOr<Domains> domains = getDomains(op);
+    if (failed(domains)) {
       anyFailed = true;
       return;
     }
@@ -114,16 +144,20 @@ void VerifyAXI4NetworksPass::runOnOperation() {
       if (!upstream || upstream->getDialect() != axi4Dialect)
         continue;
 
-      FailureOr<Domain> upstreamDomain = getDomain(upstream);
-      if (failed(upstreamDomain)) {
+      FailureOr<Domains> upstreamDomains = getDomains(upstream);
+      if (failed(upstreamDomains)) {
         anyFailed = true;
         continue;
       }
-      if (domain->clock != upstreamDomain->clock) {
+      // The port leaves the op that produced it in that op's downstream domain,
+      // and arrives in this one's upstream domain.
+      const Domain &consumer = domains->upstream;
+      const Domain &producer = upstreamDomains->downstream;
+      if (consumer.clock != producer.clock) {
         emitDomainCrossing(op, upstream, "clock");
         anyFailed = true;
       }
-      if (domain->reset != upstreamDomain->reset) {
+      if (consumer.reset != producer.reset) {
         emitDomainCrossing(op, upstream, "reset");
         anyFailed = true;
       }
@@ -131,7 +165,7 @@ void VerifyAXI4NetworksPass::runOnOperation() {
   });
 
   // Warn on bottlenecks where a downstream port cannot concurrently handle all
-  // the possible concurrent requests from upstream ports
+  // the possible concurrent requests reaching it
   module.walk([](XbarOp xbar) {
     for (auto [i, value] : llvm::enumerate(xbar.getDownstream())) {
       auto downstream = cast<PortType>(value.getType());
@@ -145,19 +179,16 @@ void VerifyAXI4NetworksPass::runOnOperation() {
         reads += manager.getOutstandingReads();
       }
 
-      if (downstream.getOutstandingWrites() < writes)
-        xbar.emitWarning() << "downstream port #" << i
-                           << " can hold fewer outstanding writes than the "
-                              "managers reaching it can issue ("
-                           << downstream.getOutstandingWrites() << " < "
-                           << writes << ")";
-      if (downstream.getOutstandingReads() < reads)
-        xbar.emitWarning() << "downstream port #" << i
-                           << " can hold fewer outstanding reads than the "
-                              "managers reaching it can issue ("
-                           << downstream.getOutstandingReads() << " < " << reads
-                           << ")";
+      warnBottleneck(xbar, "downstream port #" + Twine(i), downstream, writes,
+                     reads, "the managers reaching it");
     }
+  });
+  module.walk([](DWConverterOp converter) {
+    auto upstream = cast<PortType>(converter.getUpstream().getType());
+    warnBottleneck(converter, "downstream port",
+                   cast<PortType>(converter.getDownstream().getType()),
+                   upstream.getOutstandingWrites(),
+                   upstream.getOutstandingReads(), "the upstream port");
   });
 
   if (anyFailed)

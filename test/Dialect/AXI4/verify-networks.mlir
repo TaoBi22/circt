@@ -90,3 +90,84 @@ hw.module @DisjointManagers(in %clk : !seq.clock, in %rst_ni : i1) {
   axi4.abstract_subordinate %clk, %rst_ni, %sub : !sub
   axi4.abstract_subordinate %clk, %rst_ni, %other : !other_sub
 }
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @CutCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
+                       in %rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !port
+  // expected-error @below {{'axi4.cut' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
+  %cut = axi4.cut %other_clk, %rst_ni, %mgr : !port
+  axi4.abstract_subordinate %other_clk, %rst_ni, %cut : !port
+}
+
+// -----
+
+!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 8>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @ConverterCrossing(in %clk : !seq.clock, in %rst_ni : i1,
+                             in %other_rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !wide
+  // expected-error @below {{'axi4.data_width_converter' op is in a different reset domain to the 'axi4.abstract_manager' connected to it}}
+  %dwc = axi4.data_width_converter %clk, %other_rst_ni, %mgr : (!wide) -> !thin
+  axi4.abstract_subordinate %clk, %other_rst_ni, %dwc : !thin
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// A cdc is the one op allowed to change clock domain, so neither side is a
+// crossing
+hw.module @CdcCrosses(in %clk : !seq.clock, in %other_clk : !seq.clock,
+                      in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !port
+  %cdc = axi4.cdc from %clk to %other_clk, %rst_ni, %mgr : !port
+  axi4.abstract_subordinate %other_clk, %rst_ni, %cdc : !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// Its upstream clock must still be its producer's
+hw.module @CdcFromWrongClock(in %clk : !seq.clock, in %other_clk : !seq.clock,
+                             in %rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !port
+  // expected-error @below {{'axi4.cdc' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
+  %cdc = axi4.cdc from %other_clk to %clk, %rst_ni, %mgr : !port
+  axi4.abstract_subordinate %clk, %rst_ni, %cdc : !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// And a cdc is not a reset crossing
+hw.module @CdcCrossesReset(in %clk : !seq.clock, in %other_clk : !seq.clock,
+                           in %rst_ni : i1, in %other_rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !port
+  // expected-error @below {{'axi4.cdc' op is in a different reset domain to the 'axi4.abstract_manager' connected to it}}
+  %cdc = axi4.cdc from %clk to %other_clk, %other_rst_ni, %mgr : !port
+  axi4.abstract_subordinate %other_clk, %other_rst_ni, %cdc : !port
+}
+
+// -----
+
+!up = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!down = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, outstanding_writes = 2, outstanding_reads = 4>
+
+// A converter's downstream port is a bottleneck the same way a crossbar's is
+hw.module @UndersizedConverter(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !up
+  // expected-warning @below {{downstream port can hold fewer outstanding writes than the upstream port can issue (2 < 4)}}
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %mgr : (!up) -> !down
+  axi4.abstract_subordinate %clk, %rst_ni, %dwc : !down
+}
