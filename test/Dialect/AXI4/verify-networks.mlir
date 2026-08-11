@@ -157,3 +157,17 @@ hw.module @CdcCrossesReset(in %clk : !seq.clock, in %other_clk : !seq.clock,
   %cdc = axi4.cdc from %clk to %other_clk, %other_rst_ni, %mgr : !port
   axi4.abstract_subordinate %other_clk, %other_rst_ni, %cdc concurrent_writes 4 concurrent_reads 4 : !port
 }
+
+// -----
+
+!burstty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitterCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
+                            in %rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !burstty
+  // expected-error @below {{'axi4.burst_splitter' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
+  %split = axi4.burst_splitter %other_clk, %rst_ni, %mgr : (!burstty) -> !beats
+  axi4.abstract_subordinate %other_clk, %rst_ni, %split concurrent_writes 4 concurrent_reads 4 : !beats
+}

@@ -43,7 +43,8 @@ struct Domains {
 static FailureOr<Domains> getDomains(Operation *op) {
   return TypeSwitch<Operation *, FailureOr<Domains>>(op)
       .Case<AbstractManagerOp, AbstractSubordinateOp, ChannelStructsToPortOp,
-            PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp>([](auto op) {
+            PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp,
+            BurstSplitterOp>([](auto op) {
         Domain domain{op.getClock(), op.getReset()};
         return Domains{domain, domain};
       })
