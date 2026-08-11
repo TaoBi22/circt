@@ -97,3 +97,22 @@ hw.module @OverWideForTwoManagers(in %clk : !seq.clock, in %rst_ni : i1) {
   %s = axi4.xbar %clk, %rst_ni mgrs %a, %b : (!mgr, !mgr) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
+
+// -----
+
+// PULP's axi_dw_converter converts over a single ID width, shared by writes and
+// reads, so the two must agree - unlike a cut, which never inspects them
+!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// expected-warning @below {{lowering AXI4 port 'axi' changes the ports of this module; its implementation must match the new port list}}
+hw.module.extern @Manager(out axi : !wide)
+// expected-warning @below {{lowering AXI4 port 'axi' changes the ports of this module; its implementation must match the new port list}}
+hw.module.extern @Subordinate(in %axi : !thin)
+
+hw.module @SplitIds(in %clk : !seq.clock, in %rst_ni : i1) {
+  %m = hw.instance "mgr" @Manager() -> (axi: !wide)
+  // expected-error @below {{'axi4.data_width_converter' op cannot be lowered to a PULP axi_dw_converter, which uses a single ID width, because its write ID width (4) and read ID width (2) differ}}
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %m : (!wide) -> !thin
+  hw.instance "sub" @Subordinate(axi: %dwc: !thin) -> ()
+}
