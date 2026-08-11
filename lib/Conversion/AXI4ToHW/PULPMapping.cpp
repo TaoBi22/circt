@@ -58,10 +58,8 @@ static LogicalResult checkPulpIdsPresent(Operation *op) {
   return success();
 }
 
-LogicalResult circt::AXI4ToHW::checkPulpSupported(XbarOp xbar) {
-  if (failed(checkPulpIdsPresent(xbar)))
-    return failure();
-
+/// Report the crossbars PULP's axi_xbar cannot express.
+static LogicalResult checkPulpXbarSupported(XbarOp xbar) {
   // PULP has additional restrictions on ID widths (it uses a single width for
   // reads and writes, and all downstream ports must have the same width)
   auto checkIdWidths = [&](PortType port, const Twine &side) -> LogicalResult {
@@ -373,12 +371,27 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
   return text;
 }
 
+LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
+  if (failed(checkPulpIdsPresent(op)))
+    return failure();
+  return TypeSwitch<Operation *, LogicalResult>(op)
+      .Case<XbarOp>(checkPulpXbarSupported)
+      .Default(success());
+}
+
 void circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
                                        hw::HWModuleExternOp shape,
-                                       XbarOp xbar) {
+                                       Operation *op) {
   StringRef name = shape.getName();
+  std::optional<std::string> text =
+      TypeSwitch<Operation *, std::optional<std::string>>(op)
+          .Case<XbarOp>([&](XbarOp xbar) { return pulpXbarSource(name, xbar); })
+          .Default(std::nullopt);
+  if (!text)
+    return;
+
   auto source = sv::SVVerbatimSourceOp::create(
-      b, b.getStringAttr(name + ".sv"), pulpXbarSource(name, xbar),
+      b, b.getStringAttr(name + ".sv"), *text,
       hw::OutputFileAttr::getFromFilename(b.getContext(), name + ".sv"),
       b.getArrayAttr({}), /*additional_files=*/nullptr, b.getStringAttr(name));
   shape->setAttr("source", FlatSymbolRefAttr::get(source));

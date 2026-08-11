@@ -23,6 +23,7 @@
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 namespace circt {
 #define GEN_PASS_DEF_AXI4TOHW
@@ -70,80 +71,156 @@ static SmallVector<Type> portTypes(ArrayRef<hw::PortInfo> ports) {
 }
 
 //===----------------------------------------------------------------------===//
-// Crossbars
+// Components
 //===----------------------------------------------------------------------===//
 
-/// The ports of the module implementing `xbar`. A crossbar is the subordinate
-/// to its upstream managers, so upstream ports are inputs and downstream ports
-/// are outputs.
-static SmallVector<hw::ModulePort> xbarPorts(XbarOp xbar) {
-  MLIRContext *context = xbar.getContext();
-  SmallVector<hw::ModulePort> ports{
-      {StringAttr::get(context, "clk_i"), seq::ClockType::get(context),
-       hw::ModulePort::Direction::Input},
-      {StringAttr::get(context, "rst_ni"), IntegerType::get(context, 1),
-       hw::ModulePort::Direction::Input}};
-  for (auto [index, type] : llvm::enumerate(xbar.getUpstream().getTypes()))
-    ports.push_back({StringAttr::get(context, "mgr" + Twine(index)), type,
-                     hw::ModulePort::Direction::Input});
-  for (auto [index, type] : llvm::enumerate(xbar.getDownstream().getTypes()))
-    ports.push_back({StringAttr::get(context, "sub" + Twine(index)), type,
-                     hw::ModulePort::Direction::Output});
+namespace {
+/// An AXI4 op lowered to an instance of an external module of its shape.
+struct Component {
+  Operation *op;
+  /// The name of the external module implementing it
+  std::string moduleName;
+  /// The name its instances take, suffixed to count them within a module
+  StringRef instanceName;
+  /// The clock and reset ports it takes, in order, and what drives them
+  SmallVector<std::pair<StringRef, Value>> domain;
+};
+} // namespace
+
+/// The `!axi4.port` operands of `op`, which arrive from upstream.
+static SmallVector<Value> upstreamPorts(Operation *op) {
+  SmallVector<Value> ports;
+  for (Value operand : op->getOperands())
+    if (isa<PortType>(operand.getType()))
+      ports.push_back(operand);
   return ports;
 }
 
-/// A name describing `xbar`'s shape.
-static StringAttr xbarModuleName(XbarOp xbar) {
-  auto upstream = cast<PortType>(xbar.getUpstream().front().getType());
-  auto downstream = cast<PortType>(xbar.getDownstream().front().getType());
-  return StringAttr::get(xbar.getContext(),
-                         "axi_xbar_" + Twine(xbar.getUpstream().size()) + "u" +
-                             Twine(xbar.getDownstream().size()) + "d_a" +
-                             Twine(upstream.getAddrWidth()) + "_d" +
-                             Twine(upstream.getDataWidth()) + "_i" +
-                             Twine(upstream.getWriteIdWidth()) + "_o" +
-                             Twine(downstream.getWriteIdWidth()));
+/// The suffix naming the shape of a component carrying `port`.
+static std::string portShape(PortType port) {
+  return ("a" + Twine(port.getAddrWidth()) + "_d" + Twine(port.getDataWidth()) +
+          "_i" + Twine(port.getWriteIdWidth()))
+      .str();
 }
 
-/// Replace every crossbar with an instance of an external module of its shape,
-/// shared by crossbars whose ports match.
-static LogicalResult lowerCrossbars(ModuleOp module, bool pulpMapping) {
-  SmallVector<XbarOp> xbars;
-  module.walk([&](XbarOp xbar) { xbars.push_back(xbar); });
+/// The component `op` lowers to, or nothing if it is not one.
+static std::optional<Component> getComponent(Operation *op) {
+  return TypeSwitch<Operation *, std::optional<Component>>(op)
+      .Case<XbarOp>([](XbarOp xbar) {
+        auto upstream = cast<PortType>(xbar.getUpstream().front().getType());
+        auto downstream =
+            cast<PortType>(xbar.getDownstream().front().getType());
+        return Component{
+            xbar,
+            ("axi_xbar_" + Twine(xbar.getUpstream().size()) + "u" +
+             Twine(xbar.getDownstream().size()) + "d_" + portShape(upstream) +
+             "_o" + Twine(downstream.getWriteIdWidth()))
+                .str(),
+            "xbar",
+            {{"clk_i", xbar.getClock()}, {"rst_ni", xbar.getReset()}}};
+      })
+      .Case<CutOp>([](CutOp cut) {
+        auto port = cast<PortType>(cut.getUpstream().getType());
+        return Component{
+            cut,
+            "axi_cut_" + portShape(port),
+            "cut",
+            {{"clk_i", cut.getClock()}, {"rst_ni", cut.getReset()}}};
+      })
+      .Case<CDCOp>([](CDCOp cdc) {
+        auto port = cast<PortType>(cdc.getUpstream().getType());
+        return Component{cdc,
+                         "axi_cdc_" + portShape(port),
+                         "cdc",
+                         {{"src_clk_i", cdc.getUpstreamClock()},
+                          {"dst_clk_i", cdc.getDownstreamClock()},
+                          {"rst_ni", cdc.getReset()}}};
+      })
+      .Case<DWConverterOp>([](DWConverterOp converter) {
+        auto upstream = cast<PortType>(converter.getUpstream().getType());
+        auto downstream = cast<PortType>(converter.getDownstream().getType());
+        return Component{converter,
+                         ("axi_dw_converter_a" +
+                          Twine(upstream.getAddrWidth()) + "_d" +
+                          Twine(upstream.getDataWidth()) + "to" +
+                          Twine(downstream.getDataWidth()) + "_i" +
+                          Twine(upstream.getWriteIdWidth()))
+                             .str(),
+                         "dw_converter",
+                         {{"clk_i", converter.getClock()},
+                          {"rst_ni", converter.getReset()}}};
+      })
+      .Default(std::nullopt);
+}
 
-  DenseMap<hw::ModuleType, hw::HWModuleExternOp> shapes;
-  DenseMap<Operation *, unsigned> instanceCounts;
+/// The ports of the module implementing `component`. A component is the
+/// subordinate to its upstream managers, so upstream ports are inputs and
+/// downstream ports are outputs.
+static SmallVector<hw::ModulePort> componentPorts(const Component &component) {
+  MLIRContext *context = component.op->getContext();
+  SmallVector<hw::ModulePort> ports;
+  for (auto [name, value] : component.domain)
+    ports.push_back({StringAttr::get(context, name), value.getType(),
+                     hw::ModulePort::Direction::Input});
+  for (auto [index, value] : llvm::enumerate(upstreamPorts(component.op)))
+    ports.push_back({StringAttr::get(context, "mgr" + Twine(index)),
+                     value.getType(), hw::ModulePort::Direction::Input});
+  for (auto [index, value] : llvm::enumerate(component.op->getResults()))
+    ports.push_back({StringAttr::get(context, "sub" + Twine(index)),
+                     value.getType(), hw::ModulePort::Direction::Output});
+  return ports;
+}
+
+/// Replace every component with an instance of an external module of its shape,
+/// shared by components of the same kind whose ports match.
+static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping) {
+  SmallVector<Component> components;
+  module.walk([&](Operation *op) {
+    if (std::optional<Component> component = getComponent(op))
+      components.push_back(std::move(*component));
+  });
+
+  DenseMap<std::pair<StringAttr, hw::ModuleType>, hw::HWModuleExternOp> shapes;
+  DenseMap<std::pair<Operation *, StringRef>, unsigned> instanceCounts;
   SymbolTable symbolTable(module);
   auto b =
       ImplicitLocOpBuilder::atBlockBegin(module.getLoc(), module.getBody());
-  for (XbarOp xbar : xbars) {
-    if (pulpMapping && failed(checkPulpSupported(xbar)))
+  for (const Component &component : components) {
+    Operation *op = component.op;
+    if (pulpMapping && failed(checkPulpSupported(op)))
       return failure();
 
-    SmallVector<hw::ModulePort> ports = xbarPorts(xbar);
+    SmallVector<hw::ModulePort> ports = componentPorts(component);
+    // Two kinds of component can share a port list, so the name - which encodes
+    // the kind - is part of the shape.
+    auto name = b.getStringAttr(component.moduleName);
     hw::HWModuleExternOp &shape =
-        shapes[hw::ModuleType::get(module.getContext(), ports)];
+        shapes[{name, hw::ModuleType::get(module.getContext(), ports)}];
     if (!shape) {
       shape = hw::HWModuleExternOp::create(
-          b, xbarModuleName(xbar),
-          llvm::map_to_vector(
-              ports, [](hw::ModulePort port) { return hw::PortInfo{port}; }));
+          b, name, llvm::map_to_vector(ports, [](hw::ModulePort port) {
+            return hw::PortInfo{port};
+          }));
       // Two shapes can want the same name, so let the symbol table unique it.
       symbolTable.insert(shape);
       if (pulpMapping)
-        attachPulpSource(b, shape, xbar);
+        attachPulpSource(b, shape, op);
     }
 
-    SmallVector<Value> inputs{xbar.getClock(), xbar.getReset()};
-    llvm::append_range(inputs, xbar.getUpstream());
-    ImplicitLocOpBuilder xbarBuilder(xbar.getLoc(), xbar);
+    SmallVector<Value> inputs = llvm::map_to_vector(
+        component.domain, [](const std::pair<StringRef, Value> &domain) {
+          return domain.second;
+        });
+    llvm::append_range(inputs, upstreamPorts(op));
+    ImplicitLocOpBuilder opBuilder(op->getLoc(), op);
+    unsigned &count =
+        instanceCounts[{op->getParentOp(), component.instanceName}];
     auto instance = hw::InstanceOp::create(
-        xbarBuilder, shape,
-        xbarBuilder.getStringAttr("xbar" +
-                                  Twine(instanceCounts[xbar->getParentOp()]++)),
+        opBuilder, shape,
+        opBuilder.getStringAttr(component.instanceName + Twine(count++)),
         inputs);
-    xbar->replaceAllUsesWith(instance.getResults());
-    xbar.erase();
+    op->replaceAllUsesWith(instance.getResults());
+    op->erase();
   }
   return success();
 }
@@ -520,9 +597,9 @@ void AXI4ToHWPass::runOnOperation() {
 
   warnPortsChanging(module);
 
-  // Crossbars become instances, so they have to land before the instance graph
+  // Components become instances, so they have to land before the instance graph
   // analysis is generated
-  if (failed(lowerCrossbars(module, pulpMapping)))
+  if (failed(lowerComponents(module, pulpMapping)))
     return signalPassFailure();
 
   FillerDomain filler;
