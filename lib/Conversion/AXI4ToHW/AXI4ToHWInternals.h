@@ -36,13 +36,13 @@ inline constexpr ChannelInfo kChannels[] = {
     {axi4::AXI4Channel::AR, llvm::StringLiteral("ar"), true},
     {axi4::AXI4Channel::R, llvm::StringLiteral("r"), false}};
 
-/// Report the crossbars PULP's axi_xbar cannot express.
-mlir::LogicalResult checkPulpSupported(axi4::XbarOp xbar);
+/// Report the components PULP's AXI library cannot express.
+mlir::LogicalResult checkPulpSupported(mlir::Operation *op);
 
-/// Attach a PULP axi_xbar wrapper to `shape`, the external module `xbar` is
-/// lowered to.
+/// Attach a PULP wrapper implementing `op` to `shape`, the external module it
+/// is lowered to.
 void attachPulpSource(mlir::ImplicitLocOpBuilder &b, hw::HWModuleExternOp shape,
-                      axi4::XbarOp xbar);
+                      mlir::Operation *op);
 
 } // namespace AXI4ToHW
 } // namespace circt
