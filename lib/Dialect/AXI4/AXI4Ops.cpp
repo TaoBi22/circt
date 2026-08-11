@@ -60,6 +60,44 @@ static LogicalResult verifyWidthsMatch(Operation *op,
 }
 
 //===----------------------------------------------------------------------===//
+// Window helpers
+//===----------------------------------------------------------------------===//
+
+/// Verify that a port's upstream and downstream windows cover the same
+/// addresses, and that applying some mapping to the upstream window's burst
+/// specs produces burst specs the downstream window supports
+static LogicalResult verifyWindowsConvert(
+    Operation *op, PortType upstream, PortType downstream,
+    llvm::function_ref<FailureOr<BurstSpecAttr>(BurstSpecAttr)> convert,
+    const Twine &description) {
+  ArrayRef<WindowAttr> upWindows = upstream.getWindows().getWindows();
+  ArrayRef<WindowAttr> downWindows = downstream.getWindows().getWindows();
+  if (!llvm::equal(upWindows, downWindows, [](WindowAttr up, WindowAttr down) {
+        return up.getBase() == down.getBase() && up.getLast() == down.getLast();
+      }))
+    return op->emitOpError("upstream and downstream windows must cover the "
+                           "same addresses");
+
+  for (auto [upWindow, downWindow] : llvm::zip_equal(upWindows, downWindows)) {
+    SmallVector<BurstSpecAttr> converted;
+    for (BurstSpecAttr spec : upWindow.getBurstSpecs().getBurstSpecs()) {
+      FailureOr<BurstSpecAttr> mapped = convert(spec);
+      if (failed(mapped))
+        return failure();
+      converted.push_back(*mapped);
+    }
+
+    auto expected = BurstSetAttr::get(op->getContext(), converted);
+    if (!downWindow.getBurstSpecs().covers(expected))
+      return op->emitOpError()
+             << "downstream window must support at least " << expected << " ("
+             << description << "), but supports " << downWindow.getBurstSpecs();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // XbarOp
 //===----------------------------------------------------------------------===//
 
@@ -195,49 +233,58 @@ LogicalResult DWConverterOp::verify() {
                                "downstream port", upstream, "upstream port")))
     return failure();
 
-  // A conversion re-widths, it does not re-address, so both sides reach exactly
-  // the same addresses
-  ArrayRef<WindowAttr> upWindows = upstream.getWindows().getWindows();
-  ArrayRef<WindowAttr> downWindows = downstream.getWindows().getWindows();
-  if (!llvm::equal(upWindows, downWindows, [](WindowAttr up, WindowAttr down) {
-        return up.getBase() == down.getBase() && up.getLast() == down.getLast();
-      }))
-    return emitOpError("upstream and downstream windows must cover the same "
-                       "addresses");
+  // A conversion re-widths, it does not re-address, and each upstream burst
+  // becomes exactly one downstream burst of the same kind, carrying the same
+  // bytes in beats of the new width
+  return verifyWindowsConvert(
+      *this, upstream, downstream,
+      [&](BurstSpecAttr spec) -> FailureOr<BurstSpecAttr> {
+        std::optional<uint32_t> len =
+            convertLen(spec.getLen(), upstream.getDataWidth(), width);
+        if (!len) {
+          emitOpError() << "upstream burst " << spec
+                        << " does not divide into whole " << width
+                        << "-bit beats";
+          return failure();
+        }
 
-  // Each upstream burst becomes exactly one downstream burst of the same kind,
-  // carrying the same bytes in beats of the new width
-  for (auto [upWindow, downWindow] : llvm::zip_equal(upWindows, downWindows)) {
-    SmallVector<BurstSpecAttr> converted;
-    for (BurstSpecAttr spec : upWindow.getBurstSpecs().getBurstSpecs()) {
-      std::optional<uint32_t> len =
-          convertLen(spec.getLen(), upstream.getDataWidth(), width);
-      if (!len)
-        return emitOpError()
-               << "upstream burst " << spec << " does not divide into whole "
-               << width << "-bit beats";
+        BurstSpecAttr beats = BurstSpecAttr::getChecked(
+            [&] {
+              return emitOpError() << "upstream burst " << spec << " has no "
+                                   << width << "-bit equivalent: ";
+            },
+            getContext(), spec.getKind(), *len);
+        if (!beats)
+          return failure();
+        return beats;
+      },
+      "the upstream's bursts in beats of " + Twine(width) + " bits");
+}
 
-      BurstSpecAttr beats = BurstSpecAttr::getChecked(
-          [&] {
-            return emitOpError() << "upstream burst " << spec << " has no "
-                                 << width << "-bit equivalent: ";
-          },
-          getContext(), spec.getKind(), *len);
-      if (!beats)
-        return failure();
-      converted.push_back(beats);
-    }
+//===----------------------------------------------------------------------===//
+// BurstSplitterOp
+//===----------------------------------------------------------------------===//
 
-    auto expected = BurstSetAttr::get(getContext(), converted);
-    if (!downWindow.getBurstSpecs().covers(expected))
-      return emitOpError() << "downstream window must support at least "
-                           << expected
-                           << ", the upstream's bursts in beats of " << width
-                           << " bits, but supports "
-                           << downWindow.getBurstSpecs();
-  }
+LogicalResult BurstSplitterOp::verify() {
+  auto upstream = cast<PortType>(getUpstream().getType());
+  auto downstream = cast<PortType>(getDownstream().getType());
 
-  return success();
+  // A split changes burst lengths, and leaves every width alone
+  if (failed(verifyWidthsMatch(*this, kWidths, downstream, "downstream port",
+                               upstream, "upstream port")))
+    return failure();
+
+  // A split re-lengths, it does not re-address, and each upstream burst becomes
+  // single beats of its own kind - except a `wrap`, whose wrapping belongs to
+  // the sequence of beats rather than to any one of them
+  return verifyWindowsConvert(
+      *this, upstream, downstream,
+      [&](BurstSpecAttr spec) -> FailureOr<BurstSpecAttr> {
+        BurstKind kind = spec.getKind() == BurstKind::Wrap ? BurstKind::Incr
+                                                           : spec.getKind();
+        return BurstSpecAttr::get(getContext(), kind, /*len=*/1);
+      },
+      "the upstream's bursts split into single beats");
 }
 
 //===----------------------------------------------------------------------===//

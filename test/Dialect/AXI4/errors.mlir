@@ -305,6 +305,43 @@ hw.module @UnrepresentableBurst(in %clk : !seq.clock, in %rst_ni : i1,
 
 hw.module @UnscaledBurst(in %clk : !seq.clock, in %rst_ni : i1,
                          in %upstream : !wide) {
-  // expected-error @below {{'axi4.data_width_converter' op downstream window must support at least #axi4.burst_set<<incr, len = 8>>, the upstream's bursts in beats of 32 bits, but supports #axi4.burst_set<<incr, len = 4>>}}
+  // expected-error @below {{'axi4.data_width_converter' op downstream window must support at least #axi4.burst_set<<incr, len = 8>> (the upstream's bursts in beats of 32 bits), but supports #axi4.burst_set<<incr, len = 4>>}}
   %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!wide) -> !unscaled
+}
+
+// -----
+
+// A splitter changes burst lengths and nothing else, so every width carries
+// through
+!bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @NarrowingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
+                             in %upstream : !bursty) {
+  // expected-error @below {{'axi4.burst_splitter' op downstream port's 'data_width' (32) must match upstream port's (64)}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !narrow
+}
+
+// -----
+
+!bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!moved = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @MovingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
+                          in %upstream : !bursty) {
+  // expected-error @below {{'axi4.burst_splitter' op upstream and downstream windows must cover the same addresses}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !moved
+}
+
+// -----
+
+// Splitting a wrap burst leaves incrementing beats, so a downstream port still
+// typed to wrap does not match
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!still_wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 2>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitStillWrapping(in %clk : !seq.clock, in %rst_ni : i1,
+                              in %upstream : !wrapping) {
+  // expected-error @below {{'axi4.burst_splitter' op downstream window must support at least #axi4.burst_set<<incr, len = 1>> (the upstream's bursts split into single beats), but supports #axi4.burst_set<<wrap, len = 2>>}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!wrapping) -> !still_wrapping
 }

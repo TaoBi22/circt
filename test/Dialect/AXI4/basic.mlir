@@ -225,3 +225,27 @@ hw.module @LongerBurstConverter(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK: axi4.data_width_converter %clk, %rst_ni, %upstream :
   %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!wide) -> !longer_thin
 }
+
+// Typedefs for a splitter, which keeps each burst's kind and takes it down to a
+// single beat
+!bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 1>, <incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @BurstSplitter
+hw.module @BurstSplitter(in %clk : !seq.clock, in %rst_ni : i1,
+                         in %upstream : !bursty) {
+  // CHECK: axi4.burst_splitter %clk, %rst_ni, %upstream : (!axi4.port<addr_width = 32, data_width = 64, {{.*}} burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<addr_width = 32, data_width = 64, {{.*}} burst_specs = <<fixed, len = 1>, <incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !beats
+}
+
+// Typedefs for splitting a wrapping burst, whose single beats increment - there
+// is nothing left to wrap
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!unwrapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @SplitWrappingBurst
+hw.module @SplitWrappingBurst(in %clk : !seq.clock, in %rst_ni : i1,
+                              in %upstream : !wrapping) {
+  // CHECK: axi4.burst_splitter %clk, %rst_ni, %upstream : (!axi4.port<{{.*}} burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<{{.*}} burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!wrapping) -> !unwrapped
+}

@@ -256,4 +256,30 @@ def DWConverterOp : AXI4Op<"data_width_converter", [PortResultsAtMostOneUse]> {
   let hasVerifier = 1;
 }
 
+def BurstSplitterOp : AXI4Op<"burst_splitter", [PortResultsAtMostOneUse]> {
+  let summary = "An AXI4 burst splitter";
+  let description = [{
+    Splits every burst on an AXI4 connection into single-beat transactions.
+
+    A single beat has no wrapping to do, so a `wrap` burst splits into `incr`
+    beats.
+
+    Example:
+    ```mlir
+    %downstream = axi4.burst_splitter %clk, %rst_ni, %upstream
+      : (!axi4.port<...>) -> !axi4.port<...>
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream);
+  let results = (outs PortType:$downstream);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `,` $upstream attr-dict `:`
+      functional-type($upstream, $downstream)
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
