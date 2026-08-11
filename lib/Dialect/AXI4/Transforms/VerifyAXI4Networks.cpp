@@ -31,16 +31,28 @@ namespace {
 struct Domain {
   Value clock, reset;
 };
+
+/// The domains an AXI4 op takes its upstream ports in and drives its downstream
+/// ports in. Only an `axi4.cdc` differs between the two.
+struct Domains {
+  Domain upstream, downstream;
+};
 } // namespace
 
-/// The domain of an AXI4 op, or failure for one this pass does not know.
-static FailureOr<Domain> getDomain(Operation *op) {
-  return TypeSwitch<Operation *, FailureOr<Domain>>(op)
+/// The domains of an AXI4 op, or failure for one this pass does not know.
+static FailureOr<Domains> getDomains(Operation *op) {
+  return TypeSwitch<Operation *, FailureOr<Domains>>(op)
       .Case<AbstractManagerOp, AbstractSubordinateOp, ChannelStructsToPortOp,
-            PortToChannelStructsOp, XbarOp>([](auto op) {
-        return Domain{op.getClock(), op.getReset()};
+            PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp>([](auto op) {
+        Domain domain{op.getClock(), op.getReset()};
+        return Domains{domain, domain};
       })
-      .Default([](Operation *op) -> FailureOr<Domain> {
+      .Case<CDCOp>([](CDCOp op) {
+        // A crossing changes clock but not reset
+        return Domains{{op.getUpstreamClock(), op.getReset()},
+                       {op.getDownstreamClock(), op.getReset()}};
+      })
+      .Default([](Operation *op) -> FailureOr<Domains> {
         op->emitOpError("unsupported AXI4 network op; cannot verify which "
                         "clock and reset domain it is in");
         return failure();
@@ -118,8 +130,8 @@ void VerifyAXI4NetworksPass::runOnOperation() {
   module.walk([&](Operation *op) {
     if (op->getDialect() != axi4Dialect)
       return;
-    FailureOr<Domain> domain = getDomain(op);
-    if (failed(domain)) {
+    FailureOr<Domains> domains = getDomains(op);
+    if (failed(domains)) {
       anyFailed = true;
       return;
     }
@@ -132,16 +144,20 @@ void VerifyAXI4NetworksPass::runOnOperation() {
       if (!upstream || upstream->getDialect() != axi4Dialect)
         continue;
 
-      FailureOr<Domain> upstreamDomain = getDomain(upstream);
-      if (failed(upstreamDomain)) {
+      FailureOr<Domains> upstreamDomains = getDomains(upstream);
+      if (failed(upstreamDomains)) {
         anyFailed = true;
         continue;
       }
-      if (domain->clock != upstreamDomain->clock) {
+      // The port leaves the op that produced it in that op's downstream domain,
+      // and arrives in this one's upstream domain.
+      const Domain &consumer = domains->upstream;
+      const Domain &producer = upstreamDomains->downstream;
+      if (consumer.clock != producer.clock) {
         emitDomainCrossing(op, upstream, "clock");
         anyFailed = true;
       }
-      if (domain->reset != upstreamDomain->reset) {
+      if (consumer.reset != producer.reset) {
         emitDomainCrossing(op, upstream, "reset");
         anyFailed = true;
       }
