@@ -125,6 +125,101 @@ static StringRef pulpFieldType(StringRef field) {
       .Default("");
 }
 
+/// Emit the typedef of the payload struct `port`'s `info` channel lowers to,
+/// named `<prefix><role>_<channel>_t`. `fieldType` names the fields that have
+/// no `axi_pkg` type of their own and are not a plain bit.
+static void
+emitPayloadStruct(llvm::raw_ostream &os, StringRef prefix, StringRef role,
+                  PortType port, const ChannelInfo &info,
+                  llvm::function_ref<std::string(StringRef)> fieldType) {
+  os << "typedef struct packed {";
+  for (auto field :
+       cast<hw::StructType>(getChannelPayloadType(port, info.channel))
+           .getElements()) {
+    StringRef fieldName = field.name.getValue();
+    unsigned width = hw::getBitWidth(field.type);
+    // ExportVerilog drops zero-width fields from the port's struct, so an empty
+    // user field is dropped here too to keep the two layouts identical.
+    if (fieldName == "user" && width == 0)
+      continue;
+    StringRef named = pulpFieldType(fieldName);
+    if (!named.empty())
+      os << " " << named << " " << fieldName << ";";
+    else if (width == 1)
+      os << " logic " << fieldName << ";";
+    else
+      os << " " << fieldType(fieldName) << " " << fieldName << ";";
+  }
+  os << " } " << prefix << role << "_" << info.name << "_t;\n";
+}
+
+/// Append the declarations of the ports one face of a wrapper carries,
+/// mirroring the signals the external module explodes into.
+static void emitFacePorts(SmallVectorImpl<std::string> &ports, StringRef prefix,
+                          StringRef role, unsigned index, bool isManager) {
+  for (const ChannelInfo &info : kChannels) {
+    bool drives = isManager == info.isRequest;
+    StringRef forward = drives ? "output" : "input ";
+    StringRef reverse = drives ? "input " : "output";
+    std::string base = (role + Twine(index) + "_" + info.name).str();
+    std::string type = (prefix + role + "_" + info.name + "_t").str();
+    ports.push_back(("  " + forward + " " + type + " " + base).str());
+    ports.push_back(("  " + forward + " logic " + base + "valid").str());
+    ports.push_back(("  " + reverse + " logic " + base + "ready").str());
+  }
+}
+
+/// Emit the assignments bridging one face's ports to the PULP `req` and `resp`
+/// structs it drives. PULP's atop is tied off, and if PULP has a user field
+/// that the port does not, the bridge drives it with zeroes.
+static void emitFaceBridge(llvm::raw_ostream &os, PortType port, StringRef role,
+                           unsigned index, bool isManager, StringRef req,
+                           StringRef resp) {
+  auto payloadAssign = [&](const Twine &lhs, const Twine &rhs,
+                           const ChannelInfo &info, bool toPulp) {
+    SmallVector<std::string> fields;
+    for (auto field :
+         cast<hw::StructType>(getChannelPayloadType(port, info.channel))
+             .getElements()) {
+      StringRef fieldName = field.name.getValue();
+      // A zero-width user field is absent from the port's struct, so there is
+      // nothing to read or drive on that side.
+      if (fieldName == "user" && port.getUserWidth() == 0)
+        continue;
+      fields.push_back((fieldName + ": " + rhs + "." + fieldName).str());
+    }
+    if (toPulp) {
+      if (info.channel == AXI4Channel::AW)
+        fields.push_back("atop: '0");
+      // PULP's user_t is a bit wide even when the port carries no user.
+      if (port.getUserWidth() == 0)
+        fields.push_back("user: '0");
+    }
+    os << "  assign " << lhs << " = '{" << llvm::join(fields, ", ") << "};\n";
+  };
+
+  for (const ChannelInfo &info : kChannels) {
+    std::string wire = (role + Twine(index) + "_" + info.name).str();
+    // A channel's payload and valid live in the struct its requester drives,
+    // and its ready in the other one.
+    StringRef payload = info.isRequest ? req : resp;
+    StringRef ready = info.isRequest ? resp : req;
+    if (isManager == info.isRequest) {
+      payloadAssign(wire, payload + "." + info.name, info, /*toPulp=*/false);
+      os << "  assign " << wire << "valid = " << payload << "." << info.name
+         << "_valid;\n";
+      os << "  assign " << ready << "." << info.name << "_ready = " << wire
+         << "ready;\n";
+    } else {
+      payloadAssign(payload + "." + info.name, wire, info, /*toPulp=*/true);
+      os << "  assign " << payload << "." << info.name << "_valid = " << wire
+         << "valid;\n";
+      os << "  assign " << wire << "ready = " << ready << "." << info.name
+         << "_ready;\n";
+    }
+  }
+}
+
 /// The largest number of transactions any of `ports` keeps outstanding.
 static uint32_t maxOutstanding(ValueRange ports) {
   uint32_t most = 0;
@@ -173,57 +268,27 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
      << prefix << "user_t)\n\n";
 
   // A typedef per channel payload, matching the hw.struct the port lowers to.
-  // ExportVerilog drops zero-width fields from that struct, so an empty user
-  // field is dropped here too to keep the two layouts identical.
-  auto emitPayloadStruct = [&](StringRef role, StringRef idType, PortType port,
-                               const ChannelInfo &info) {
-    os << "typedef struct packed {";
-    for (auto field :
-         cast<hw::StructType>(getChannelPayloadType(port, info.channel))
-             .getElements()) {
-      StringRef fieldName = field.name.getValue();
-      unsigned width = hw::getBitWidth(field.type);
-      if (fieldName == "user" && width == 0)
-        continue;
-      StringRef named = pulpFieldType(fieldName);
-      if (!named.empty())
-        os << " " << named << " " << fieldName << ";";
-      else if (fieldName == "id")
-        os << " " << idType << " " << fieldName << ";";
-      else if (width == 1)
-        os << " logic " << fieldName << ";";
-      else
-        os << " " << prefix << fieldName << "_t " << fieldName << ";";
-    }
-    os << " } " << prefix << role << "_" << info.name << "_t;\n";
+  // The crossbar routes over one ID width per side.
+  auto fieldType = [&](StringRef side) {
+    return [&, side](StringRef field) {
+      return field == "id" ? (prefix + side + "_id_t").str()
+                           : (prefix + field + "_t").str();
+    };
   };
   for (const ChannelInfo &info : kChannels)
-    emitPayloadStruct("mgr", prefix + "slv_id_t", upstream, info);
+    emitPayloadStruct(os, prefix, "mgr", upstream, info, fieldType("slv"));
   for (const ChannelInfo &info : kChannels)
-    emitPayloadStruct("sub", prefix + "mst_id_t", downstream, info);
+    emitPayloadStruct(os, prefix, "sub", downstream, info, fieldType("mst"));
   os << "\n";
 
-  // The port list mirrors the signals the external module explodes into: the
-  // crossbar is the subordinate to each upstream manager, and the manager to
-  // each downstream subordinate.
+  // The crossbar is the subordinate to each upstream manager, and the manager
+  // to each downstream subordinate.
   SmallVector<std::string> ports{"  input  logic clk_i",
                                  "  input  logic rst_ni"};
-  auto emitPorts = [&](StringRef role, unsigned index, bool isManager) {
-    for (const ChannelInfo &info : kChannels) {
-      bool drives = isManager == info.isRequest;
-      StringRef forward = drives ? "output" : "input ";
-      StringRef reverse = drives ? "input " : "output";
-      std::string base = (role + Twine(index) + "_" + info.name).str();
-      std::string type = (prefix + role + "_" + info.name + "_t").str();
-      ports.push_back(("  " + forward + " " + type + " " + base).str());
-      ports.push_back(("  " + forward + " logic " + base + "valid").str());
-      ports.push_back(("  " + reverse + " logic " + base + "ready").str());
-    }
-  };
   for (unsigned i = 0; i != numUpstream; ++i)
-    emitPorts("mgr", i, /*isManager=*/false);
+    emitFacePorts(ports, prefix, "mgr", i, /*isManager=*/false);
   for (unsigned j = 0; j != numDownstream; ++j)
-    emitPorts("sub", j, /*isManager=*/true);
+    emitFacePorts(ports, prefix, "sub", j, /*isManager=*/true);
   os << "module " << name << " (\n" << llvm::join(ports, ",\n") << "\n);\n";
 
   os << "  " << prefix << "slv_req_t  [" << numUpstream << "-1:0] slv_req;\n";
@@ -232,64 +297,15 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
   os << "  " << prefix << "mst_resp_t [" << numDownstream
      << "-1:0] mst_resp;\n";
 
-  // Bridge each port group to PULP's req/resp structs. PULP's atop is tied off,
-  // and if PULP has a user field that the port does not, the bridge drives it
-  // with zeroes.
-  auto payloadAssign = [&](const Twine &lhs, const Twine &rhs, PortType port,
-                           const ChannelInfo &info, bool toPulp) {
-    SmallVector<std::string> fields;
-    for (auto field :
-         cast<hw::StructType>(getChannelPayloadType(port, info.channel))
-             .getElements()) {
-      StringRef fieldName = field.name.getValue();
-      // A zero-width user field is absent from the port's struct, so there is
-      // nothing to read or drive on that side.
-      if (fieldName == "user" && port.getUserWidth() == 0)
-        continue;
-      fields.push_back((fieldName + ": " + rhs + "." + fieldName).str());
-    }
-    if (toPulp) {
-      if (info.channel == AXI4Channel::AW)
-        fields.push_back("atop: '0");
-      // PULP's user_t is a bit wide even when the port carries no user.
-      if (port.getUserWidth() == 0)
-        fields.push_back("user: '0");
-    }
-    os << "  assign " << lhs << " = '{" << llvm::join(fields, ", ") << "};\n";
-  };
-  auto emitBridge = [&](StringRef role, unsigned index, PortType port,
-                        bool isManager) {
-    std::string req =
-        ((isManager ? "mst_req[" : "slv_req[") + Twine(index) + "]").str();
-    std::string resp =
-        ((isManager ? "mst_resp[" : "slv_resp[") + Twine(index) + "]").str();
-    for (const ChannelInfo &info : kChannels) {
-      std::string wire = (role + Twine(index) + "_" + info.name).str();
-      // A channel's payload and valid live in the struct its requester drives,
-      // and its ready in the other one.
-      StringRef payload = info.isRequest ? req : resp;
-      StringRef ready = info.isRequest ? resp : req;
-      if (isManager == info.isRequest) {
-        payloadAssign(wire, payload + "." + info.name, port, info,
-                      /*toPulp=*/false);
-        os << "  assign " << wire << "valid = " << payload << "." << info.name
-           << "_valid;\n";
-        os << "  assign " << ready << "." << info.name << "_ready = " << wire
-           << "ready;\n";
-      } else {
-        payloadAssign(payload + "." + info.name, wire, port, info,
-                      /*toPulp=*/true);
-        os << "  assign " << payload << "." << info.name << "_valid = " << wire
-           << "valid;\n";
-        os << "  assign " << wire << "ready = " << ready << "." << info.name
-           << "_ready;\n";
-      }
-    }
-  };
+  // Bridge each port group to the PULP req/resp struct of its index.
   for (unsigned i = 0; i != numUpstream; ++i)
-    emitBridge("mgr", i, upstream, /*isManager=*/false);
+    emitFaceBridge(os, upstream, "mgr", i, /*isManager=*/false,
+                   ("slv_req[" + Twine(i) + "]").str(),
+                   ("slv_resp[" + Twine(i) + "]").str());
   for (unsigned j = 0; j != numDownstream; ++j)
-    emitBridge("sub", j, downstream, /*isManager=*/true);
+    emitFaceBridge(os, downstream, "sub", j, /*isManager=*/true,
+                   ("mst_req[" + Twine(j) + "]").str(),
+                   ("mst_resp[" + Twine(j) + "]").str());
 
   // One rule per window of each downstream port. The AXI dialect has an
   // inclusive last address, and PULP's end_addr is exclusive. PULP uses an end
@@ -371,6 +387,104 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
   return text;
 }
 
+/// A SystemVerilog wrapper named `name` instantiating PULP's axi_cut, with the
+/// ports `cut`'s external module lowers to. Both faces carry the same port, and
+/// the write and read ID widths stay independent, since axi_cut never inspects
+/// them.
+static std::string pulpCutSource(StringRef name, CutOp cut) {
+  auto port = cast<PortType>(cut.getUpstream().getType());
+  std::string prefix = (name + "_").str();
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  os << "// Generated by --lower-axi4-to-hw=pulp-mapping: a wrapper around the "
+        "PULP Platform axi_cut.\n";
+  os << "`include \"axi/typedef.svh\"\n\n";
+
+  // Prefixed so several wrappers can share a compilation unit.
+  os << "typedef logic [" << port.getAddrWidth() << "-1:0] " << prefix
+     << "addr_t;\n";
+  os << "typedef logic [" << port.getDataWidth() << "-1:0] " << prefix
+     << "data_t;\n";
+  os << "typedef logic [" << port.getDataWidth() << "/8-1:0] " << prefix
+     << "strb_t;\n";
+  os << "typedef logic [" << pulpUserWidth(port) << "-1:0] " << prefix
+     << "user_t;\n";
+  os << "typedef logic [" << port.getWriteIdWidth() << "-1:0] " << prefix
+     << "wid_t;\n";
+  os << "typedef logic [" << port.getReadIdWidth() << "-1:0] " << prefix
+     << "rid_t;\n";
+  // Built per channel rather than with AXI_TYPEDEF_ALL, so that the write path
+  // (AW, B) and the read path (AR, R) can carry their own ID widths.
+  os << "`AXI_TYPEDEF_AW_CHAN_T(" << prefix << "aw_chan_t, " << prefix
+     << "addr_t, " << prefix << "wid_t, " << prefix << "user_t)\n";
+  os << "`AXI_TYPEDEF_W_CHAN_T(" << prefix << "w_chan_t, " << prefix
+     << "data_t, " << prefix << "strb_t, " << prefix << "user_t)\n";
+  os << "`AXI_TYPEDEF_B_CHAN_T(" << prefix << "b_chan_t, " << prefix
+     << "wid_t, " << prefix << "user_t)\n";
+  os << "`AXI_TYPEDEF_AR_CHAN_T(" << prefix << "ar_chan_t, " << prefix
+     << "addr_t, " << prefix << "rid_t, " << prefix << "user_t)\n";
+  os << "`AXI_TYPEDEF_R_CHAN_T(" << prefix << "r_chan_t, " << prefix
+     << "data_t, " << prefix << "rid_t, " << prefix << "user_t)\n";
+  os << "`AXI_TYPEDEF_REQ_T(" << prefix << "req_t, " << prefix << "aw_chan_t, "
+     << prefix << "w_chan_t, " << prefix << "ar_chan_t)\n";
+  os << "`AXI_TYPEDEF_RESP_T(" << prefix << "resp_t, " << prefix << "b_chan_t, "
+     << prefix << "r_chan_t)\n\n";
+
+  // A typedef per channel payload, matching the hw.struct the port lowers to.
+  auto fieldType = [&](const ChannelInfo &info) {
+    bool isRead =
+        info.channel == AXI4Channel::AR || info.channel == AXI4Channel::R;
+    return [&, isRead](StringRef field) {
+      return field == "id"
+                 ? (Twine(prefix) + (isRead ? "rid_t" : "wid_t")).str()
+                 : (prefix + field + "_t").str();
+    };
+  };
+  for (const ChannelInfo &info : kChannels)
+    emitPayloadStruct(os, prefix, "mgr", port, info, fieldType(info));
+  for (const ChannelInfo &info : kChannels)
+    emitPayloadStruct(os, prefix, "sub", port, info, fieldType(info));
+  os << "\n";
+
+  // The cut is the subordinate to its upstream manager, and the manager to its
+  // downstream subordinate.
+  SmallVector<std::string> ports{"  input  logic clk_i",
+                                 "  input  logic rst_ni"};
+  emitFacePorts(ports, prefix, "mgr", 0, /*isManager=*/false);
+  emitFacePorts(ports, prefix, "sub", 0, /*isManager=*/true);
+  os << "module " << name << " (\n" << llvm::join(ports, ",\n") << "\n);\n";
+
+  os << "  " << prefix << "req_t  slv_req;\n";
+  os << "  " << prefix << "resp_t slv_resp;\n";
+  os << "  " << prefix << "req_t  mst_req;\n";
+  os << "  " << prefix << "resp_t mst_resp;\n";
+
+  emitFaceBridge(os, port, "mgr", 0, /*isManager=*/false, "slv_req",
+                 "slv_resp");
+  emitFaceBridge(os, port, "sub", 0, /*isManager=*/true, "mst_req", "mst_resp");
+
+  os << "  axi_cut #(\n";
+  os << "    .Bypass     (1'b0),\n";
+  os << "    .aw_chan_t  (" << prefix << "aw_chan_t),\n";
+  os << "    .w_chan_t   (" << prefix << "w_chan_t),\n";
+  os << "    .b_chan_t   (" << prefix << "b_chan_t),\n";
+  os << "    .ar_chan_t  (" << prefix << "ar_chan_t),\n";
+  os << "    .r_chan_t   (" << prefix << "r_chan_t),\n";
+  os << "    .axi_req_t  (" << prefix << "req_t),\n";
+  os << "    .axi_resp_t (" << prefix << "resp_t)\n";
+  os << "  ) i_cut (\n";
+  os << "    .clk_i      (clk_i),\n";
+  os << "    .rst_ni     (rst_ni),\n";
+  os << "    .slv_req_i  (slv_req),\n";
+  os << "    .slv_resp_o (slv_resp),\n";
+  os << "    .mst_req_o  (mst_req),\n";
+  os << "    .mst_resp_i (mst_resp)\n";
+  os << "  );\n";
+  os << "endmodule\n";
+  return text;
+}
+
 LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
   if (failed(checkPulpIdsPresent(op)))
     return failure();
@@ -386,6 +500,7 @@ void circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
   std::optional<std::string> text =
       TypeSwitch<Operation *, std::optional<std::string>>(op)
           .Case<XbarOp>([&](XbarOp xbar) { return pulpXbarSource(name, xbar); })
+          .Case<CutOp>([&](CutOp cut) { return pulpCutSource(name, cut); })
           .Default(std::nullopt);
   if (!text)
     return;
