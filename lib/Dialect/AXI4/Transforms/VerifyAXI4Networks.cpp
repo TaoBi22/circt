@@ -43,7 +43,8 @@ struct Domains {
 static FailureOr<Domains> getDomains(Operation *op) {
   return TypeSwitch<Operation *, FailureOr<Domains>>(op)
       .Case<AbstractManagerOp, AbstractSubordinateOp, ChannelStructsToPortOp,
-            PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp>([](auto op) {
+            PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp,
+            BurstSplitterOp>([](auto op) {
         Domain domain{op.getClock(), op.getReset()};
         return Domains{domain, domain};
       })
@@ -82,6 +83,15 @@ static void emitDomainCrossing(Operation *op, Operation *other,
               << "is in a different " << domain << " domain to the '"
               << other->getName().getStringRef() << "' connected to it";
   diag.attachNote(other->getLoc()) << "connected operation here";
+}
+
+/// The longest burst `port` supports, in beats.
+static uint32_t longestBurst(PortType port) {
+  uint32_t most = 0;
+  for (WindowAttr window : port.getWindows().getWindows())
+    for (BurstSpecAttr spec : window.getBurstSpecs().getBurstSpecs())
+      most = std::max(most, spec.getLen());
+  return most;
 }
 
 /// Report a `downstream` port that cannot hold as many outstanding transactions
@@ -189,6 +199,19 @@ void VerifyAXI4NetworksPass::runOnOperation() {
                    cast<PortType>(converter.getDownstream().getType()),
                    upstream.getOutstandingWrites(),
                    upstream.getOutstandingReads(), "the upstream port");
+  });
+  module.walk([](BurstSplitterOp splitter) {
+    auto upstream = cast<PortType>(splitter.getUpstream().getType());
+    // A splitter pushes a burst's beats downstream back to back, waiting for
+    // none of their responses, so each burst in flight occupies a downstream
+    // slot per beat.
+    uint64_t beats = longestBurst(upstream);
+    warnBottleneck(splitter, "downstream port",
+                   cast<PortType>(splitter.getDownstream().getType()),
+                   beats * upstream.getOutstandingWrites(),
+                   beats * upstream.getOutstandingReads(),
+                   "splitting the upstream port's bursts of up to " +
+                       Twine(beats) + " beats");
   });
 
   if (anyFailed)

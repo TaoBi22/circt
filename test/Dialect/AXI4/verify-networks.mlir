@@ -171,3 +171,31 @@ hw.module @UndersizedConverter(in %clk : !seq.clock, in %rst_ni : i1) {
   %dwc = axi4.data_width_converter %clk, %rst_ni, %mgr : (!up) -> !down
   axi4.abstract_subordinate %clk, %rst_ni, %dwc : !down
 }
+
+// -----
+
+!burstty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 16, outstanding_reads = 16>
+
+hw.module @SplitterCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
+                            in %rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !burstty
+  // expected-error @below {{'axi4.burst_splitter' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
+  %split = axi4.burst_splitter %other_clk, %rst_ni, %mgr : (!burstty) -> !beats
+  axi4.abstract_subordinate %other_clk, %rst_ni, %split : !beats
+}
+
+// -----
+
+!burstty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, outstanding_writes = 2, outstanding_reads = 2>
+!beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 16, outstanding_reads = 4>
+
+// A splitter needs a downstream slot per beat of every burst in flight, so the
+// writes have exactly enough here and the reads do not
+hw.module @UndersizedSplitter(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !burstty
+  // expected-warning @below {{downstream port can hold fewer outstanding reads than splitting the upstream port's bursts of up to 8 beats can issue (4 < 16)}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %mgr : (!burstty) -> !beats
+  axi4.abstract_subordinate %clk, %rst_ni, %split : !beats
+}
