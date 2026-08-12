@@ -150,6 +150,14 @@ static std::optional<Component> getComponent(Operation *op) {
                          {{"clk_i", converter.getClock()},
                           {"rst_ni", converter.getReset()}}};
       })
+      .Case<BurstSplitterOp>([](BurstSplitterOp splitter) {
+        auto port = cast<PortType>(splitter.getUpstream().getType());
+        return Component{
+            splitter,
+            "axi_burst_splitter_" + portShape(port),
+            "burst_splitter",
+            {{"clk_i", splitter.getClock()}, {"rst_ni", splitter.getReset()}}};
+      })
       .Default(std::nullopt);
 }
 
