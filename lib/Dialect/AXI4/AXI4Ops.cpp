@@ -97,10 +97,6 @@ static LogicalResult verifyWindowsConvert(
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// XbarOp
-//===----------------------------------------------------------------------===//
-
 /// The downstream port and window covering `address`, or a null window if no
 /// downstream port covers it.
 static std::pair<size_t, WindowAttr> findDownstreamWindow(ValueRange downstream,
@@ -112,6 +108,62 @@ static std::pair<size_t, WindowAttr> findDownstreamWindow(ValueRange downstream,
         return {i, window};
   return {0, {}};
 }
+
+/// Verify that no two downstream ports' windows overlap, so routing is
+/// unambiguous.
+static LogicalResult verifyWindowsDisjoint(Operation *op,
+                                           ValueRange downstream) {
+  for (auto [i, value] : llvm::enumerate(downstream)) {
+    auto windows = cast<PortType>(value.getType()).getWindows();
+    for (auto [j, other] : llvm::enumerate(downstream.take_front(i)))
+      if (windows.overlaps(cast<PortType>(other.getType()).getWindows()))
+        return op->emitOpError() << "downstream ports #" << j << " and #" << i
+                                 << " have overlapping windows";
+  }
+  return success();
+}
+
+/// Verify that every window `upstream` can access is routed downstream, to a
+/// port supporting at least the bursts it issues there. Assumes the downstream
+/// windows are disjoint, so the existence of a covering window is enough.
+static LogicalResult verifyWindowsRouted(Operation *op, PortType upstream,
+                                         const Twine &upstreamDesc,
+                                         ValueRange downstream) {
+  for (WindowAttr window : upstream.getWindows().getWindows()) {
+    // Walk through addresses, skipping the ones we know are covered
+    // Begin at the window's start
+    for (uint64_t address = window.getBase();;) {
+      // Make sure it's supported
+      auto [j, covering] = findDownstreamWindow(downstream, address);
+      if (!covering)
+        return op->emitOpError()
+               << "address 0x" << llvm::utohexstr(address, /*LowerCase=*/true)
+               << ", in " << upstreamDesc
+               << "'s windows, is not covered by any downstream port";
+      if (!covering.getBurstSpecs().covers(window.getBurstSpecs()))
+        return op->emitOpError()
+               << "downstream port #" << j
+               << " does not support all the bursts " << upstreamDesc
+               << " issues at address 0x"
+               << llvm::utohexstr(address, /*LowerCase=*/true)
+               << "; upstream requires " << window.getBurstSpecs()
+               << ", downstream supports " << covering.getBurstSpecs();
+      // If we know that every remaining address in the upstream window is
+      // covered by this downstream window, we're done
+      if (covering.getLast() >= window.getLast())
+        break;
+      // Otherwise, skip ahead to the next address that we don't already know
+      // is covered (the address directly after the end of the covering
+      // downstream window)
+      address = covering.getLast() + 1;
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// XbarOp
+//===----------------------------------------------------------------------===//
 
 LogicalResult XbarOp::verify() {
   ValueRange upstream = getUpstream();
@@ -154,51 +206,13 @@ LogicalResult XbarOp::verify() {
     }
   }
 
-  // Downstream windows must not overlap (so routing is unambiguous)
-  for (auto [i, value] : llvm::enumerate(downstream)) {
-    auto windows = cast<PortType>(value.getType()).getWindows();
-    for (auto [j, other] : llvm::enumerate(downstream.take_front(i)))
-      if (windows.overlaps(cast<PortType>(other.getType()).getWindows()))
-        return emitOpError() << "downstream ports #" << j << " and #" << i
-                             << " have overlapping windows";
-  }
+  if (failed(verifyWindowsDisjoint(*this, downstream)))
+    return failure();
 
-  // Every window a manager can access must be routed downstream, to a port
-  // supporting at least the bursts the manager issues there.
-  // We've already verified no overlap, so we can just check the existence of a
-  // supporting window.
-  for (auto [i, value] : llvm::enumerate(upstream)) {
-    auto managerTy = cast<PortType>(value.getType());
-    for (WindowAttr window : managerTy.getWindows().getWindows()) {
-      // Walk through addresses, skipping the ones we know are covered
-      // Begin at the window's start
-      for (uint64_t address = window.getBase();;) {
-        // Make sure it's supported
-        auto [j, covering] = findDownstreamWindow(downstream, address);
-        if (!covering)
-          return emitOpError()
-                 << "address 0x" << llvm::utohexstr(address, /*LowerCase=*/true)
-                 << ", in upstream port #" << i
-                 << "'s windows, is not covered by any downstream port";
-        if (!covering.getBurstSpecs().covers(window.getBurstSpecs()))
-          return emitOpError()
-                 << "downstream port #" << j
-                 << " does not support all the bursts upstream port #" << i
-                 << " issues at address 0x"
-                 << llvm::utohexstr(address, /*LowerCase=*/true)
-                 << "; upstream requires " << window.getBurstSpecs()
-                 << ", downstream supports " << covering.getBurstSpecs();
-        // If we know that every remaining address in the upstream window is
-        // covered by this downstream window, we're done
-        if (covering.getLast() >= window.getLast())
-          break;
-        // Otherwise, skip ahead to the next address that we don't already know
-        // is covered (the address directly after the end of the covering
-        // downstream window)
-        address = covering.getLast() + 1;
-      }
-    }
-  }
+  for (auto [i, value] : llvm::enumerate(upstream))
+    if (failed(verifyWindowsRouted(*this, cast<PortType>(value.getType()),
+                                   "upstream port #" + Twine(i), downstream)))
+      return failure();
 
   return success();
 }
@@ -285,6 +299,29 @@ LogicalResult BurstSplitterOp::verify() {
         return BurstSpecAttr::get(getContext(), kind, /*len=*/1);
       },
       "the upstream's bursts split into single beats");
+}
+
+//===----------------------------------------------------------------------===//
+// DemuxOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DemuxOp::verify() {
+  auto upstream = cast<PortType>(getUpstream().getType());
+  ValueRange downstream = getDownstream();
+  if (downstream.empty())
+    return emitOpError("must have at least one downstream port");
+
+  // A demux routes, it does not re-width or re-tag
+  for (auto [i, value] : llvm::enumerate(downstream))
+    if (failed(verifyWidthsMatch(
+            *this, kWidths, cast<PortType>(value.getType()),
+            "downstream port #" + Twine(i), upstream, "upstream port")))
+      return failure();
+
+  if (failed(verifyWindowsDisjoint(*this, downstream)))
+    return failure();
+
+  return verifyWindowsRouted(*this, upstream, "upstream port", downstream);
 }
 
 //===----------------------------------------------------------------------===//

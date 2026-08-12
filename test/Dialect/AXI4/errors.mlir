@@ -345,3 +345,58 @@ hw.module @SplitStillWrapping(in %clk : !seq.clock, in %rst_ni : i1,
   // expected-error @below {{'axi4.burst_splitter' op downstream window must support at least #axi4.burst_set<<incr, len = 1>> (the upstream's bursts split into single beats), but supports #axi4.burst_set<<wrap, len = 2>>}}
   %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!wrapping) -> !still_wrapping
 }
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @EmptyDemux(in %clk : !seq.clock, in %rst_ni : i1,
+                      in %upstream : !port) {
+  // expected-error @below {{'axi4.demux' op must have at least one downstream port}}
+  axi4.demux %clk, %rst_ni, %upstream : (!port) -> ()
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!tagged = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @TaggingDemux(in %clk : !seq.clock, in %rst_ni : i1,
+                        in %upstream : !port) {
+  // expected-error @below {{'axi4.demux' op downstream port #0's 'write_id_width' (5) must match upstream port's (4)}}
+  %sub = axi4.demux %clk, %rst_ni, %upstream : (!port) -> !tagged
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @OverlappingDemux(in %clk : !seq.clock, in %rst_ni : i1,
+                            in %upstream : !port) {
+  // expected-error @below {{'axi4.demux' op downstream ports #0 and #1 have overlapping windows}}
+  %a, %b = axi4.demux %clk, %rst_ni, %upstream : (!port) -> (!lo, !hi)
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @UnroutedDemux(in %clk : !seq.clock, in %rst_ni : i1,
+                         in %upstream : !port) {
+  // expected-error @below {{'axi4.demux' op address 0x1000, in upstream port's windows, is not covered by any downstream port}}
+  %sub = axi4.demux %clk, %rst_ni, %upstream : (!port) -> !lo
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 8>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!fixed_only = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @UnsupportedDemuxBurst(in %clk : !seq.clock, in %rst_ni : i1,
+                                 in %upstream : !port) {
+  // expected-error @below {{'axi4.demux' op downstream port #0 does not support all the bursts upstream port issues at address 0x0; upstream requires #axi4.burst_set<<fixed, len = 4>, <incr, len = 8>>, downstream supports #axi4.burst_set<<fixed, len = 4>>}}
+  %sub = axi4.demux %clk, %rst_ni, %upstream : (!port) -> !fixed_only
+}

@@ -282,4 +282,29 @@ def BurstSplitterOp : AXI4Op<"burst_splitter", [PortResultsAtMostOneUse]> {
   let hasVerifier = 1;
 }
 
+def DemuxOp : AXI4Op<"demux", [PortResultsAtMostOneUse]> {
+  let summary = "An AXI4 demultiplexer";
+  let description = [{
+    Demultiplexes an AXI4 port into several ports, only one of which has its
+    AW/AR valid signals high based on the address mapping inferred from this
+    op's return types.
+
+    Example:
+    ```mlir
+    %downstream1, %downstream2 = axi4.demux %clk, %rst_ni, %upstream
+      : (!axi4.port<...>) -> (!axi4.port<...>, !axi4.port<...>)
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream);
+  let results = (outs Variadic<PortType>:$downstream);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `,` $upstream attr-dict `:`
+      functional-type($upstream, $downstream)
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
