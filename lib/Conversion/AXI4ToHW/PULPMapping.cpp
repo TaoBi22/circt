@@ -677,12 +677,74 @@ static std::string pulpDWConverterSource(StringRef name,
   return text;
 }
 
+/// Report the burst splitters PULP's axi_burst_splitter cannot express.
+static LogicalResult checkPulpBurstSplitterSupported(BurstSplitterOp splitter) {
+  auto upstream = cast<PortType>(splitter.getUpstream().getType());
+  // Verifier already checked that upstream and downstream widths match
+  if (upstream.getWriteIdWidth() != upstream.getReadIdWidth())
+    return splitter.emitOpError()
+           << "cannot be lowered to a PULP axi_burst_splitter, which uses a "
+              "single ID width, because its write ID width ("
+           << upstream.getWriteIdWidth() << ") and read ID width ("
+           << upstream.getReadIdWidth() << ") differ";
+
+  // PULP docs specify that the splitter doesn't support wrapping bursts
+  for (WindowAttr window : upstream.getWindows().getWindows())
+    for (BurstSpecAttr spec : window.getBurstSpecs().getBurstSpecs())
+      if (spec.getKind() == BurstKind::Wrap)
+        return splitter.emitOpError()
+               << "cannot be lowered to a PULP axi_burst_splitter, which does "
+                  "not support wrapping bursts, because its upstream port "
+                  "issues "
+               << spec;
+
+  return success();
+}
+
+/// A SystemVerilog wrapper named `name` instantiating PULP's
+/// axi_burst_splitter
+static std::string pulpBurstSplitterSource(StringRef name,
+                                           BurstSplitterOp splitter) {
+  auto upstream = cast<PortType>(splitter.getUpstream().getType());
+  // checkPulpBurstSplitterSupported has established one ID width.
+  unsigned idWidth = upstream.getWriteIdWidth();
+  std::string prefix = (name + "_").str();
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  emitSymmetricWrapper(os, name, upstream, "axi_burst_splitter",
+                       {"  input  logic clk_i", "  input  logic rst_ni"});
+
+  os << "  axi_burst_splitter #(\n";
+  os << "    .MaxReadTxns  (" << std::max(upstream.getOutstandingReads(), 1u)
+     << "),\n";
+  os << "    .MaxWriteTxns (" << std::max(upstream.getOutstandingWrites(), 1u)
+     << "),\n";
+  os << "    .AddrWidth    (" << upstream.getAddrWidth() << "),\n";
+  os << "    .DataWidth    (" << upstream.getDataWidth() << "),\n";
+  os << "    .IdWidth      (" << idWidth << "),\n";
+  os << "    .UserWidth    (" << pulpUserWidth(upstream) << "),\n";
+  os << "    .axi_req_t    (" << prefix << "req_t),\n";
+  os << "    .axi_resp_t   (" << prefix << "resp_t)\n";
+  os << "  ) i_burst_splitter (\n";
+  os << "    .clk_i      (clk_i),\n";
+  os << "    .rst_ni     (rst_ni),\n";
+  os << "    .slv_req_i  (slv_req),\n";
+  os << "    .slv_resp_o (slv_resp),\n";
+  os << "    .mst_req_o  (mst_req),\n";
+  os << "    .mst_resp_i (mst_resp)\n";
+  os << "  );\n";
+  os << "endmodule\n";
+  return text;
+}
+
 LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
   if (failed(checkPulpIdsPresent(op)))
     return failure();
   return TypeSwitch<Operation *, LogicalResult>(op)
       .Case<XbarOp>(checkPulpXbarSupported)
       .Case<DWConverterOp>(checkPulpDWConverterSupported)
+      .Case<BurstSplitterOp>(checkPulpBurstSplitterSupported)
       .Default(success());
 }
 
@@ -697,6 +759,9 @@ void circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
           .Case<CDCOp>([&](CDCOp cdc) { return pulpCdcSource(name, cdc); })
           .Case<DWConverterOp>([&](DWConverterOp converter) {
             return pulpDWConverterSource(name, converter);
+          })
+          .Case<BurstSplitterOp>([&](BurstSplitterOp splitter) {
+            return pulpBurstSplitterSource(name, splitter);
           })
           .Default(std::nullopt);
   if (!text)

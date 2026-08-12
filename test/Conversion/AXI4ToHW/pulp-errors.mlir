@@ -116,3 +116,29 @@ hw.module @SplitIds(in %clk : !seq.clock, in %rst_ni : i1) {
   %dwc = axi4.data_width_converter %clk, %rst_ni, %m : (!wide) -> !thin
   hw.instance "sub" @Subordinate(axi: %dwc: !thin) -> ()
 }
+
+// -----
+
+// PULP's axi_burst_splitter splits over a single ID width too
+!burstty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitterIds(in %clk : !seq.clock, in %rst_ni : i1,
+                       in %upstream : !burstty, out downstream : !beats) {
+  // expected-error @below {{'axi4.burst_splitter' op cannot be lowered to a PULP axi_burst_splitter, which uses a single ID width, because its write ID width (4) and read ID width (2) differ}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!burstty) -> !beats
+  hw.output %split : !beats
+}
+
+// -----
+
+// PULP's burst splitter does not support wrap bursts
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitterWrappingBurst(in %clk : !seq.clock, in %rst_ni : i1,
+                                 in %upstream : !wrapping, out downstream : !beats) {
+  // expected-error @below {{'axi4.burst_splitter' op cannot be lowered to a PULP axi_burst_splitter, which does not support wrapping bursts, because its upstream port issues #axi4.burst_spec<wrap, len = 4>}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!wrapping) -> !beats
+  hw.output %split : !beats
+}
