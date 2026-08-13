@@ -199,3 +199,66 @@ hw.module @UndersizedSplitter(in %clk : !seq.clock, in %rst_ni : i1) {
   %split = axi4.burst_splitter %clk, %rst_ni, %mgr : (!burstty) -> !beats
   axi4.abstract_subordinate %clk, %rst_ni, %split : !beats
 }
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @DemuxCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
+                         in %rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
+  // expected-error @below {{'axi4.demux' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
+  %a, %b = axi4.demux %other_clk, %rst_ni, %mgr : (!mgr) -> (!lo, !hi)
+  axi4.abstract_subordinate %other_clk, %rst_ni, %a : !lo
+  axi4.abstract_subordinate %other_clk, %rst_ni, %b : !hi
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 4>
+!hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// Each leg of a demux carries all of the manager's transactions, since it does
+// not know which of them the manager will send its way
+hw.module @UndersizedDemux(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
+  // expected-warning @below {{downstream port #0 can hold fewer outstanding writes than the managers reaching it can issue (2 < 4)}}
+  %a, %b = axi4.demux %clk, %rst_ni, %mgr : (!mgr) -> (!lo, !hi)
+  axi4.abstract_subordinate %clk, %rst_ni, %a : !lo
+  axi4.abstract_subordinate %clk, %rst_ni, %b : !hi
+}
+
+// -----
+
+!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+
+hw.module @MuxCrossing(in %clk : !seq.clock, in %rst_ni : i1,
+                       in %other_rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %a = axi4.abstract_manager %clk, %rst_ni : !lo
+  %b = axi4.abstract_manager %clk, %other_rst_ni : !hi
+  // expected-error @below {{'axi4.mux' op is in a different reset domain to the 'axi4.abstract_manager' connected to it}}
+  %sub = axi4.mux %clk, %other_rst_ni, %a, %b : (!lo, !hi) -> !sub
+  axi4.abstract_subordinate %clk, %other_rst_ni, %sub : !sub
+}
+
+// -----
+
+!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 4>
+
+// A mux's downstream port carries every manager's transactions at once
+hw.module @UndersizedMux(in %clk : !seq.clock, in %rst_ni : i1) {
+  %a = axi4.abstract_manager %clk, %rst_ni : !lo
+  %b = axi4.abstract_manager %clk, %rst_ni : !hi
+  // expected-warning @below {{downstream port #0 can hold fewer outstanding reads than the managers reaching it can issue (4 < 8)}}
+  %sub = axi4.mux %clk, %rst_ni, %a, %b : (!lo, !hi) -> !sub
+  axi4.abstract_subordinate %clk, %rst_ni, %sub : !sub
+}

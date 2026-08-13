@@ -44,7 +44,7 @@ static FailureOr<Domains> getDomains(Operation *op) {
   return TypeSwitch<Operation *, FailureOr<Domains>>(op)
       .Case<AbstractManagerOp, AbstractSubordinateOp, ChannelStructsToPortOp,
             PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp,
-            BurstSplitterOp>([](auto op) {
+            BurstSplitterOp, DemuxOp, MuxOp>([](auto op) {
         Domain domain{op.getClock(), op.getReset()};
         return Domains{domain, domain};
       })
@@ -112,6 +112,27 @@ static void warnBottleneck(Operation *op, const Twine &portDesc,
                       << ")";
 }
 
+/// Report the downstream ports of a routing op that cannot hold as many
+/// outstanding transactions as the upstream ports reaching them can issue.
+static void warnRoutingBottlenecks(Operation *op, ValueRange upstream,
+                                   ValueRange downstream) {
+  for (auto [i, value] : llvm::enumerate(downstream)) {
+    auto downstreamTy = cast<PortType>(value.getType());
+
+    uint64_t writes = 0, reads = 0;
+    for (Value value : upstream) {
+      auto manager = cast<PortType>(value.getType());
+      if (!manager.getWindows().overlaps(downstreamTy.getWindows()))
+        continue;
+      writes += manager.getOutstandingWrites();
+      reads += manager.getOutstandingReads();
+    }
+
+    warnBottleneck(op, "downstream port #" + Twine(i), downstreamTy, writes,
+                   reads, "the managers reaching it");
+  }
+}
+
 namespace {
 struct VerifyAXI4NetworksPass
     : public circt::axi4::impl::VerifyAXI4NetworksBase<VerifyAXI4NetworksPass> {
@@ -176,42 +197,32 @@ void VerifyAXI4NetworksPass::runOnOperation() {
 
   // Warn on bottlenecks where a downstream port cannot concurrently handle all
   // the possible concurrent requests reaching it
-  module.walk([](XbarOp xbar) {
-    for (auto [i, value] : llvm::enumerate(xbar.getDownstream())) {
-      auto downstream = cast<PortType>(value.getType());
-
-      uint64_t writes = 0, reads = 0;
-      for (Value upstream : xbar.getUpstream()) {
-        auto manager = cast<PortType>(upstream.getType());
-        if (!manager.getWindows().overlaps(downstream.getWindows()))
-          continue;
-        writes += manager.getOutstandingWrites();
-        reads += manager.getOutstandingReads();
-      }
-
-      warnBottleneck(xbar, "downstream port #" + Twine(i), downstream, writes,
-                     reads, "the managers reaching it");
-    }
-  });
-  module.walk([](DWConverterOp converter) {
-    auto upstream = cast<PortType>(converter.getUpstream().getType());
-    warnBottleneck(converter, "downstream port",
-                   cast<PortType>(converter.getDownstream().getType()),
-                   upstream.getOutstandingWrites(),
-                   upstream.getOutstandingReads(), "the upstream port");
-  });
-  module.walk([](BurstSplitterOp splitter) {
-    auto upstream = cast<PortType>(splitter.getUpstream().getType());
-    // A splitter pushes a burst's beats downstream back to back, waiting for
-    // none of their responses, so each burst in flight occupies a downstream
-    // slot per beat.
-    uint64_t beats = longestBurst(upstream);
-    warnBottleneck(splitter, "downstream port",
-                   cast<PortType>(splitter.getDownstream().getType()),
-                   beats * upstream.getOutstandingWrites(),
-                   beats * upstream.getOutstandingReads(),
-                   "splitting the upstream port's bursts of up to " +
-                       Twine(beats) + " beats");
+  module.walk([](Operation *op) {
+    TypeSwitch<Operation *>(op)
+        .Case<XbarOp, DemuxOp, MuxOp>([](auto routing) {
+          warnRoutingBottlenecks(routing, routing.getUpstream(),
+                                 routing.getDownstream());
+        })
+        .Case<DWConverterOp>([](DWConverterOp converter) {
+          auto upstream = cast<PortType>(converter.getUpstream().getType());
+          warnBottleneck(converter, "downstream port",
+                         cast<PortType>(converter.getDownstream().getType()),
+                         upstream.getOutstandingWrites(),
+                         upstream.getOutstandingReads(), "the upstream port");
+        })
+        .Case<BurstSplitterOp>([](BurstSplitterOp splitter) {
+          auto upstream = cast<PortType>(splitter.getUpstream().getType());
+          // A splitter pushes a burst's beats downstream back to back, waiting
+          // for none of their responses, so each burst in flight occupies a
+          // downstream slot per beat.
+          uint64_t beats = longestBurst(upstream);
+          warnBottleneck(splitter, "downstream port",
+                         cast<PortType>(splitter.getDownstream().getType()),
+                         beats * upstream.getOutstandingWrites(),
+                         beats * upstream.getOutstandingReads(),
+                         "splitting the upstream port's bursts of up to " +
+                             Twine(beats) + " beats");
+        });
   });
 
   if (anyFailed)
