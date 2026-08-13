@@ -400,3 +400,93 @@ hw.module @UnsupportedDemuxBurst(in %clk : !seq.clock, in %rst_ni : i1,
   // expected-error @below {{'axi4.demux' op downstream port #0 does not support all the bursts upstream port issues at address 0x0; upstream requires #axi4.burst_set<<fixed, len = 4>, <incr, len = 8>>, downstream supports #axi4.burst_set<<fixed, len = 4>>}}
   %sub = axi4.demux %clk, %rst_ni, %upstream : (!port) -> !fixed_only
 }
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @EmptyMux(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.mux' op must have at least one upstream port}}
+  %sub = "axi4.mux"(%clk, %rst_ni) : (!seq.clock, i1) -> !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_addr = !axi4.port<addr_width = 16, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @MismatchedMuxManagers(in %clk : !seq.clock, in %rst_ni : i1,
+                                 in %a : !port, in %b : !narrow_addr) {
+  // expected-error @below {{'axi4.mux' op upstream port #1's 'addr_width' (16) must match upstream port #0's (32)}}
+  %sub = axi4.mux %clk, %rst_ni, %a, %b : (!port, !narrow_addr) -> !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!wide_id = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!tagged = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 6, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @MismatchedMuxIds(in %clk : !seq.clock, in %rst_ni : i1,
+                            in %a : !port, in %b : !wide_id) {
+  // expected-error @below {{'axi4.mux' op upstream port #1's 'read_id_width' (5) must match upstream port #0's (4)}}
+  %sub = axi4.mux %clk, %rst_ni, %a, %b : (!port, !wide_id) -> !tagged
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @ConvertingMux(in %clk : !seq.clock, in %rst_ni : i1,
+                         in %upstream : !thin) {
+  // expected-error @below {{'axi4.mux' op downstream port's 'data_width' (64) must match upstream port #0's (32)}}
+  %sub = axi4.mux %clk, %rst_ni, %upstream : (!thin) -> !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!with_user = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @DroppingUserMux(in %clk : !seq.clock, in %rst_ni : i1,
+                           in %upstream : !with_user) {
+  // expected-error @below {{'axi4.mux' op downstream port's 'user_width' (0) must match upstream port #0's (4)}}
+  %sub = axi4.mux %clk, %rst_ni, %upstream : (!with_user) -> !port
+}
+
+// -----
+
+// A mux tags each manager's transactions with its index, so the downstream IDs
+// must be wide enough to carry the tag
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_tag = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 6, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @NarrowMuxIds(in %clk : !seq.clock, in %rst_ni : i1,
+                        in %a : !port, in %b : !port, in %c : !port) {
+  // expected-error @below {{'axi4.mux' op downstream port's 'write_id_width' must be at least 6 to tag transactions from 3 managers, got 5}}
+  %sub = axi4.mux %clk, %rst_ni, %a, %b, %c : (!port, !port, !port) -> !narrow_tag
+}
+
+// -----
+
+!wide_window = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!tagged_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @UnroutedMux(in %clk : !seq.clock, in %rst_ni : i1,
+                       in %a : !lo, in %b : !wide_window) {
+  // expected-error @below {{'axi4.mux' op address 0x1000, in upstream port #1's windows, is not covered by any downstream port}}
+  %sub = axi4.mux %clk, %rst_ni, %a, %b : (!lo, !wide_window) -> !tagged_lo
+}
+
+// -----
+
+!bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 8>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!fixed_only = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @UnsupportedMuxBurst(in %clk : !seq.clock, in %rst_ni : i1,
+                               in %upstream : !bursty) {
+  // expected-error @below {{'axi4.mux' op downstream port #0 does not support all the bursts upstream port #0 issues at address 0x0; upstream requires #axi4.burst_set<<fixed, len = 4>, <incr, len = 8>>, downstream supports #axi4.burst_set<<fixed, len = 4>>}}
+  %sub = axi4.mux %clk, %rst_ni, %upstream : (!bursty) -> !fixed_only
+}

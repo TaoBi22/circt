@@ -307,4 +307,28 @@ def DemuxOp : AXI4Op<"demux", [PortResultsAtMostOneUse]> {
   let hasVerifier = 1;
 }
 
+def MuxOp : AXI4Op<"mux", [PortResultsAtMostOneUse]> {
+  let summary = "An AXI4 multiplexer";
+  let description = [{
+    Multiplexes between several AXI4 ports. Concurrent requests are arbitrated
+    between using round robin arbitration.
+
+    Example:
+    ```mlir
+    %downstream = axi4.mux %clk, %rst_ni, %upstream1, %upstream2
+      : (!axi4.port<...>, !axi4.port<...>) -> (!axi4.port<...>)
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset, Variadic<PortType>:$upstream);
+  let results = (outs PortType:$downstream);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `,` $upstream attr-dict `:`
+      functional-type($upstream, $downstream)
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

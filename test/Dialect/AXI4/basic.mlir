@@ -261,3 +261,12 @@ hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK: axi4.demux %clk, %rst_ni, %upstream : (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>, !axi4.port<{{.*}} windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>)
   %lo, %hi = axi4.demux %clk, %rst_ni, %upstream : (!demuxed) -> (!demux_lo, !demux_hi)
 }
+
+!muxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @Mux
+hw.module @Mux(in %clk : !seq.clock, in %rst_ni : i1,
+                 in %upstream1 : !demux_lo, in %upstream2 : !demux_hi) {
+  // CHECK: axi4.mux %clk, %rst_ni, %upstream1, %upstream2 : (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>, !axi4.port<{{.*}} windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, {{.*}} windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  %downstream = axi4.mux %clk, %rst_ni, %upstream1, %upstream2 : (!demux_lo, !demux_hi) -> (!muxed)
+}

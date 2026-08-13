@@ -325,6 +325,53 @@ LogicalResult DemuxOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// MuxOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MuxOp::verify() {
+  ValueRange upstream = getUpstream();
+  if (upstream.empty())
+    return emitOpError("must have at least one upstream port");
+
+  // Make sure all upstream ports agree on widths
+  auto upstreamTy = cast<PortType>(upstream.front().getType());
+  for (auto [i, value] : llvm::enumerate(upstream.drop_front()))
+    if (failed(verifyWidthsMatch(
+            *this, kWidths, cast<PortType>(value.getType()),
+            "upstream port #" + Twine(i + 1), upstreamTy, "upstream port #0")))
+      return failure();
+
+  // Make sure the downstream port agrees on address, data, and user widths
+  auto downstreamTy = cast<PortType>(getDownstream().getType());
+  if (failed(verifyWidthsMatch(
+          *this, ArrayRef(kWidths).take_front(kNumSharedWidths), downstreamTy,
+          "downstream port", upstreamTy, "upstream port #0")))
+    return failure();
+
+  // Each manager's transactions are tagged with its index downstream, so the
+  // downstream port must be wide enough to carry the tag.
+  uint32_t idBits = llvm::Log2_64_Ceil(upstream.size());
+  for (const WidthField &field :
+       ArrayRef(kWidths).drop_front(kNumSharedWidths)) {
+    uint32_t least = (upstreamTy.*field.get)() + idBits;
+    if ((downstreamTy.*field.get)() < least)
+      return emitOpError() << "downstream port's '" << field.name
+                           << "' must be at least " << least
+                           << " to tag transactions from " << upstream.size()
+                           << " managers, got " << (downstreamTy.*field.get)();
+  }
+
+  // Every window a manager can access must be covered by the downstream window
+  for (auto [i, value] : llvm::enumerate(upstream))
+    if (failed(verifyWindowsRouted(*this, cast<PortType>(value.getType()),
+                                   "upstream port #" + Twine(i),
+                                   getDownstream())))
+      return failure();
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen generated logic.
 //===----------------------------------------------------------------------===//
 
