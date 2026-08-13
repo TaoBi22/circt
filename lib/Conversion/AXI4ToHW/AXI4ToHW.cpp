@@ -150,6 +150,27 @@ static std::optional<Component> getComponent(Operation *op) {
                          {{"clk_i", converter.getClock()},
                           {"rst_ni", converter.getReset()}}};
       })
+      .Case<DemuxOp>([](DemuxOp demux) {
+        auto port = cast<PortType>(demux.getUpstream().getType());
+        return Component{
+            demux,
+            ("axi_demux_" + Twine(demux.getDownstream().size()) + "d_" +
+             portShape(port))
+                .str(),
+            "demux",
+            {{"clk_i", demux.getClock()}, {"rst_ni", demux.getReset()}}};
+      })
+      .Case<MuxOp>([](MuxOp mux) {
+        auto upstream = cast<PortType>(mux.getUpstream().front().getType());
+        auto downstream = cast<PortType>(mux.getDownstream().getType());
+        return Component{
+            mux,
+            ("axi_mux_" + Twine(mux.getUpstream().size()) + "u_" +
+             portShape(upstream) + "_o" + Twine(downstream.getWriteIdWidth()))
+                .str(),
+            "mux",
+            {{"clk_i", mux.getClock()}, {"rst_ni", mux.getReset()}}};
+      })
       .Case<BurstSplitterOp>([](BurstSplitterOp splitter) {
         auto port = cast<PortType>(splitter.getUpstream().getType());
         return Component{
