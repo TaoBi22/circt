@@ -58,26 +58,45 @@ static LogicalResult checkPulpIdsPresent(Operation *op) {
   return success();
 }
 
+/// Report a port whose write and read ID widths differ, which the PULP IPs that
+/// route over one ID width per side cannot express.
+static LogicalResult checkPulpIdWidths(Operation *op, StringRef ip,
+                                       PortType port, const Twine &side) {
+  if (port.getWriteIdWidth() == port.getReadIdWidth())
+    return success();
+  return op->emitOpError()
+         << "cannot be lowered to a PULP " << ip
+         << ", which uses a single ID width per side, because its " << side
+         << " write ID width (" << port.getWriteIdWidth()
+         << ") and read ID width (" << port.getReadIdWidth() << ") differ";
+}
+
+/// Report a downstream port not exactly as wide as the tag PULP adds to route
+/// `numUpstream` managers' transactions -  op verifier only checks it is at
+/// least that size.
+static LogicalResult checkPulpTagWidth(Operation *op, StringRef ip,
+                                       PortType upstream, unsigned numUpstream,
+                                       PortType downstream) {
+  uint32_t idBits = llvm::Log2_64_Ceil(numUpstream);
+  if (downstream.getWriteIdWidth() == upstream.getWriteIdWidth() + idBits)
+    return success();
+  return op->emitOpError() << "cannot be lowered to a PULP " << ip
+                           << ", which widens IDs by exactly the " << idBits
+                           << " bits needed to tag " << numUpstream
+                           << (numUpstream == 1 ? " manager" : " managers")
+                           << ", so its downstream ID width must be "
+                           << upstream.getWriteIdWidth() + idBits << ", not "
+                           << downstream.getWriteIdWidth();
+}
+
 /// Report the crossbars PULP's axi_xbar cannot express.
 static LogicalResult checkPulpXbarSupported(XbarOp xbar) {
-  // PULP has additional restrictions on ID widths (it uses a single width for
-  // reads and writes, and all downstream ports must have the same width)
-  auto checkIdWidths = [&](PortType port, const Twine &side) -> LogicalResult {
-    if (port.getWriteIdWidth() == port.getReadIdWidth())
-      return success();
-    return xbar.emitOpError()
-           << "cannot be lowered to a PULP axi_xbar, which uses a single ID "
-              "width per side, because its "
-           << side << " write ID width (" << port.getWriteIdWidth()
-           << ") and read ID width (" << port.getReadIdWidth() << ") differ";
-  };
-
   auto upstream = cast<PortType>(xbar.getUpstream().front().getType());
-  if (failed(checkIdWidths(upstream, "upstream")))
+  if (failed(checkPulpIdWidths(xbar, "axi_xbar", upstream, "upstream")))
     return failure();
 
   auto downstream = cast<PortType>(xbar.getDownstream().front().getType());
-  if (failed(checkIdWidths(downstream, "downstream")))
+  if (failed(checkPulpIdWidths(xbar, "axi_xbar", downstream, "downstream")))
     return failure();
 
   // The op verifier lets the downstream ports widen their IDs independently,
@@ -93,21 +112,8 @@ static LogicalResult checkPulpXbarSupported(XbarOp xbar) {
              << ") differs from downstream port #0's ("
              << downstream.getWriteIdWidth() << ")";
 
-  // The op verifier only asks the downstream ports to be wide enough to tag the
-  // managers, but PULP derives its downstream width as exactly that and asserts
-  // on the channel types it is handed, so a wider one fails at elaboration.
-  uint32_t idBits = llvm::Log2_64_Ceil(xbar.getUpstream().size());
-  if (downstream.getWriteIdWidth() != upstream.getWriteIdWidth() + idBits)
-    return xbar.emitOpError()
-           << "cannot be lowered to a PULP axi_xbar, which widens IDs by "
-              "exactly the "
-           << idBits << " bits needed to tag " << xbar.getUpstream().size()
-           << (xbar.getUpstream().size() == 1 ? " manager" : " managers")
-           << ", so its downstream ID width must be "
-           << upstream.getWriteIdWidth() + idBits << ", not "
-           << downstream.getWriteIdWidth();
-
-  return success();
+  return checkPulpTagWidth(xbar, "axi_xbar", upstream,
+                           xbar.getUpstream().size(), downstream);
 }
 
 /// Map from field to PULP typedef
@@ -231,25 +237,24 @@ static uint32_t maxOutstanding(ValueRange ports) {
   return most;
 }
 
-/// A SystemVerilog wrapper named `name` instantiating PULP's axi_xbar, with the
-/// ports `xbar`'s external module lowers to.
-static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
-  auto upstream = cast<PortType>(xbar.getUpstream().front().getType());
-  auto downstream = cast<PortType>(xbar.getDownstream().front().getType());
-  unsigned numUpstream = xbar.getUpstream().size();
-  unsigned numDownstream = xbar.getDownstream().size();
+/// Emit the body of a wrapper around a PULP module whose upstream
+/// and downstream faces carry different ID widths. Leaves `os` inside the
+/// module.
+static void emitDualIdWrapper(llvm::raw_ostream &os, StringRef name,
+                              StringRef ip, PortType upstream,
+                              unsigned numUpstream, PortType downstream,
+                              unsigned numDownstream) {
   unsigned addrWidth = upstream.getAddrWidth();
   unsigned dataWidth = upstream.getDataWidth();
-  // checkPulpSupported has established one ID width per side.
+  // checkPulp* methods already verified ID widths
   unsigned upstreamId = upstream.getWriteIdWidth();
   unsigned downstreamId = downstream.getWriteIdWidth();
   unsigned userWidth = pulpUserWidth(upstream);
   std::string prefix = (name + "_").str();
 
-  std::string text;
-  llvm::raw_string_ostream os(text);
   os << "// Generated by --lower-axi4-to-hw=pulp-mapping: a wrapper around the "
-        "PULP Platform axi_xbar.\n";
+        "PULP Platform "
+     << ip << ".\n";
   os << "`include \"axi/typedef.svh\"\n\n";
 
   // Prefixed so several wrappers can share a compilation unit.
@@ -268,7 +273,7 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
      << prefix << "user_t)\n\n";
 
   // A typedef per channel payload, matching the hw.struct the port lowers to.
-  // The crossbar routes over one ID width per side.
+  // The wrapper routes over one ID width per side.
   auto fieldType = [&](StringRef side) {
     return [&, side](StringRef field) {
       return field == "id" ? (prefix + side + "_id_t").str()
@@ -281,7 +286,7 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
     emitPayloadStruct(os, prefix, "sub", downstream, info, fieldType("mst"));
   os << "\n";
 
-  // The crossbar is the subordinate to each upstream manager, and the manager
+  // The wrapper is the subordinate to each upstream manager, and the manager
   // to each downstream subordinate.
   SmallVector<std::string> ports{"  input  logic clk_i",
                                  "  input  logic rst_ni"};
@@ -306,6 +311,24 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
     emitFaceBridge(os, downstream, "sub", j, /*isManager=*/true,
                    ("mst_req[" + Twine(j) + "]").str(),
                    ("mst_resp[" + Twine(j) + "]").str());
+}
+
+/// A SystemVerilog wrapper named `name` instantiating PULP's axi_xbar, with the
+/// ports `xbar`'s external module lowers to.
+static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
+  auto upstream = cast<PortType>(xbar.getUpstream().front().getType());
+  auto downstream = cast<PortType>(xbar.getDownstream().front().getType());
+  unsigned numUpstream = xbar.getUpstream().size();
+  unsigned numDownstream = xbar.getDownstream().size();
+  unsigned addrWidth = upstream.getAddrWidth();
+  // checkPulpSupported has established one ID width per side.
+  unsigned upstreamId = upstream.getWriteIdWidth();
+  std::string prefix = (name + "_").str();
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  emitDualIdWrapper(os, name, "axi_xbar", upstream, numUpstream, downstream,
+                    numDownstream);
 
   // One rule per window of each downstream port. The AXI dialect has an
   // inclusive last address, and PULP's end_addr is exclusive. PULP uses an end
@@ -340,7 +363,7 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
   os << "    AxiIdUsedSlvPorts:  " << upstreamId << ",\n";
   os << "    UniqueIds:          1'b0,\n";
   os << "    AxiAddrWidth:       " << addrWidth << ",\n";
-  os << "    AxiDataWidth:       " << dataWidth << ",\n";
+  os << "    AxiDataWidth:       " << upstream.getDataWidth() << ",\n";
   os << "    NoAddrRules:        " << rules.size() << ",\n";
   os << "    default:            '0\n";
   os << "  };\n";
@@ -738,11 +761,76 @@ static std::string pulpBurstSplitterSource(StringRef name,
   return text;
 }
 
+/// Report the muxes PULP's axi_mux cannot express.
+static LogicalResult checkPulpMuxSupported(MuxOp mux) {
+  // The verifier has established that the upstream ports all agree, so port #0
+  // speaks for the upstream side.
+  auto upstream = cast<PortType>(mux.getUpstream().front().getType());
+  if (failed(checkPulpIdWidths(mux, "axi_mux", upstream, "upstream")))
+    return failure();
+
+  auto downstream = cast<PortType>(mux.getDownstream().getType());
+  if (failed(checkPulpIdWidths(mux, "axi_mux", downstream, "downstream")))
+    return failure();
+
+  return checkPulpTagWidth(mux, "axi_mux", upstream, mux.getUpstream().size(),
+                           downstream);
+}
+
+/// A SystemVerilog wrapper named `name` instantiating PULP's axi_mux, with the
+/// ports `mux`'s external module lowers to.
+static std::string pulpMuxSource(StringRef name, MuxOp mux) {
+  auto upstream = cast<PortType>(mux.getUpstream().front().getType());
+  auto downstream = cast<PortType>(mux.getDownstream().getType());
+  unsigned numUpstream = mux.getUpstream().size();
+  std::string prefix = (name + "_").str();
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  emitDualIdWrapper(os, name, "axi_mux", upstream, numUpstream, downstream,
+                    /*numDownstream=*/1);
+
+  // The spill registers are left at the axi_mux defaults, since the op carries
+  // no knobs for them. PULP drives one downstream port, so it takes the single
+  // struct of the array the wrapper bridged to.
+  os << "  axi_mux #(\n";
+  os << "    .SlvAxiIDWidth (" << upstream.getWriteIdWidth() << "),\n";
+  os << "    .slv_aw_chan_t (" << prefix << "slv_aw_chan_t),\n";
+  os << "    .mst_aw_chan_t (" << prefix << "mst_aw_chan_t),\n";
+  os << "    .w_chan_t      (" << prefix << "slv_w_chan_t),\n";
+  os << "    .slv_b_chan_t  (" << prefix << "slv_b_chan_t),\n";
+  os << "    .mst_b_chan_t  (" << prefix << "mst_b_chan_t),\n";
+  os << "    .slv_ar_chan_t (" << prefix << "slv_ar_chan_t),\n";
+  os << "    .mst_ar_chan_t (" << prefix << "mst_ar_chan_t),\n";
+  os << "    .slv_r_chan_t  (" << prefix << "slv_r_chan_t),\n";
+  os << "    .mst_r_chan_t  (" << prefix << "mst_r_chan_t),\n";
+  os << "    .slv_req_t     (" << prefix << "slv_req_t),\n";
+  os << "    .slv_resp_t    (" << prefix << "slv_resp_t),\n";
+  os << "    .mst_req_t     (" << prefix << "mst_req_t),\n";
+  os << "    .mst_resp_t    (" << prefix << "mst_resp_t),\n";
+  os << "    .NoSlvPorts    (" << numUpstream << "),\n";
+  os << "    .MaxWTrans     ("
+     << std::max(maxOutstanding(mux.getUpstream()), 1u) << "),\n";
+  os << "    .FallThrough   (1'b0)\n";
+  os << "  ) i_mux (\n";
+  os << "    .clk_i       (clk_i),\n";
+  os << "    .rst_ni      (rst_ni),\n";
+  os << "    .test_i      (1'b0),\n";
+  os << "    .slv_reqs_i  (slv_req),\n";
+  os << "    .slv_resps_o (slv_resp),\n";
+  os << "    .mst_req_o   (mst_req[0]),\n";
+  os << "    .mst_resp_i  (mst_resp[0])\n";
+  os << "  );\n";
+  os << "endmodule\n";
+  return text;
+}
+
 LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
   if (failed(checkPulpIdsPresent(op)))
     return failure();
   return TypeSwitch<Operation *, LogicalResult>(op)
       .Case<XbarOp>(checkPulpXbarSupported)
+      .Case<MuxOp>(checkPulpMuxSupported)
       .Case<DWConverterOp>(checkPulpDWConverterSupported)
       .Case<BurstSplitterOp>(checkPulpBurstSplitterSupported)
       .Default(success());
@@ -755,6 +843,7 @@ void circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
   std::optional<std::string> text =
       TypeSwitch<Operation *, std::optional<std::string>>(op)
           .Case<XbarOp>([&](XbarOp xbar) { return pulpXbarSource(name, xbar); })
+          .Case<MuxOp>([&](MuxOp mux) { return pulpMuxSource(name, mux); })
           .Case<CutOp>([&](CutOp cut) { return pulpCutSource(name, cut); })
           .Case<CDCOp>([&](CDCOp cdc) { return pulpCdcSource(name, cdc); })
           .Case<DWConverterOp>([&](DWConverterOp converter) {
