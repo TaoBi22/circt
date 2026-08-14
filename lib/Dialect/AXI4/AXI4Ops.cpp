@@ -169,13 +169,24 @@ static LogicalResult verifyWindowsRouted(Operation *op, PortType upstream,
 // Outstanding request helpers
 //===----------------------------------------------------------------------===//
 
+/// As many of `outstanding` requests as `idWidth` ID bits can tag.
+static uint64_t taggable(uint64_t outstanding, uint32_t idWidth) {
+  return std::min<uint64_t>(outstanding, uint64_t{1} << idWidth);
+}
+
 /// The outstanding writes and reads an adaptor sends down `downstream`, given
 /// the `upstream` port reaching it.
 static std::pair<uint64_t, uint64_t>
 adaptorOutstandingBelow(Operation *op, PortType upstream, PortType downstream) {
-  // An adaptor reuses the tags it is given, so a request stays one request
+  uint64_t writes = upstream.getOutstandingWrites();
+  uint64_t reads = upstream.getOutstandingReads();
+  // Re-tagging carries only as many requests as the new IDs tell apart. Every
+  // other adaptor reuses the tags it is given, so a request stays one request
   // however many beats or bursts it is sent downstream as.
-  return {upstream.getOutstandingWrites(), upstream.getOutstandingReads()};
+  if (isa<IWConverterOp>(op))
+    return {taggable(writes, downstream.getWriteIdWidth()),
+            taggable(reads, downstream.getReadIdWidth())};
+  return {writes, reads};
 }
 
 /// The outstanding writes and reads a routing op sends down `downstream`, from
@@ -336,6 +347,34 @@ LogicalResult DWConverterOp::verify() {
         return beats;
       },
       "the upstream's bursts in beats of " + Twine(width) + " bits");
+}
+
+//===----------------------------------------------------------------------===//
+// IWConverterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult IWConverterOp::verify() {
+  auto upstream = cast<PortType>(getUpstream().getType());
+  auto downstream = cast<PortType>(getDownstream().getType());
+
+  // A conversion changes the ID widths, and leaves every other width alone
+  if (failed(verifyWidthsMatch(
+          *this, ArrayRef(kWidths).take_front(kNumSharedWidths), downstream,
+          "downstream port", upstream, "upstream port")))
+    return failure();
+
+  if (failed(verifyOutstanding(
+          *this, "downstream port", downstream,
+          adaptorOutstandingBelow(*this, upstream, downstream),
+          "the upstream port can issue with the downstream IDs to tag them")))
+    return failure();
+
+  // A conversion re-tags, it does not re-address, and leaves each burst as it
+  // is
+  return verifyWindowsConvert(
+      *this, upstream, downstream,
+      [](BurstSpecAttr spec) -> FailureOr<BurstSpecAttr> { return spec; },
+      "the upstream's bursts");
 }
 
 //===----------------------------------------------------------------------===//

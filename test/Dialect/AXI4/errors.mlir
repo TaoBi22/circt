@@ -337,6 +337,30 @@ hw.module @RecountingConverter(in %clk : !seq.clock, in %rst_ni : i1,
 
 // -----
 
+// An ID width conversion re-tags and nothing else, so every other width
+// carries through
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!thin_data = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @RewidthingIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
+                                 in %upstream : !wide_ids) {
+  // expected-error @below {{'axi4.id_width_converter' op downstream port's 'data_width' (32) must match upstream port's (64)}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !thin_data
+}
+
+// -----
+
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!moved_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @MovingIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
+                             in %upstream : !wide_ids) {
+  // expected-error @below {{'axi4.id_width_converter' op upstream and downstream windows must cover the same addresses}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !moved_ids
+}
+
+// -----
+
 // A splitter changes burst lengths and nothing else, so every width carries
 // through
 !bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
@@ -620,5 +644,33 @@ hw.module @UndersizedMuxPort(in %clk : !seq.clock, in %rst_ni : i1,
                              in %a : !lo, in %b : !hi) {
   // expected-error @below {{'axi4.mux' op downstream port's 'outstanding_writes' (4) must be the 8 writes the managers reaching it can issue}}
   %sub = axi4.mux %clk, %rst_ni, %a, %b : (!lo, !hi) -> !sub
+}
+
+
+// -----
+
+// Narrowing IDs caps what the downstream port can tell apart, so it holds the
+// lesser of the two
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+!unclamped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 4>
+
+hw.module @UnclampedIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
+                                in %upstream : !wide_ids) {
+  // expected-error @below {{'axi4.id_width_converter' op downstream port's 'outstanding_writes' (2) must be the 4 writes the upstream port can issue with the downstream IDs to tag them}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !unclamped
+}
+
+
+// -----
+
+// Narrowing IDs caps what the downstream port can tell apart, so it holds the
+// lesser of the two
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+!unclamped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 4>
+
+hw.module @UnclampedIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
+                                in %upstream : !wide_ids) {
+  // expected-error @below {{'axi4.id_width_converter' op downstream port's 'outstanding_writes' (2) must be the 4 writes the upstream port can issue with the downstream IDs to tag them}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !unclamped
 }
 
