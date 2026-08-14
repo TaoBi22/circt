@@ -100,6 +100,42 @@ hw.module @OverWideForTwoManagers(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitMuxIds(in %clk : !seq.clock, in %rst_ni : i1,
+                       in %a : !mgr, in %b : !mgr, out downstream : !sub) {
+  // expected-error @below {{'axi4.mux' op cannot be lowered to a PULP axi_mux, which uses a single ID width per side, because its upstream write ID width (4) and read ID width (3) differ}}
+  %downstream = axi4.mux %clk, %rst_ni, %a, %b : (!mgr, !mgr) -> !sub
+  hw.output %downstream : !sub
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitMuxDownstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
+                                 in %upstream : !mgr, out downstream : !sub) {
+  // expected-error @below {{'axi4.mux' op cannot be lowered to a PULP axi_mux, which uses a single ID width per side, because its downstream write ID width (4) and read ID width (5) differ}}
+  %downstream = axi4.mux %clk, %rst_ni, %upstream : (!mgr) -> !sub
+  hw.output %downstream : !sub
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 6, read_id_width = 6, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+
+hw.module @OverWideMuxIds(in %clk : !seq.clock, in %rst_ni : i1,
+                          in %a : !mgr, in %b : !mgr, out downstream : !sub) {
+  // expected-error @below {{'axi4.mux' op cannot be lowered to a PULP axi_mux, which widens IDs by exactly the 1 bits needed to tag 2 managers, so its downstream ID width must be 5, not 6}}
+  %downstream = axi4.mux %clk, %rst_ni, %a, %b : (!mgr, !mgr) -> !sub
+  hw.output %downstream : !sub
+}
+
+// -----
+
 // PULP's axi_dw_converter converts over a single ID width, shared by writes and
 // reads, so the two must agree - unlike a cut, which never inspects them
 !wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
