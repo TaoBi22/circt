@@ -169,6 +169,11 @@ static LogicalResult verifyWindowsRouted(Operation *op, PortType upstream,
 // Outstanding request helpers
 //===----------------------------------------------------------------------===//
 
+/// As many of `outstanding` requests as `idWidth` ID bits can tag.
+static uint64_t taggable(uint64_t outstanding, uint32_t idWidth) {
+  return std::min<uint64_t>(outstanding, uint64_t{1} << idWidth);
+}
+
 /// The outstanding writes and reads a routing op sends down `downstream`, from
 /// the `upstream` ports whose windows reach it.
 static std::pair<uint64_t, uint64_t>
@@ -323,6 +328,37 @@ LogicalResult DWConverterOp::verify() {
         return beats;
       },
       "the upstream's bursts in beats of " + Twine(width) + " bits");
+}
+
+//===----------------------------------------------------------------------===//
+// IWConverterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult IWConverterOp::verify() {
+  auto upstream = cast<PortType>(getUpstream().getType());
+  auto downstream = cast<PortType>(getDownstream().getType());
+
+  // A conversion changes the ID widths, and leaves every other width alone
+  if (failed(verifyWidthsMatch(
+          *this, ArrayRef(kWidths).take_front(kNumSharedWidths), downstream,
+          "downstream port", upstream, "upstream port")))
+    return failure();
+
+  if (failed(verifyOutstanding(
+          *this, "downstream port", downstream,
+          {taggable(upstream.getOutstandingWrites(),
+                    downstream.getWriteIdWidth()),
+           taggable(upstream.getOutstandingReads(),
+                    downstream.getReadIdWidth())},
+          "the upstream port can issue with the downstream IDs to tag them")))
+    return failure();
+
+  // A conversion re-tags, it does not re-address, and leaves each burst as it
+  // is
+  return verifyWindowsConvert(
+      *this, upstream, downstream,
+      [](BurstSpecAttr spec) -> FailureOr<BurstSpecAttr> { return spec; },
+      "the upstream's bursts");
 }
 
 //===----------------------------------------------------------------------===//
