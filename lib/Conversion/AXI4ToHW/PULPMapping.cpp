@@ -59,16 +59,19 @@ static LogicalResult checkPulpIdsPresent(Operation *op) {
 }
 
 /// Report a port whose write and read ID widths differ, which the PULP IPs that
-/// route over one ID width per side cannot express.
+/// route over one ID width cannot express. `side` names the side the port is
+/// on, for the IPs that have a width per side rather than one throughout.
 static LogicalResult checkPulpIdWidths(Operation *op, StringRef ip,
-                                       PortType port, const Twine &side) {
+                                       PortType port, StringRef side = "") {
   if (port.getWriteIdWidth() == port.getReadIdWidth())
     return success();
-  return op->emitOpError()
-         << "cannot be lowered to a PULP " << ip
-         << ", which uses a single ID width per side, because its " << side
-         << " write ID width (" << port.getWriteIdWidth()
-         << ") and read ID width (" << port.getReadIdWidth() << ") differ";
+  std::string sided = side.empty() ? "" : (side + " ").str();
+  return op->emitOpError() << "cannot be lowered to a PULP " << ip
+                           << ", which uses a single ID width"
+                           << (side.empty() ? "" : " per side")
+                           << ", because its " << sided << "write ID width ("
+                           << port.getWriteIdWidth() << ") and read ID width ("
+                           << port.getReadIdWidth() << ") differ";
 }
 
 /// Report a downstream port not exactly as wide as the tag PULP adds to route
@@ -226,6 +229,41 @@ static void emitFaceBridge(llvm::raw_ostream &os, PortType port, StringRef role,
   }
 }
 
+/// The address map rules routing each window of `downstream` to the index of
+/// the port carrying it. The AXI dialect has an inclusive last address, and
+/// PULP's end_addr is exclusive. PULP uses an end address of 0 to indicate
+/// wrapping to the end of the address space - conveniently if we get the
+/// exclusive last address of an AXI window by adding 1, we also wrap round to
+/// 0.
+static SmallVector<std::string> pulpAddrMapRules(ValueRange downstream,
+                                                 unsigned addrWidth) {
+  uint64_t mask =
+      addrWidth == 64 ? ~uint64_t{0} : (uint64_t{1} << addrWidth) - 1;
+  SmallVector<std::string> rules;
+  for (auto [index, value] : llvm::enumerate(downstream))
+    for (WindowAttr window :
+         cast<PortType>(value.getType()).getWindows().getWindows())
+      rules.push_back(("    '{idx: " + Twine(index) +
+                       ", start_addr: " + Twine(addrWidth) + "'h" +
+                       llvm::utohexstr(window.getBase()) +
+                       ", end_addr: " + Twine(addrWidth) + "'h" +
+                       llvm::utohexstr((window.getLast() + 1) & mask) + "}")
+                          .str());
+  return rules;
+}
+
+/// Emit `rules` as the address map an IP decodes. A rule's addresses have to be
+/// as wide as the ones being decoded, so the map carries its own struct rather
+/// than an `axi_pkg` one, whose addresses are always 32 or 64 bits wide.
+static void emitAddrMap(llvm::raw_ostream &os, StringRef prefix,
+                        ArrayRef<std::string> rules) {
+  os << "  typedef struct packed { int unsigned idx; " << prefix
+     << "addr_t start_addr; " << prefix << "addr_t end_addr; } rule_t;\n";
+  os << "  localparam rule_t [" << rules.size() << "-1:0] AddrMap = '{\n";
+  os << llvm::join(rules, ",\n") << "\n";
+  os << "  };\n";
+}
+
 /// The largest number of transactions any of `ports` keeps outstanding.
 static uint32_t maxOutstanding(ValueRange ports) {
   uint32_t most = 0;
@@ -330,24 +368,8 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
   emitDualIdWrapper(os, name, "axi_xbar", upstream, numUpstream, downstream,
                     numDownstream);
 
-  // One rule per window of each downstream port. The AXI dialect has an
-  // inclusive last address, and PULP's end_addr is exclusive. PULP uses an end
-  // address of 0 to indicate wrapping to the end of the address space -
-  // conveniently if we get the exclusive last address of an AXI window by
-  // adding 1, we also wrap round to 0.
-  uint64_t mask =
-      addrWidth == 64 ? ~uint64_t{0} : (uint64_t{1} << addrWidth) - 1;
-  SmallVector<std::string> rules;
-  for (auto [index, value] : llvm::enumerate(xbar.getDownstream())) {
-    for (WindowAttr window :
-         cast<PortType>(value.getType()).getWindows().getWindows())
-      rules.push_back(("    '{idx: " + Twine(index) +
-                       ", start_addr: " + Twine(addrWidth) + "'h" +
-                       llvm::utohexstr(window.getBase()) +
-                       ", end_addr: " + Twine(addrWidth) + "'h" +
-                       llvm::utohexstr((window.getLast() + 1) & mask) + "}")
-                          .str());
-  }
+  SmallVector<std::string> rules =
+      pulpAddrMapRules(xbar.getDownstream(), addrWidth);
 
   // `default: '0` covers the Cfg fields later PULP versions added.
   os << "  localparam axi_pkg::xbar_cfg_t Cfg = '{\n";
@@ -367,14 +389,7 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
   os << "    NoAddrRules:        " << rules.size() << ",\n";
   os << "    default:            '0\n";
   os << "  };\n";
-  // A rule's addresses have to be as wide as the ones the crossbar decodes, so
-  // the map carries its own struct rather than an `axi_pkg` one, whose
-  // addresses are always 32 or 64 bits wide.
-  os << "  typedef struct packed { int unsigned idx; " << prefix
-     << "addr_t start_addr; " << prefix << "addr_t end_addr; } rule_t;\n";
-  os << "  localparam rule_t [" << rules.size() << "-1:0] AddrMap = '{\n";
-  os << llvm::join(rules, ",\n") << "\n";
-  os << "  };\n";
+  emitAddrMap(os, prefix, rules);
 
   os << "  axi_xbar #(\n";
   os << "    .Cfg           (Cfg),\n";
@@ -410,14 +425,16 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
   return text;
 }
 
-/// Emit the body of a wrapper named `name` around PULP's `ip`, whose two faces
-/// both carry `port`: the typedefs, the module header taking `domainPorts`
-/// ahead of the two faces, the PULP req/resp structs, and the bridges to them.
-/// Leaves `os` inside the module, for the caller to instantiate `ip` and close
-/// it.
+/// Emit the body of a wrapper named `name` around PULP's `ip`, whose faces all
+/// carry `port`: the typedefs, the module header taking `domainPorts` ahead of
+/// one upstream face and `numDownstream` downstream ones, the PULP req/resp
+/// structs, and the bridges to them. The downstream structs are an array when
+/// there is more than one face. Leaves `os` inside the module, for the caller
+/// to instantiate `ip` and close it.
 static void emitSymmetricWrapper(llvm::raw_ostream &os, StringRef name,
                                  PortType port, StringRef ip,
-                                 ArrayRef<StringRef> domainPorts) {
+                                 ArrayRef<StringRef> domainPorts,
+                                 unsigned numDownstream = 1) {
   std::string prefix = (name + "_").str();
 
   os << "// Generated by --lower-axi4-to-hw=pulp-mapping: a wrapper around the "
@@ -476,17 +493,24 @@ static void emitSymmetricWrapper(llvm::raw_ostream &os, StringRef name,
   SmallVector<std::string> ports = llvm::map_to_vector(
       domainPorts, [](StringRef port) { return port.str(); });
   emitFacePorts(ports, prefix, "mgr", 0, /*isManager=*/false);
-  emitFacePorts(ports, prefix, "sub", 0, /*isManager=*/true);
+  for (unsigned j = 0; j != numDownstream; ++j)
+    emitFacePorts(ports, prefix, "sub", j, /*isManager=*/true);
   os << "module " << name << " (\n" << llvm::join(ports, ",\n") << "\n);\n";
 
+  std::string dimension =
+      numDownstream == 1 ? "" : ("[" + Twine(numDownstream) + "-1:0] ").str();
   os << "  " << prefix << "req_t  slv_req;\n";
   os << "  " << prefix << "resp_t slv_resp;\n";
-  os << "  " << prefix << "req_t  mst_req;\n";
-  os << "  " << prefix << "resp_t mst_resp;\n";
+  os << "  " << prefix << "req_t  " << dimension << "mst_req;\n";
+  os << "  " << prefix << "resp_t " << dimension << "mst_resp;\n";
 
   emitFaceBridge(os, port, "mgr", 0, /*isManager=*/false, "slv_req",
                  "slv_resp");
-  emitFaceBridge(os, port, "sub", 0, /*isManager=*/true, "mst_req", "mst_resp");
+  for (unsigned j = 0; j != numDownstream; ++j) {
+    std::string index = numDownstream == 1 ? "" : ("[" + Twine(j) + "]").str();
+    emitFaceBridge(os, port, "sub", j, /*isManager=*/true, "mst_req" + index,
+                   "mst_resp" + index);
+  }
 }
 
 /// The typedefs `emitSymmetricWrapper` names the channel and req/resp types
@@ -761,6 +785,86 @@ static std::string pulpBurstSplitterSource(StringRef name,
   return text;
 }
 
+/// Report the demuxes PULP's axi_demux cannot express.
+static LogicalResult checkPulpDemuxSupported(DemuxOp demux) {
+  // Verifier already checked that upstream and downstream widths match
+  return checkPulpIdWidths(demux, "axi_demux",
+                           cast<PortType>(demux.getUpstream().getType()));
+}
+
+/// A SystemVerilog wrapper named `name` instantiating PULP's axi_demux. PULP is
+/// told which downstream port to route a request to rather than deriving it, so
+/// the wrapper decodes the windows itself.
+static std::string pulpDemuxSource(StringRef name, DemuxOp demux) {
+  auto port = cast<PortType>(demux.getUpstream().getType());
+  unsigned numDownstream = demux.getDownstream().size();
+  unsigned addrWidth = port.getAddrWidth();
+  // checkPulpDemuxSupported has established one ID width.
+  unsigned idWidth = port.getWriteIdWidth();
+  std::string prefix = (name + "_").str();
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  emitSymmetricWrapper(os, name, port, "axi_demux",
+                       {"  input  logic clk_i", "  input  logic rst_ni"},
+                       numDownstream);
+
+  SmallVector<std::string> rules =
+      pulpAddrMapRules(demux.getDownstream(), addrWidth);
+  emitAddrMap(os, prefix, rules);
+
+  // As wide as PULP's own select_t, so that both ends of the decode agree.
+  unsigned selectWidth =
+      numDownstream > 1 ? llvm::Log2_64_Ceil(numDownstream) : 1;
+  os << "  typedef logic [" << selectWidth << "-1:0] select_t;\n";
+  os << "  select_t aw_select, ar_select;\n";
+
+  // PULP is handed the downstream port index of a request rather than deriving
+  // it, so the address map is decoded here. An address no window covers goes
+  // downstream to port 0.
+  for (StringRef channel : {"aw", "ar"}) {
+    os << "  addr_decode #(\n";
+    os << "    .NoIndices        (" << numDownstream << "),\n";
+    os << "    .NoRules          (" << rules.size() << "),\n";
+    os << "    .addr_t           (" << prefix << "addr_t),\n";
+    os << "    .rule_t           (rule_t)\n";
+    os << "  ) i_" << channel << "_decode (\n";
+    os << "    .addr_i           (slv_req." << channel << ".addr),\n";
+    os << "    .addr_map_i       (AddrMap),\n";
+    os << "    .idx_o            (" << channel << "_select),\n";
+    os << "    .dec_valid_o      (),\n";
+    os << "    .dec_error_o      (),\n";
+    os << "    .en_default_idx_i (1'b1),\n";
+    os << "    .default_idx_i    ('0)\n";
+    os << "  );\n";
+  }
+
+  // The spill registers are left at the axi_demux defaults, since the op
+  // carries no knobs for them.
+  os << "  axi_demux #(\n";
+  os << "    .AxiIdWidth  (" << idWidth << "),\n";
+  os << "    .AtopSupport (1'b1),\n";
+  os << pulpChannelParams(prefix) << ",\n";
+  os << "    .NoMstPorts  (" << numDownstream << "),\n";
+  os << "    .MaxTrans    ("
+     << std::max(maxOutstanding(demux.getUpstream()), 1u) << "),\n";
+  os << "    .AxiLookBits (" << idWidth << "),\n";
+  os << "    .UniqueIds   (1'b0)\n";
+  os << "  ) i_demux (\n";
+  os << "    .clk_i           (clk_i),\n";
+  os << "    .rst_ni          (rst_ni),\n";
+  os << "    .test_i          (1'b0),\n";
+  os << "    .slv_req_i       (slv_req),\n";
+  os << "    .slv_aw_select_i (aw_select),\n";
+  os << "    .slv_ar_select_i (ar_select),\n";
+  os << "    .slv_resp_o      (slv_resp),\n";
+  os << "    .mst_reqs_o      (mst_req),\n";
+  os << "    .mst_resps_i     (mst_resp)\n";
+  os << "  );\n";
+  os << "endmodule\n";
+  return text;
+}
+
 /// Report the muxes PULP's axi_mux cannot express.
 static LogicalResult checkPulpMuxSupported(MuxOp mux) {
   // The verifier has established that the upstream ports all agree, so port #0
@@ -830,6 +934,7 @@ LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
     return failure();
   return TypeSwitch<Operation *, LogicalResult>(op)
       .Case<XbarOp>(checkPulpXbarSupported)
+      .Case<DemuxOp>(checkPulpDemuxSupported)
       .Case<MuxOp>(checkPulpMuxSupported)
       .Case<DWConverterOp>(checkPulpDWConverterSupported)
       .Case<BurstSplitterOp>(checkPulpBurstSplitterSupported)
@@ -843,6 +948,8 @@ void circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
   std::optional<std::string> text =
       TypeSwitch<Operation *, std::optional<std::string>>(op)
           .Case<XbarOp>([&](XbarOp xbar) { return pulpXbarSource(name, xbar); })
+          .Case<DemuxOp>(
+              [&](DemuxOp demux) { return pulpDemuxSource(name, demux); })
           .Case<MuxOp>([&](MuxOp mux) { return pulpMuxSource(name, mux); })
           .Case<CutOp>([&](CutOp cut) { return pulpCutSource(name, cut); })
           .Case<CDCOp>([&](CDCOp cdc) { return pulpCdcSource(name, cdc); })
