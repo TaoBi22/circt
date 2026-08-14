@@ -276,6 +276,28 @@ LogicalResult DWConverterOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// IWConverterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult IWConverterOp::verify() {
+  auto upstream = cast<PortType>(getUpstream().getType());
+  auto downstream = cast<PortType>(getDownstream().getType());
+
+  // A conversion changes the ID widths, and leaves every other width alone
+  if (failed(verifyWidthsMatch(
+          *this, ArrayRef(kWidths).take_front(kNumSharedWidths), downstream,
+          "downstream port", upstream, "upstream port")))
+    return failure();
+
+  // A conversion re-tags, it does not re-address, and leaves each burst as it
+  // is
+  return verifyWindowsConvert(
+      *this, upstream, downstream,
+      [](BurstSpecAttr spec) -> FailureOr<BurstSpecAttr> { return spec; },
+      "the upstream's bursts");
+}
+
+//===----------------------------------------------------------------------===//
 // BurstSplitterOp
 //===----------------------------------------------------------------------===//
 

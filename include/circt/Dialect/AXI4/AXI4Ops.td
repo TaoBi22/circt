@@ -256,6 +256,33 @@ def DWConverterOp : AXI4Op<"data_width_converter", [PortResultsAtMostOneUse]> {
   let hasVerifier = 1;
 }
 
+def IWConverterOp : AXI4Op<"id_width_converter", [PortResultsAtMostOneUse]> {
+  let summary = "An AXI4 ID width converter";
+  let description = [{
+    Changes the ID widths of an AXI4 connection.
+
+    Widening prepends zeroes to each ID. Narrowing remaps the IDs in flight
+    onto the narrower ones, which orders transactions that end up sharing an
+    ID.
+
+    Example:
+    ```mlir
+    %downstream = axi4.id_width_converter %clk, %rst_ni, %upstream
+      : (!axi4.port<...>) -> !axi4.port<...>
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream);
+  let results = (outs PortType:$downstream);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `,` $upstream attr-dict `:`
+      functional-type($upstream, $downstream)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def BurstSplitterOp : AXI4Op<"burst_splitter", [PortResultsAtMostOneUse]> {
   let summary = "An AXI4 burst splitter";
   let description = [{

@@ -226,6 +226,18 @@ hw.module @LongerBurstConverter(in %clk : !seq.clock, in %rst_ni : i1,
   %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!wide) -> !longer_thin
 }
 
+// Typedefs for a converter narrowing the ID width, which leaves every other
+// width and the windows alone
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @IdWidthConverter
+hw.module @IdWidthConverter(in %clk : !seq.clock, in %rst_ni : i1,
+                            in %upstream : !wide_ids) {
+  // CHECK: axi4.id_width_converter %clk, %rst_ni, %upstream : (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, {{.*}} outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 4, outstanding_reads = 4>
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !narrow_ids
+}
+
 // Typedefs for a splitter, which keeps each burst's kind and takes it down to a
 // single beat
 !bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
