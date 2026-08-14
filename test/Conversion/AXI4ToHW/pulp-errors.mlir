@@ -136,6 +136,19 @@ hw.module @OverWideMuxIds(in %clk : !seq.clock, in %rst_ni : i1,
 
 // -----
 
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 3, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitDemuxIds(in %clk : !seq.clock, in %rst_ni : i1,
+                         in %upstream : !mgr, out lo : !lo, out hi : !hi) {
+  // expected-error @below {{'axi4.demux' op cannot be lowered to a PULP axi_demux, which uses a single ID width, because its write ID width (4) and read ID width (3) differ}}
+  %a, %b = axi4.demux %clk, %rst_ni, %upstream : (!mgr) -> (!lo, !hi)
+  hw.output %a, %b : !lo, !hi
+}
+
+// -----
+
 // PULP's axi_dw_converter converts over a single ID width, shared by writes and
 // reads, so the two must agree - unlike a cut, which never inspects them
 !wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
