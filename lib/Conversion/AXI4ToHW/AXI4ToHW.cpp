@@ -150,6 +150,17 @@ static std::optional<Component> getComponent(Operation *op) {
                          {{"clk_i", converter.getClock()},
                           {"rst_ni", converter.getReset()}}};
       })
+      .Case<IWConverterOp>([](IWConverterOp converter) {
+        auto upstream = cast<PortType>(converter.getUpstream().getType());
+        auto downstream = cast<PortType>(converter.getDownstream().getType());
+        return Component{converter,
+                         ("axi_iw_converter_" + portShape(upstream) + "to" +
+                          Twine(downstream.getWriteIdWidth()))
+                             .str(),
+                         "iw_converter",
+                         {{"clk_i", converter.getClock()},
+                          {"rst_ni", converter.getReset()}}};
+      })
       .Case<DemuxOp>([](DemuxOp demux) {
         auto port = cast<PortType>(demux.getUpstream().getType());
         return Component{
