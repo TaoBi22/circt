@@ -220,3 +220,31 @@ hw.module @SplitterWrappingBurst(in %clk : !seq.clock, in %rst_ni : i1,
   %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!wrapping) -> !beats
   hw.output %split : !beats
 }
+
+// -----
+
+// PULP's axi_burst_unwrap unwraps over a single ID width
+!split_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!unwrapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @UnwrapperIds(in %clk : !seq.clock, in %rst_ni : i1,
+                        in %upstream : !split_ids, out downstream : !unwrapped) {
+  // expected-error @below {{'axi4.burst_unwrapper' op cannot be lowered to a PULP axi_burst_unwrap, which uses a single ID width, because its write ID width (4) and read ID width (2) differ}}
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!split_ids) -> !unwrapped
+  hw.output %unwrapped : !unwrapped
+}
+
+// -----
+
+// A 16 beat wrap of 128 byte beats totals 2048 bytes, which overflows the 11
+// bits PULP totals it in
+!wrapping = !axi4.port<addr_width = 32, data_width = 1024, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xffff, burst_specs = <<wrap, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!unwrapped = !axi4.port<addr_width = 32, data_width = 1024, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xffff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @UnwrapperOversizedContainer(in %clk : !seq.clock, in %rst_ni : i1,
+                                       in %upstream : !wrapping,
+                                       out downstream : !unwrapped) {
+  // expected-error @below {{'axi4.burst_unwrapper' op cannot be lowered to a PULP axi_burst_unwrap, which computes a wrapping burst's total size in 11 bits and so supports at most 2047 bytes, because its upstream port issues #axi4.burst_spec<wrap, len = 16> over 1024-bit beats, totalling 2048 bytes}}
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !unwrapped
+  hw.output %unwrapped : !unwrapped
+}
