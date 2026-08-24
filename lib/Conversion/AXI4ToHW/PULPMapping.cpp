@@ -846,6 +846,70 @@ static std::string pulpBurstSplitterSource(StringRef name,
   return text;
 }
 
+/// Report the burst unwrappers PULP's axi_burst_unwrap cannot express.
+static LogicalResult
+checkPulpBurstUnwrapperSupported(BurstUnwrapperOp unwrapper) {
+  auto upstream = cast<PortType>(unwrapper.getUpstream().getType());
+  if (failed(checkPulpIdWidths(unwrapper, "axi_burst_unwrap", upstream)))
+    return failure();
+
+  // PULP computes a wrapping burst's total size in 11 bits, so 2048 bytes of it
+  // truncate to zero, taking the wrap boundary derived from them along.
+  unsigned bytesPerBeat = upstream.getDataWidth() / 8;
+  for (WindowAttr window : upstream.getWindows().getWindows())
+    for (BurstSpecAttr spec : window.getBurstSpecs().getBurstSpecs()) {
+      if (spec.getKind() != BurstKind::Wrap)
+        continue;
+      uint64_t bytes = uint64_t{spec.getLen()} * bytesPerBeat;
+      if (bytes > 2047)
+        return unwrapper.emitOpError()
+               << "cannot be lowered to a PULP axi_burst_unwrap, which "
+                  "computes "
+                  "a wrapping burst's total size in 11 bits and so supports at "
+                  "most 2047 bytes, because its upstream port issues "
+               << spec << " over " << upstream.getDataWidth()
+               << "-bit beats, totalling " << bytes << " bytes";
+    }
+
+  return success();
+}
+
+/// A SystemVerilog wrapper named `name` instantiating PULP's axi_burst_unwrap
+static std::string pulpBurstUnwrapperSource(StringRef name,
+                                            BurstUnwrapperOp unwrapper) {
+  auto upstream = cast<PortType>(unwrapper.getUpstream().getType());
+  // checkPulpBurstUnwrapperSupported has established one ID width.
+  unsigned idWidth = upstream.getWriteIdWidth();
+  std::string prefix = (name + "_").str();
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  emitSymmetricWrapper(os, name, upstream, "axi_burst_unwrap",
+                       {"  input  logic clk_i", "  input  logic rst_ni"});
+
+  os << "  axi_burst_unwrap #(\n";
+  os << "    .MaxReadTxns  (" << std::max(upstream.getOutstandingReads(), 1u)
+     << "),\n";
+  os << "    .MaxWriteTxns (" << std::max(upstream.getOutstandingWrites(), 1u)
+     << "),\n";
+  os << "    .AddrWidth    (" << upstream.getAddrWidth() << "),\n";
+  os << "    .DataWidth    (" << upstream.getDataWidth() << "),\n";
+  os << "    .IdWidth      (" << idWidth << "),\n";
+  os << "    .UserWidth    (" << pulpUserWidth(upstream) << "),\n";
+  os << "    .axi_req_t    (" << prefix << "req_t),\n";
+  os << "    .axi_resp_t   (" << prefix << "resp_t)\n";
+  os << "  ) i_burst_unwrap (\n";
+  os << "    .clk_i      (clk_i),\n";
+  os << "    .rst_ni     (rst_ni),\n";
+  os << "    .slv_req_i  (slv_req),\n";
+  os << "    .slv_resp_o (slv_resp),\n";
+  os << "    .mst_req_o  (mst_req),\n";
+  os << "    .mst_resp_i (mst_resp)\n";
+  os << "  );\n";
+  os << "endmodule\n";
+  return text;
+}
+
 /// Report the demuxes PULP's axi_demux cannot express.
 static LogicalResult checkPulpDemuxSupported(DemuxOp demux) {
   // Verifier already checked that upstream and downstream widths match
@@ -1000,6 +1064,7 @@ LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
       .Case<DWConverterOp>(checkPulpDWConverterSupported)
       .Case<IWConverterOp>(checkPulpIWConverterSupported)
       .Case<BurstSplitterOp>(checkPulpBurstSplitterSupported)
+      .Case<BurstUnwrapperOp>(checkPulpBurstUnwrapperSupported)
       .Default(success());
 }
 
@@ -1023,6 +1088,9 @@ void circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
           })
           .Case<BurstSplitterOp>([&](BurstSplitterOp splitter) {
             return pulpBurstSplitterSource(name, splitter);
+          })
+          .Case<BurstUnwrapperOp>([&](BurstUnwrapperOp unwrapper) {
+            return pulpBurstUnwrapperSource(name, unwrapper);
           })
           .Default(std::nullopt);
   if (!text)
