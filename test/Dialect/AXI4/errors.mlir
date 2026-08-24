@@ -382,6 +382,39 @@ hw.module @EmptyDemux(in %clk : !seq.clock, in %rst_ni : i1,
 
 // -----
 
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_data = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @RewidthingUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
+                               in %upstream : !wrapping) {
+  // expected-error @below {{'axi4.burst_unwrapper' op downstream port's 'data_width' (32) must match upstream port's (64)}}
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !narrow_data
+}
+
+// -----
+
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!moved = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @MovingUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
+                           in %upstream : !wrapping) {
+  // expected-error @below {{'axi4.burst_unwrapper' op upstream and downstream windows must cover the same addresses}}
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !moved
+}
+
+// -----
+
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!still_wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @StillWrapping(in %clk : !seq.clock, in %rst_ni : i1,
+                         in %upstream : !wrapping) {
+  // expected-error @below {{'axi4.burst_unwrapper' op downstream window must support at least #axi4.burst_set<<incr, len = 4>> (the upstream's wrapping bursts as incrementing ones), but supports #axi4.burst_set<<wrap, len = 4>>}}
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !still_wrapping
+}
+
+// -----
+
 !port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 !tagged = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 

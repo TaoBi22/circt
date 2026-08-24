@@ -324,6 +324,31 @@ LogicalResult BurstSplitterOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// BurstUnwrapperOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BurstUnwrapperOp::verify() {
+  auto upstream = cast<PortType>(getUpstream().getType());
+  auto downstream = cast<PortType>(getDownstream().getType());
+
+  // An unwrap changes burst kinds, and leaves every width alone
+  if (failed(verifyWidthsMatch(*this, kWidths, downstream, "downstream port",
+                               upstream, "upstream port")))
+    return failure();
+
+  // An unwrap re-kinds, it does not re-address or re-length, and a burst that
+  // does not wrap is already the increments it visits
+  return verifyWindowsConvert(
+      *this, upstream, downstream,
+      [&](BurstSpecAttr spec) -> FailureOr<BurstSpecAttr> {
+        if (spec.getKind() != BurstKind::Wrap)
+          return spec;
+        return BurstSpecAttr::get(getContext(), BurstKind::Incr, spec.getLen());
+      },
+      "the upstream's wrapping bursts as incrementing ones");
+}
+
+//===----------------------------------------------------------------------===//
 // DemuxOp
 //===----------------------------------------------------------------------===//
 

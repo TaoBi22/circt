@@ -309,6 +309,34 @@ def BurstSplitterOp : AXI4Op<"burst_splitter", [PortResultsAtMostOneUse]> {
   let hasVerifier = 1;
 }
 
+def BurstUnwrapperOp : AXI4Op<"burst_unwrapper", [PortResultsAtMostOneUse]> {
+  let summary = "An AXI4 burst unwrapper";
+  let description = [{
+    Converts every wrapping burst on an AXI4 connection into up to 2 incremental
+    bursts.
+
+    A burst starting on its wrap boundary increments throughout, so it becomes
+    one `incr` burst of the same length. One starting anywhere else becomes two,
+    split at the wrap boundary.
+
+    Example:
+    ```mlir
+    %downstream = axi4.burst_unwrapper %clk, %rst_ni, %upstream
+      : (!axi4.port<...>) -> !axi4.port<...>
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream);
+  let results = (outs PortType:$downstream);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `,` $upstream attr-dict `:`
+      functional-type($upstream, $downstream)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def DemuxOp : AXI4Op<"demux", [PortResultsAtMostOneUse]> {
   let summary = "An AXI4 demultiplexer";
   let description = [{

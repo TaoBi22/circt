@@ -262,6 +262,16 @@ hw.module @SplitWrappingBurst(in %clk : !seq.clock, in %rst_ni : i1,
   %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!wrapping) -> !unwrapped
 }
 
+!wrapped_bursts = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!incr_bursts = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @BurstUnwrapper
+hw.module @BurstUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
+                          in %upstream : !wrapped_bursts) {
+  // CHECK: axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!axi4.port<{{.*}} burst_specs = <<fixed, len = 4>, <wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<{{.*}} burst_specs = <<fixed, len = 4>, <incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapped_bursts) -> !incr_bursts
+}
+
 // Typedefs for a demux fanning a port's window out to two downstream ports
 !demuxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 !demux_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
