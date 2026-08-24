@@ -160,6 +160,20 @@ hw.module @CdcCrossesReset(in %clk : !seq.clock, in %other_clk : !seq.clock,
 
 // -----
 
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @IdConverterCrossing(in %clk : !seq.clock,
+                               in %other_clk : !seq.clock, in %rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !wide_ids
+  // expected-error @below {{'axi4.id_width_converter' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
+  %iwc = axi4.id_width_converter %other_clk, %rst_ni, %mgr : (!wide_ids) -> !narrow_ids
+  axi4.abstract_subordinate %other_clk, %rst_ni, %iwc concurrent_writes 4 concurrent_reads 4 : !narrow_ids
+}
+
+// -----
+
 !burstty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 !beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
 
