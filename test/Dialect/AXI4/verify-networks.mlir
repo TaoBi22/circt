@@ -174,6 +174,34 @@ hw.module @UndersizedConverter(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @IdConverterCrossing(in %clk : !seq.clock,
+                               in %other_clk : !seq.clock, in %rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !wide_ids
+  // expected-error @below {{'axi4.id_width_converter' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
+  %iwc = axi4.id_width_converter %other_clk, %rst_ni, %mgr : (!wide_ids) -> !narrow_ids
+  axi4.abstract_subordinate %other_clk, %rst_ni, %iwc : !narrow_ids
+}
+
+// -----
+
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 8>
+
+// A narrower ID width caps the transactions the downstream port can hold, so
+// the writes bottleneck here and the reads do not
+hw.module @UndersizedIdConverter(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !wide_ids
+  // expected-warning @below {{downstream port can hold fewer outstanding writes than the upstream port can issue (4 < 8)}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %mgr : (!wide_ids) -> !narrow_ids
+  axi4.abstract_subordinate %clk, %rst_ni, %iwc : !narrow_ids
+}
+
+// -----
+
 !burstty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 !beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 16, outstanding_reads = 16>
 

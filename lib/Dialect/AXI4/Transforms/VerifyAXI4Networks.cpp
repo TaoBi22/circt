@@ -43,7 +43,7 @@ struct Domains {
 static FailureOr<Domains> getDomains(Operation *op) {
   return TypeSwitch<Operation *, FailureOr<Domains>>(op)
       .Case<AbstractManagerOp, AbstractSubordinateOp, ChannelStructsToPortOp,
-            PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp,
+            PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp, IWConverterOp,
             BurstSplitterOp, DemuxOp, MuxOp>([](auto op) {
         Domain domain{op.getClock(), op.getReset()};
         return Domains{domain, domain};
@@ -203,7 +203,7 @@ void VerifyAXI4NetworksPass::runOnOperation() {
           warnRoutingBottlenecks(routing, routing.getUpstream(),
                                  routing.getDownstream());
         })
-        .Case<DWConverterOp>([](DWConverterOp converter) {
+        .Case<DWConverterOp, IWConverterOp>([](auto converter) {
           auto upstream = cast<PortType>(converter.getUpstream().getType());
           warnBottleneck(converter, "downstream port",
                          cast<PortType>(converter.getDownstream().getType()),
