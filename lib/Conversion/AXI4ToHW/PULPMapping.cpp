@@ -724,6 +724,67 @@ static std::string pulpDWConverterSource(StringRef name,
   return text;
 }
 
+/// Report the ID width converters PULP's axi_iw_converter cannot express.
+static LogicalResult checkPulpIWConverterSupported(IWConverterOp converter) {
+  auto upstream = cast<PortType>(converter.getUpstream().getType());
+  if (failed(checkPulpIdWidths(converter, "axi_iw_converter", upstream,
+                               "upstream")))
+    return failure();
+  auto downstream = cast<PortType>(converter.getDownstream().getType());
+  return checkPulpIdWidths(converter, "axi_iw_converter", downstream,
+                           "downstream");
+}
+
+/// A SystemVerilog wrapper named `name` instantiating PULP's axi_iw_converter,
+/// with the ports `converter`'s external module lowers to. PULP prepends zeroes
+/// to widen, and to narrow either remaps the IDs or, where they no longer fit,
+/// serialises them onto shared ones.
+static std::string pulpIWConverterSource(StringRef name,
+                                         IWConverterOp converter) {
+  auto upstream = cast<PortType>(converter.getUpstream().getType());
+  auto downstream = cast<PortType>(converter.getDownstream().getType());
+  std::string prefix = (name + "_").str();
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  emitDualIdWrapper(os, name, "axi_iw_converter", upstream, /*numUpstream=*/1,
+                    downstream, /*numDownstream=*/1);
+
+  // A port keeps at most 2**its ID width transactions outstanding, so its
+  // outstanding count bounds the unique IDs in flight as well as the
+  // transactions per ID. PULP sizes its tables from both, and needs at least
+  // one of each.
+  unsigned slvTxns = std::max(maxOutstanding(converter.getUpstream()), 1u);
+  unsigned mstTxns = std::max(maxOutstanding(converter.getDownstream()), 1u);
+
+  os << "  axi_iw_converter #(\n";
+  os << "    .AxiSlvPortIdWidth      (" << upstream.getWriteIdWidth() << "),\n";
+  os << "    .AxiMstPortIdWidth      (" << downstream.getWriteIdWidth()
+     << "),\n";
+  os << "    .AxiSlvPortMaxUniqIds   (" << slvTxns << "),\n";
+  os << "    .AxiSlvPortMaxTxnsPerId (" << slvTxns << "),\n";
+  os << "    .AxiSlvPortMaxTxns      (" << slvTxns << "),\n";
+  os << "    .AxiMstPortMaxUniqIds   (" << mstTxns << "),\n";
+  os << "    .AxiMstPortMaxTxnsPerId (" << mstTxns << "),\n";
+  os << "    .AxiAddrWidth           (" << upstream.getAddrWidth() << "),\n";
+  os << "    .AxiDataWidth           (" << upstream.getDataWidth() << "),\n";
+  os << "    .AxiUserWidth           (" << pulpUserWidth(upstream) << "),\n";
+  os << "    .slv_req_t              (" << prefix << "slv_req_t),\n";
+  os << "    .slv_resp_t             (" << prefix << "slv_resp_t),\n";
+  os << "    .mst_req_t              (" << prefix << "mst_req_t),\n";
+  os << "    .mst_resp_t             (" << prefix << "mst_resp_t)\n";
+  os << "  ) i_iw_converter (\n";
+  os << "    .clk_i      (clk_i),\n";
+  os << "    .rst_ni     (rst_ni),\n";
+  os << "    .slv_req_i  (slv_req[0]),\n";
+  os << "    .slv_resp_o (slv_resp[0]),\n";
+  os << "    .mst_req_o  (mst_req[0]),\n";
+  os << "    .mst_resp_i (mst_resp[0])\n";
+  os << "  );\n";
+  os << "endmodule\n";
+  return text;
+}
+
 /// Report the burst splitters PULP's axi_burst_splitter cannot express.
 static LogicalResult checkPulpBurstSplitterSupported(BurstSplitterOp splitter) {
   auto upstream = cast<PortType>(splitter.getUpstream().getType());
@@ -937,6 +998,7 @@ LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
       .Case<DemuxOp>(checkPulpDemuxSupported)
       .Case<MuxOp>(checkPulpMuxSupported)
       .Case<DWConverterOp>(checkPulpDWConverterSupported)
+      .Case<IWConverterOp>(checkPulpIWConverterSupported)
       .Case<BurstSplitterOp>(checkPulpBurstSplitterSupported)
       .Default(success());
 }
@@ -955,6 +1017,9 @@ void circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
           .Case<CDCOp>([&](CDCOp cdc) { return pulpCdcSource(name, cdc); })
           .Case<DWConverterOp>([&](DWConverterOp converter) {
             return pulpDWConverterSource(name, converter);
+          })
+          .Case<IWConverterOp>([&](IWConverterOp converter) {
+            return pulpIWConverterSource(name, converter);
           })
           .Case<BurstSplitterOp>([&](BurstSplitterOp splitter) {
             return pulpBurstSplitterSource(name, splitter);

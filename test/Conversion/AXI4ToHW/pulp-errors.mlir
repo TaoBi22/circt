@@ -168,6 +168,35 @@ hw.module @SplitIds(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
+// PULP's axi_iw_converter converts over a single ID width per side, since it
+// re-tags both channels together
+!split_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitIdConverterIds(in %clk : !seq.clock, in %rst_ni : i1,
+                               in %upstream : !split_ids,
+                               out downstream : !narrow_ids) {
+  // expected-error @below {{'axi4.id_width_converter' op cannot be lowered to a PULP axi_iw_converter, which uses a single ID width per side, because its upstream write ID width (4) and read ID width (3) differ}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!split_ids) -> !narrow_ids
+  hw.output %iwc : !narrow_ids
+}
+
+// -----
+
+// And the downstream side is checked the same way
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!split_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitIdConverterDownstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
+                                         in %upstream : !wide_ids,
+                                         out downstream : !split_ids) {
+  // expected-error @below {{'axi4.id_width_converter' op cannot be lowered to a PULP axi_iw_converter, which uses a single ID width per side, because its downstream write ID width (2) and read ID width (3) differ}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !split_ids
+  hw.output %iwc : !split_ids
+}
+
+// -----
+
 // PULP's axi_burst_splitter splits over a single ID width too
 !burstty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 !beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
