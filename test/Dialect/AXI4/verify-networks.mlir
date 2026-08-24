@@ -230,6 +230,48 @@ hw.module @UndersizedSplitter(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+// Sized for the doubling, so only the crossing is reported
+!unwrapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+
+hw.module @UnwrapperCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
+                             in %rst_ni : i1) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !wrapping
+  // expected-error @below {{'axi4.burst_unwrapper' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
+  %unwrapped = axi4.burst_unwrapper %other_clk, %rst_ni, %mgr : (!wrapping) -> !unwrapped
+  axi4.abstract_subordinate %other_clk, %rst_ni, %unwrapped : !unwrapped
+}
+
+// -----
+
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!unwrapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 8>
+
+// An unaligned wrap leaves two bursts in flight downstream, so the downstream
+// port needs twice the upstream's slots - the reads have exactly enough here
+// and the writes do not
+hw.module @UndersizedUnwrapper(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !wrapping
+  // expected-warning @below {{downstream port can hold fewer outstanding writes than unwrapping the upstream port's wrapping bursts into two can issue (4 < 8)}}
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %mgr : (!wrapping) -> !unwrapped
+  axi4.abstract_subordinate %clk, %rst_ni, %unwrapped : !unwrapped
+}
+
+// -----
+
+// Without a wrapping burst to split there is nothing to double, so an
+// unwrapper's slots pass straight through
+!incrementing = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @UnwrapperWithoutWraps(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !incrementing
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %mgr : (!incrementing) -> !incrementing
+  axi4.abstract_subordinate %clk, %rst_ni, %unwrapped : !incrementing
+}
+
+// -----
+
 !mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 !lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 !hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>

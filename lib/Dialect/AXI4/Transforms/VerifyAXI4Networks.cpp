@@ -44,7 +44,7 @@ static FailureOr<Domains> getDomains(Operation *op) {
   return TypeSwitch<Operation *, FailureOr<Domains>>(op)
       .Case<AbstractManagerOp, AbstractSubordinateOp, ChannelStructsToPortOp,
             PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp, IWConverterOp,
-            BurstSplitterOp, DemuxOp, MuxOp>([](auto op) {
+            BurstSplitterOp, BurstUnwrapperOp, DemuxOp, MuxOp>([](auto op) {
         Domain domain{op.getClock(), op.getReset()};
         return Domains{domain, domain};
       })
@@ -209,6 +209,23 @@ void VerifyAXI4NetworksPass::runOnOperation() {
                          cast<PortType>(converter.getDownstream().getType()),
                          upstream.getOutstandingWrites(),
                          upstream.getOutstandingReads(), "the upstream port");
+        })
+        .Case<BurstUnwrapperOp>([](BurstUnwrapperOp unwrapper) {
+          auto upstream = cast<PortType>(unwrapper.getUpstream().getType());
+          // A wrap that does not start on its boundary becomes two downstream
+          // bursts, both in flight at once.
+          bool wraps = false;
+          for (WindowAttr window : upstream.getWindows().getWindows())
+            for (BurstSpecAttr spec : window.getBurstSpecs().getBurstSpecs())
+              wraps |= spec.getKind() == BurstKind::Wrap;
+          uint64_t bursts = wraps ? 2 : 1;
+          warnBottleneck(
+              unwrapper, "downstream port",
+              cast<PortType>(unwrapper.getDownstream().getType()),
+              bursts * upstream.getOutstandingWrites(),
+              bursts * upstream.getOutstandingReads(),
+              wraps ? "unwrapping the upstream port's wrapping bursts into two"
+                    : "the upstream port");
         })
         .Case<BurstSplitterOp>([](BurstSplitterOp splitter) {
           auto upstream = cast<PortType>(splitter.getUpstream().getType());
