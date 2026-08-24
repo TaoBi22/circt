@@ -190,6 +190,14 @@ static std::optional<Component> getComponent(Operation *op) {
             "burst_splitter",
             {{"clk_i", splitter.getClock()}, {"rst_ni", splitter.getReset()}}};
       })
+      .Case<BurstUnwrapperOp>([](BurstUnwrapperOp unwrapper) {
+        auto port = cast<PortType>(unwrapper.getUpstream().getType());
+        return Component{unwrapper,
+                         "axi_burst_unwrapper_" + portShape(port),
+                         "burst_unwrapper",
+                         {{"clk_i", unwrapper.getClock()},
+                          {"rst_ni", unwrapper.getReset()}}};
+      })
       .Default(std::nullopt);
 }
 
