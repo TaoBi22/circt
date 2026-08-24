@@ -44,7 +44,7 @@ static FailureOr<Domains> getDomains(Operation *op) {
   return TypeSwitch<Operation *, FailureOr<Domains>>(op)
       .Case<AbstractManagerOp, AbstractSubordinateOp, ChannelStructsToPortOp,
             PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp, IWConverterOp,
-            BurstSplitterOp, DemuxOp, MuxOp>([](auto op) {
+            BurstSplitterOp, BurstUnwrapperOp, DemuxOp, MuxOp>([](auto op) {
         Domain domain{op.getClock(), op.getReset()};
         return Domains{domain, domain};
       })
