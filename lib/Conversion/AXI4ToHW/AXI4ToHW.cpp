@@ -82,8 +82,12 @@ struct Component {
   std::string moduleName;
   /// The name its instances take, suffixed to count them within a module
   StringRef instanceName;
-  /// The clock and reset ports it takes, in order, and what drives them
-  SmallVector<std::pair<StringRef, Value>> domain;
+  /// The ports it takes ahead of its upstream ones, in order, and what drives
+  /// them - its clock and reset, and whatever else it is fed
+  SmallVector<std::pair<StringRef, Value>> inputs;
+  /// The names its results take, for a component whose results are not
+  /// downstream ports
+  SmallVector<StringRef> outputs;
 };
 } // namespace
 
@@ -198,6 +202,18 @@ static std::optional<Component> getComponent(Operation *op) {
                          {{"clk_i", unwrapper.getClock()},
                           {"rst_ni", unwrapper.getReset()}}};
       })
+      .Case<ToMemOp>([](ToMemOp toMem) {
+        auto port = cast<PortType>(toMem.getPort().getType());
+        return Component{toMem,
+                         "axi_to_mem_" + portShape(port),
+                         "to_mem",
+                         {{"clk_i", toMem.getClock()},
+                          {"rst_ni", toMem.getReset()},
+                          {"mem_rvalid_i", toMem.getReadValid()},
+                          {"mem_rdata_i", toMem.getReadData()}},
+                         {"mem_req_o", "mem_addr_o", "mem_wdata_o",
+                          "mem_strb_o", "mem_we_o"}};
+      })
       .Default(std::nullopt);
 }
 
@@ -207,15 +223,19 @@ static std::optional<Component> getComponent(Operation *op) {
 static SmallVector<hw::ModulePort> componentPorts(const Component &component) {
   MLIRContext *context = component.op->getContext();
   SmallVector<hw::ModulePort> ports;
-  for (auto [name, value] : component.domain)
+  for (auto [name, value] : component.inputs)
     ports.push_back({StringAttr::get(context, name), value.getType(),
                      hw::ModulePort::Direction::Input});
   for (auto [index, value] : llvm::enumerate(upstreamPorts(component.op)))
     ports.push_back({StringAttr::get(context, "mgr" + Twine(index)),
                      value.getType(), hw::ModulePort::Direction::Input});
-  for (auto [index, value] : llvm::enumerate(component.op->getResults()))
-    ports.push_back({StringAttr::get(context, "sub" + Twine(index)),
-                     value.getType(), hw::ModulePort::Direction::Output});
+  for (auto [index, value] : llvm::enumerate(component.op->getResults())) {
+    std::string name = component.outputs.empty()
+                           ? ("sub" + Twine(index)).str()
+                           : component.outputs[index].str();
+    ports.push_back({StringAttr::get(context, name), value.getType(),
+                     hw::ModulePort::Direction::Output});
+  }
   return ports;
 }
 
@@ -256,9 +276,8 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping) {
     }
 
     SmallVector<Value> inputs = llvm::map_to_vector(
-        component.domain, [](const std::pair<StringRef, Value> &domain) {
-          return domain.second;
-        });
+        component.inputs,
+        [](const std::pair<StringRef, Value> &input) { return input.second; });
     llvm::append_range(inputs, upstreamPorts(op));
     ImplicitLocOpBuilder opBuilder(op->getLoc(), op);
     unsigned &count =
