@@ -35,6 +35,12 @@ class PayloadMatches<string channel, string arg> : TypesMatchWith<
       "::llvm::cast<::circt::axi4::PortType>($_self), "
       "::circt::axi4::AXI4Channel::" # channel # ")">;
 
+// Constrain an argument to an integer as wide as a field of a given port type
+class PortWidthMatches<string arg, string description, string width> :
+    TypesMatchWith<description, "port", arg,
+    "::mlir::IntegerType::get($_self.getContext(), "
+      "::llvm::cast<::circt::axi4::PortType>($_self)." # width # ")">;
+
 // Ordered list of AXI4 channels
 defvar axi4Channels = ["AW", "W", "B", "AR", "R"];
 
@@ -384,6 +390,44 @@ def MuxOp : AXI4Op<"mux", [PortResultsAtMostOneUse]> {
   }];
 
   let hasVerifier = 1;
+}
+
+def ToMemOp : AXI4Op<"to_mem", [
+    PortWidthMatches<"read_data", "read data is as wide as the port's data",
+                     "getDataWidth()">,
+    PortWidthMatches<"address", "address is as wide as the port's addresses",
+                     "getAddrWidth()">,
+    PortWidthMatches<"write_data", "write data is as wide as the port's data",
+                     "getDataWidth()">,
+    PortWidthMatches<"strobe", "strobe has a bit per byte of the port's data",
+                     "getDataWidth() / 8">]> {
+  let summary = "An AXI4 to memory interface converter";
+  let description = [{
+    Converts an AXI4 port into a generic memory interface, for building a
+    memory subordinate. Takes the port along with the memory's read response
+    valid and read data; returns the valid, address, write data, strobe and
+    write enable of the requests it drives the memory with.
+
+    The memory is assumed to accept every request immediately.
+
+    Example:
+    ```mlir
+    %valid, %addr, %wdata, %strb, %we =
+      axi4.to_mem %clk, %rst_ni, %port read %rvalid, %rdata
+        : !axi4.port<...>
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$port,
+                       I1:$read_valid, AnyInteger:$read_data);
+  let results = (outs I1:$request_valid, AnyInteger:$address,
+                      AnyInteger:$write_data, AnyInteger:$strobe,
+                      I1:$write_enable);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `,` $port `read` $read_valid `,` $read_data
+      attr-dict `:` qualified(type($port))
+  }];
 }
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

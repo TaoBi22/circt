@@ -547,3 +547,45 @@ hw.module @UnsupportedMuxBurst(in %clk : !seq.clock, in %rst_ni : i1,
   // expected-error @below {{'axi4.mux' op downstream port #0 does not support all the bursts upstream port #0 issues at address 0x0; upstream requires #axi4.burst_set<<fixed, len = 4>, <incr, len = 8>>, downstream supports #axi4.burst_set<<fixed, len = 4>>}}
   %sub = axi4.mux %clk, %rst_ni, %upstream : (!bursty) -> !fixed_only
 }
+
+// -----
+
+!mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @NarrowMemReadData(in %clk : !seq.clock, in %rst_ni : i1,
+                             in %port : !mem_port, in %v : i1, in %rdata : i32) {
+  // expected-error @below {{'axi4.to_mem' op failed to verify that read data is as wide as the port's data}}
+  %valid, %addr, %wdata, %strb, %we = "axi4.to_mem"(%clk, %rst_ni, %port, %v, %rdata) : (!seq.clock, i1, !mem_port, i1, i32) -> (i1, i32, i64, i8, i1)
+}
+
+// -----
+
+!mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @WideMemAddress(in %clk : !seq.clock, in %rst_ni : i1,
+                          in %port : !mem_port, in %v : i1, in %rdata : i64) {
+  // expected-error @below {{'axi4.to_mem' op failed to verify that address is as wide as the port's addresses}}
+  %valid, %addr, %wdata, %strb, %we = "axi4.to_mem"(%clk, %rst_ni, %port, %v, %rdata) : (!seq.clock, i1, !mem_port, i1, i64) -> (i1, i64, i64, i8, i1)
+}
+
+// -----
+
+!mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @NarrowMemWriteData(in %clk : !seq.clock, in %rst_ni : i1,
+                              in %port : !mem_port, in %v : i1, in %rdata : i64) {
+  // expected-error @below {{'axi4.to_mem' op failed to verify that write data is as wide as the port's data}}
+  %valid, %addr, %wdata, %strb, %we = "axi4.to_mem"(%clk, %rst_ni, %port, %v, %rdata) : (!seq.clock, i1, !mem_port, i1, i64) -> (i1, i32, i32, i8, i1)
+}
+
+// -----
+
+!mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// A strobe carries a bit per byte of write data, so it is as wide as the data
+// width in bytes rather than the address width in bytes
+hw.module @AddressSizedMemStrobe(in %clk : !seq.clock, in %rst_ni : i1,
+                                 in %port : !mem_port, in %v : i1, in %rdata : i64) {
+  // expected-error @below {{'axi4.to_mem' op failed to verify that strobe has a bit per byte of the port's data}}
+  %valid, %addr, %wdata, %strb, %we = "axi4.to_mem"(%clk, %rst_ni, %port, %v, %rdata) : (!seq.clock, i1, !mem_port, i1, i64) -> (i1, i32, i64, i4, i1)
+}
