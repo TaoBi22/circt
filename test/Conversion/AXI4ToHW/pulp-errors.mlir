@@ -248,3 +248,32 @@ hw.module @UnwrapperOversizedContainer(in %clk : !seq.clock, in %rst_ni : i1,
   %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !unwrapped
   hw.output %unwrapped : !unwrapped
 }
+
+// -----
+
+// PULP's axi_to_mem converts over a single ID width
+!split_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @ToMemIds(in %clk : !seq.clock, in %rst_ni : i1, in %port : !split_ids,
+                    in %rvalid : i1, in %rdata : i64,
+                    out valid : i1, out addr : i32, out wdata : i64,
+                    out strb : i8, out we : i1) {
+  // expected-error @below {{'axi4.to_mem' op cannot be lowered to a PULP axi_to_mem, which uses a single ID width, because its write ID width (4) and read ID width (2) differ}}
+  %valid, %addr, %wdata, %strb, %we = axi4.to_mem %clk, %rst_ni, %port read %rvalid, %rdata : !split_ids
+  hw.output %valid, %addr, %wdata, %strb, %we : i1, i32, i64, i8, i1
+}
+
+// -----
+
+// A memory is walked up its addresses, so a burst of several beats that does
+// not increment has nowhere to put them
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @ToMemWrappingBurst(in %clk : !seq.clock, in %rst_ni : i1,
+                              in %port : !wrapping, in %rvalid : i1, in %rdata : i64,
+                              out valid : i1, out addr : i32, out wdata : i64,
+                              out strb : i8, out we : i1) {
+  // expected-error @below {{'axi4.to_mem' op cannot be lowered to a PULP axi_to_mem, which supports bursts of more than one beat only where they increment, because its port issues #axi4.burst_spec<wrap, len = 4>}}
+  %valid, %addr, %wdata, %strb, %we = axi4.to_mem %clk, %rst_ni, %port read %rvalid, %rdata : !wrapping
+  hw.output %valid, %addr, %wdata, %strb, %we : i1, i32, i64, i8, i1
+}
