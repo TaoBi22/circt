@@ -332,3 +332,27 @@ hw.module @UndersizedMux(in %clk : !seq.clock, in %rst_ni : i1) {
   %sub = axi4.mux %clk, %rst_ni, %a, %b : (!lo, !hi) -> !sub
   axi4.abstract_subordinate %clk, %rst_ni, %sub : !sub
 }
+
+// -----
+
+!mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// A to_mem ends the network in the memory it fronts, so its port is the only
+// connection to check
+hw.module @ToMem(in %clk : !seq.clock, in %rst_ni : i1,
+                 in %rvalid : i1, in %rdata : i64) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !mem_port
+  %valid, %addr, %wdata, %strb, %we = axi4.to_mem %clk, %rst_ni, %mgr read %rvalid, %rdata : !mem_port
+}
+
+// -----
+
+!mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @ToMemCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
+                         in %rst_ni : i1, in %rvalid : i1, in %rdata : i64) {
+  // expected-note @below {{connected operation here}}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !mem_port
+  // expected-error @below {{'axi4.to_mem' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
+  %valid, %addr, %wdata, %strb, %we = axi4.to_mem %other_clk, %rst_ni, %mgr read %rvalid, %rdata : !mem_port
+}
