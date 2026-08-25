@@ -44,10 +44,11 @@ static FailureOr<Domains> getDomains(Operation *op) {
   return TypeSwitch<Operation *, FailureOr<Domains>>(op)
       .Case<AbstractManagerOp, AbstractSubordinateOp, ChannelStructsToPortOp,
             PortToChannelStructsOp, XbarOp, CutOp, DWConverterOp, IWConverterOp,
-            BurstSplitterOp, BurstUnwrapperOp, DemuxOp, MuxOp>([](auto op) {
-        Domain domain{op.getClock(), op.getReset()};
-        return Domains{domain, domain};
-      })
+            BurstSplitterOp, BurstUnwrapperOp, DemuxOp, MuxOp, ToMemOp>(
+          [](auto op) {
+            Domain domain{op.getClock(), op.getReset()};
+            return Domains{domain, domain};
+          })
       .Case<CDCOp>([](CDCOp op) {
         // A crossing changes clock but not reset
         return Domains{{op.getUpstreamClock(), op.getReset()},
