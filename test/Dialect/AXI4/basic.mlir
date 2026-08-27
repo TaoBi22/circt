@@ -345,3 +345,11 @@ hw.module @DummiesXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: axi4.dummies.accesses %[[DEBUG_ACCESS]] -> %[[MEM_ACCESS]] with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
   axi4.dummies.accesses %debug_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
 }
+
+// CHECK-LABEL: hw.module @NamedDummiesEndpoints
+hw.module @NamedDummiesEndpoints(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: %[[MGR:.+]], %{{.+}} = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %mgr_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %[[MGR]] windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %sub_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+}
