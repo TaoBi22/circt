@@ -51,4 +51,31 @@ def PortType : AXI4TypeDef<"Port"> {
   let genVerifyDecl = 1;
 }
 
+def DummiesPortType : AXI4TypeDef<"DummiesPort"> {
+  let mnemonic = "dummies.port";
+  let summary = "an unparameterised AXI4 port interface";
+  let description = [{
+    The interface passed between the endpoints and interconnect of the dummies
+    subdialect. Widths are inferred later at lowering.
+  }];
+}
+
+def DummiesManagerAccessType : AXI4TypeDef<"DummiesManagerAccess"> {
+  let mnemonic = "dummies.manager_access";
+  let summary = "a handle on a dummies manager's accesses";
+  let description = [{
+    Produced by a dummies manager and consumed by `axi4.dummies.accesses` to
+    describe which subordinates the manager reaches.
+  }];
+}
+
+def DummiesSubordinateAccessType : AXI4TypeDef<"DummiesSubordinateAccess"> {
+  let mnemonic = "dummies.subordinate_access";
+  let summary = "a handle on a dummies subordinate's accesses";
+  let description = [{
+    Produced by a dummies subordinate and consumed by `axi4.dummies.accesses`
+    to describe which managers reach the subordinate.
+  }];
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4TYPES_TD

@@ -82,6 +82,15 @@
 // CHECK: !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 "test.port"() : () -> !axi4.port<outstanding_reads = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, data_width = 64, user_width = 0, addr_width = 32, outstanding_writes = 4, read_id_width = 4, write_id_width = 4>
 
+// CHECK: !axi4.dummies.port
+"test.port"() : () -> !axi4.dummies.port
+
+// CHECK: !axi4.dummies.manager_access
+"test.port"() : () -> !axi4.dummies.manager_access
+
+// CHECK: !axi4.dummies.subordinate_access
+"test.port"() : () -> !axi4.dummies.subordinate_access
+
 //===----------------------------------------------------------------------===//
 // Operations
 //===----------------------------------------------------------------------===//
