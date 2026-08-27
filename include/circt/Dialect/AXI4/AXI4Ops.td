@@ -527,4 +527,23 @@ def DummiesXbarOp : AXI4DummiesOp<"xbar"> {
   let hasVerifier = 1;
 }
 
+def DummiesAccessesOp : AXI4DummiesOp<"accesses"> {
+  let summary = "Declares that a manager accesses a subordinate";
+  let description = [{
+    Declares that a manager can access a subordinate with someset of bursts.
+
+    Example:
+    ```mlir
+    axi4.dummies.accesses %core_access -> %mem_access with <<incr, len = 16>>
+    ```
+  }];
+
+  let arguments = (ins DummiesManagerAccessType:$manager,
+                       DummiesSubordinateAccessType:$subordinate,
+                       BurstSetAttr:$bursts);
+
+  let assemblyFormat =
+      "$manager `->` $subordinate `with` $bursts attr-dict";
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

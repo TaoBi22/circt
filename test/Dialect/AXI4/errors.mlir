@@ -642,3 +642,13 @@ hw.module @UnalignedDummiesXbarData(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.dummies.xbar' op 'data_width' must be a power of two between 8 and 1024, got 48}}
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 48
 }
+
+// -----
+
+// Ensure manager and subordinate accesses can't be interchanged
+hw.module @ReversedDummiesAccess(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.accesses' op operand #0 must be a handle on a dummies manager's accesses, but got '!axi4.dummies.subordinate_access'}}
+  "axi4.dummies.accesses"(%sub_access, %mgr_access) {bursts = #axi4.burst_set<<incr, len = 16>>} : (!axi4.dummies.subordinate_access, !axi4.dummies.manager_access) -> ()
+}
