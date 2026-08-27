@@ -42,3 +42,44 @@ hw.module @NarrowerBursts(in %clk : !seq.clock, in %rst_ni : i1) {
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr window <base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 16>, <incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 1, outstanding_reads = 1
   axi4.dummies.accesses %mgr_access -> %sub_access with <<incr, len = 4>>
 }
+
+// -----
+
+// Two managers reaching two subordinates through a crossbar. Each manager's
+// windows are those of the subordinates it declares accesses to, and the
+// crossbar widens the IDs to tag which manager a request came from.
+// CHECK-LABEL: hw.module @Crossbar(
+// CHECK-SAME:    in %core : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+// CHECK-SAME:    in %debug : !axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+// CHECK-SAME:    out mem : !axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 8, outstanding_reads = 8>
+// CHECK-SAME:    out periph : !axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+hw.module @Crossbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[XBAR:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %core, %debug
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64
+  %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  %periph_access = axi4.dummies.ext_subordinate "periph" %clk, %rst_ni, %xbar window <base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %core_access -> %mem_access with <<incr, len = 16>>
+  axi4.dummies.accesses %core_access -> %periph_access with <<fixed, len = 4>>
+  axi4.dummies.accesses %debug_access -> %mem_access with <<incr, len = 16>>
+  // The crossbar's results follow its use list, so they run backwards here
+  // CHECK: hw.output %[[XBAR]]#1, %[[XBAR]]#0
+}
+
+// -----
+
+// A crossbar can reach a subordinate through another crossbar, which routes
+// what the managers above can issue to it
+// CHECK-LABEL: hw.module @ChainedCrossbars(
+// CHECK-SAME:    out mem : !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 4, outstanding_reads = 4>
+hw.module @ChainedCrossbars(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[TOP:.+]] = axi4.xbar %clk, %rst_ni mgrs %core
+  %top = axi4.dummies.xbar %clk, %rst_ni mgrs %core addr_width = 32, data_width = 64
+  // CHECK: %[[BOTTOM:.+]] = axi4.xbar %clk, %rst_ni mgrs %[[TOP]]
+  %bottom = axi4.dummies.xbar %clk, %rst_ni mgrs %top addr_width = 32, data_width = 64
+  %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %bottom window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %core_access -> %mem_access with <<incr, len = 16>>
+  // CHECK: hw.output %[[BOTTOM]]
+}

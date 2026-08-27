@@ -177,7 +177,12 @@ struct NetworkLowering {
 
 private:
   LogicalResult checkOneModule();
+  FailureOr<SmallVector<DummiesExtSubordinateOp>>
+  getReachableSubordinates(OpOperand *connection);
+  FailureOr<WindowSetAttr> windowsBelow(OpOperand *connection);
   LogicalResult inferManagerTypes();
+  LogicalResult inferXbarTypes(DummiesXbarOp xbar);
+  LogicalResult inferTypes();
   void emit();
 
   hw::HWModuleOp module;
@@ -190,8 +195,15 @@ private:
 
   /// The accesses each manager declares.
   DenseMap<Operation *, SmallVector<DummiesAccessesOp>> declared;
+  /// The subordinates each connection reaches, and the connections being
+  /// visited.
+  DenseMap<OpOperand *, SmallVector<DummiesExtSubordinateOp>>
+      reachableSubordinates;
+  DenseSet<OpOperand *> visiting;
   /// The port type each connection carries.
   DenseMap<OpOperand *, PortType> types;
+  /// The crossbars in the order their downstream types were inferred.
+  SmallVector<DummiesXbarOp> ordered;
   /// The `!axi4.port` value feeding each connection.
   DenseMap<OpOperand *, Value> lowered;
 };
@@ -233,6 +245,50 @@ LogicalResult NetworkLowering::checkOneModule() {
   return failure(crossing.wasInterrupted());
 }
 
+/// The subordinates a connection reaches, following the crossbars below it.
+FailureOr<SmallVector<DummiesExtSubordinateOp>>
+NetworkLowering::getReachableSubordinates(OpOperand *connection) {
+  if (auto it = reachableSubordinates.find(connection);
+      it != reachableSubordinates.end())
+    return it->second;
+  if (!visiting.insert(connection).second)
+    return connection->getOwner()->emitOpError(
+        "is part of a cycle in the dummies network");
+
+  SmallVector<DummiesExtSubordinateOp> found;
+  if (auto subordinate =
+          dyn_cast<DummiesExtSubordinateOp>(connection->getOwner())) {
+    found.push_back(subordinate);
+  } else {
+    auto xbar = cast<DummiesXbarOp>(connection->getOwner());
+    for (OpOperand *below : outgoingConnections(xbar.getDownstream())) {
+      FailureOr<SmallVector<DummiesExtSubordinateOp>> reached =
+          getReachableSubordinates(below);
+      if (failed(reached))
+        return failure();
+      llvm::append_range(found, *reached);
+    }
+  }
+
+  visiting.erase(connection);
+  reachableSubordinates.insert({connection, found});
+  return found;
+}
+
+/// The windows a connection carries, which are those of the subordinates below
+/// it.
+FailureOr<WindowSetAttr> NetworkLowering::windowsBelow(OpOperand *connection) {
+  FailureOr<SmallVector<DummiesExtSubordinateOp>> below =
+      getReachableSubordinates(connection);
+  if (failed(below))
+    return failure();
+
+  SmallVector<WindowAttr> windows;
+  for (DummiesExtSubordinateOp subordinate : *below)
+    windows.push_back(subordinate.getWindow());
+  return WindowSetAttr::get(module.getContext(), windows);
+}
+
 /// Give the connection each manager drives the port type the manager declares,
 /// with the windows its accesses grant it.
 LogicalResult NetworkLowering::inferManagerTypes() {
@@ -240,11 +296,17 @@ LogicalResult NetworkLowering::inferManagerTypes() {
     SmallVector<OpOperand *> connections =
         outgoingConnections(manager.getPort());
 
-    // Every access the manager declares must be to the subordinate it reaches.
-    Operation *reached =
-        connections.empty() ? nullptr : connections.front()->getOwner();
+    // Every access the manager declares must be to a subordinate it reaches.
+    SmallVector<DummiesExtSubordinateOp> reached;
+    if (!connections.empty()) {
+      FailureOr<SmallVector<DummiesExtSubordinateOp>> below =
+          getReachableSubordinates(connections.front());
+      if (failed(below))
+        return failure();
+      reached = *below;
+    }
     for (DummiesAccessesOp access : declared[manager])
-      if (access.getSubordinate().getDefiningOp() != reached)
+      if (!llvm::is_contained(reached, access.getSubordinate().getDefiningOp()))
         return access.emitOpError(
             "declares an access to a subordinate the manager cannot reach");
 
@@ -277,6 +339,108 @@ LogicalResult NetworkLowering::inferManagerTypes() {
   return success();
 }
 
+/// Give each of a crossbar's downstream connections a port type, from the types
+/// of its upstream connections.
+LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
+  SmallVector<OpOperand *> upstream = incomingConnections(xbar);
+  SmallVector<OpOperand *> downstream =
+      outgoingConnections(xbar.getDownstream());
+
+  // A crossbar routes, it does not convert, so it must agree with everything
+  // it connects on the widths it cannot change.
+  uint32_t writeIdWidth = 0, readIdWidth = 0;
+  for (OpOperand *connection : upstream) {
+    PortType type = types[connection];
+    if (type.getAddrWidth() != xbar.getAddrWidth())
+      return xbar.emitOpError() << "'addr_width' (" << xbar.getAddrWidth()
+                                << ") must match that of the port reaching it ("
+                                << type.getAddrWidth() << ")";
+    if (type.getDataWidth() != xbar.getDataWidth())
+      return xbar.emitOpError()
+             << "'data_width' (" << xbar.getDataWidth()
+             << ") must match that of the port reaching it ("
+             << type.getDataWidth()
+             << "); inserting data width converters is not yet implemented";
+    if (connection != upstream.front() &&
+        (type.getWriteIdWidth() != writeIdWidth ||
+         type.getReadIdWidth() != readIdWidth))
+      return xbar.emitOpError(
+          "is reached by ports needing different ID widths; inserting ID width "
+          "converters is not yet implemented");
+    writeIdWidth = type.getWriteIdWidth();
+    readIdWidth = type.getReadIdWidth();
+  }
+
+  // Transactions are tagged with the index of the manager they came from, so
+  // the downstream ports carry wider IDs than the upstream ones.
+  uint32_t tagBits = llvm::Log2_64_Ceil(upstream.size());
+  writeIdWidth += tagBits;
+  readIdWidth += tagBits;
+
+  for (OpOperand *connection : downstream) {
+    FailureOr<WindowSetAttr> windows = windowsBelow(connection);
+    if (failed(windows))
+      return failure();
+
+    // A subordinate declares how many requests it can hold; a crossbar below
+    // this one carries what the managers above can issue to it.
+    uint32_t writes = 0, reads = 0;
+    if (auto subordinate =
+            dyn_cast<DummiesExtSubordinateOp>(connection->getOwner())) {
+      if (failed(checkSubordinate(subordinate, "crossbar", xbar.getAddrWidth(),
+                                  xbar.getDataWidth(), writeIdWidth,
+                                  readIdWidth)))
+        return failure();
+      writes = subordinate.getOutstandingWrites();
+      reads = subordinate.getOutstandingReads();
+    } else {
+      for (OpOperand *above : upstream) {
+        PortType type = types[above];
+        if (type.getWindows().overlaps(*windows)) {
+          writes += type.getOutstandingWrites();
+          reads += type.getOutstandingReads();
+        }
+      }
+    }
+
+    types.insert({connection,
+                  PortType::get(module.getContext(), xbar.getAddrWidth(),
+                                xbar.getDataWidth(), writeIdWidth, readIdWidth,
+                                /*user_width=*/0, *windows, writes, reads)});
+  }
+
+  ordered.push_back(xbar);
+  return success();
+}
+
+/// Give every connection in the network a port type, working down from the
+/// managers.
+LogicalResult NetworkLowering::inferTypes() {
+  if (failed(inferManagerTypes()))
+    return failure();
+
+  // A crossbar can be lowered once everything reaching it has been.
+  SmallVector<DummiesXbarOp> pending(xbars);
+  while (!pending.empty()) {
+    SmallVector<DummiesXbarOp> waiting;
+    for (DummiesXbarOp xbar : pending) {
+      if (llvm::all_of(incomingConnections(xbar), [&](OpOperand *connection) {
+            return types.contains(connection);
+          })) {
+        if (failed(inferXbarTypes(xbar)))
+          return failure();
+      } else {
+        waiting.push_back(xbar);
+      }
+    }
+    if (waiting.size() == pending.size())
+      return waiting.front().emitOpError(
+          "is part of a cycle in the dummies network");
+    pending = waiting;
+  }
+  return success();
+}
+
 /// Replace the network with AXI4 ops, and its external endpoints with ports of
 /// the module describing it.
 void NetworkLowering::emit() {
@@ -286,6 +450,24 @@ void NetworkLowering::emit() {
         module.appendInput(names.newName(manager.getName().value_or("manager")),
                            types[connection]);
     lowered.insert({connection, arg});
+  }
+
+  for (DummiesXbarOp xbar : ordered) {
+    SmallVector<OpOperand *> downstream =
+        outgoingConnections(xbar.getDownstream());
+    SmallVector<Value> upstream;
+    for (OpOperand *connection : incomingConnections(xbar))
+      upstream.push_back(lowered[connection]);
+    SmallVector<Type> results;
+    for (OpOperand *connection : downstream)
+      results.push_back(types[connection]);
+
+    OpBuilder builder(xbar);
+    auto axi4Xbar = XbarOp::create(builder, xbar.getLoc(), results,
+                                   xbar.getClock(), xbar.getReset(), upstream);
+    for (auto [connection, result] :
+         llvm::zip(downstream, axi4Xbar.getDownstream()))
+      lowered.insert({connection, result});
   }
 
   for (DummiesExtSubordinateOp subordinate : subordinates) {
@@ -299,14 +481,14 @@ void NetworkLowering::emit() {
     access.erase();
   for (DummiesExtSubordinateOp subordinate : subordinates)
     subordinate.erase();
+  // A crossbar is only unused once the crossbars below it are gone.
+  for (DummiesXbarOp xbar : llvm::reverse(ordered))
+    xbar.erase();
   for (DummiesExtManagerOp manager : managers)
     manager.erase();
 }
 
 LogicalResult NetworkLowering::lower(const DenseSet<StringAttr> &instantiated) {
-  if (!xbars.empty())
-    return xbars.front().emitOpError(
-        "lowering crossbars is not yet implemented");
   if (instantiated.contains(module.getModuleNameAttr()))
     return module.emitOpError(
         "cannot lower a dummies network in an instantiated module; its "
@@ -314,10 +496,14 @@ LogicalResult NetworkLowering::lower(const DenseSet<StringAttr> &instantiated) {
   if (failed(checkOneModule()))
     return failure();
 
+  for (DummiesXbarOp xbar : xbars)
+    if (xbar.getDownstream().use_empty())
+      return xbar.emitOpError("must reach at least one subordinate");
+
   for (DummiesAccessesOp access : accesses)
     declared[access.getManager().getDefiningOp()].push_back(access);
 
-  if (failed(inferManagerTypes()))
+  if (failed(inferTypes()))
     return failure();
 
   // A subordinate reached without a crossbar shares one port type with the
