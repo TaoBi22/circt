@@ -1,15 +1,5 @@
 // RUN: circt-opt %s --lower-axi4-dummies-to-axi --split-input-file --verify-diagnostics
 
-hw.module @Crossbar(in %clk : !seq.clock, in %rst_ni : i1) {
-  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  // expected-error @below {{'axi4.dummies.xbar' op lowering crossbars is not yet implemented}}
-  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
-}
-
-// -----
-
 // expected-error @below {{'hw.module' op cannot lower a dummies network in an instantiated module; its external endpoints must become ports of a top-level module}}
 hw.module @Instantiated(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
@@ -138,4 +128,56 @@ hw.module @AccessAcrossGap(in %clk : !seq.clock, in %rst_ni : i1) {
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // expected-error @below {{'axi4.dummies.accesses' op declares an access to #axi4.window<base = 0x0, last = 0x2fff, burst_specs = <<incr, len = 16>>> the subordinate does not serve in full}}
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0x2fff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+hw.module @ConvertingXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.xbar' op 'data_width' (64) must match that of the port reaching it (32); inserting data width converters is not yet implemented}}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+hw.module @UnequalManagerIds(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
+  // expected-error @below {{'axi4.dummies.xbar' op is reached by ports needing different ID widths; inserting ID width converters is not yet implemented}}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %core_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %debug_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+// A crossbar widens IDs to tag the manager a request came from, so a
+// subordinate below one needs wider IDs than the managers above it
+hw.module @NarrowSubordinateIds(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64
+  // expected-error @below {{'axi4.dummies.ext_subordinate' op needs different ID widths to the crossbar reaching it; inserting ID width converters is not yet implemented}}
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %core_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %debug_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+hw.module @DanglingXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.xbar' op must reach at least one subordinate}}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64
+}
+
+// -----
+
+hw.module @Cycle(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.xbar' op is part of a cycle in the dummies network}}
+  %ab = axi4.dummies.xbar %clk, %rst_ni mgrs %ba addr_width = 32, data_width = 64
+  %ba = axi4.dummies.xbar %clk, %rst_ni mgrs %ab addr_width = 32, data_width = 64
 }
