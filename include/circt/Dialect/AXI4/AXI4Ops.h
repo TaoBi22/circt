@@ -20,17 +20,18 @@
 namespace circt {
 namespace axi4 {
 namespace OpTrait {
-/// Constrains an op's `!axi4.port` results to at most one use each
+/// Constrains an op's port results to at most one use each
 template <typename ConcreteType>
 class PortResultsAtMostOneUse
     : public mlir::OpTrait::TraitBase<ConcreteType, PortResultsAtMostOneUse> {
 public:
   static llvm::LogicalResult verifyTrait(mlir::Operation *op) {
     for (mlir::Value result : op->getResults())
-      if (mlir::isa<PortType>(result.getType()) && result.hasNUsesOrMore(2))
+      if (mlir::isa<PortType, DummiesPortType>(result.getType()) &&
+          result.hasNUsesOrMore(2))
         return op->emitOpError(
-            "port result must have at most one use; route through an "
-            "'axi4.xbar' to fan out to multiple endpoints");
+            "port result must have at most one use; route through an xbar to "
+            "fan out to multiple endpoints");
     return mlir::success();
   }
 };
