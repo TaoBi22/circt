@@ -441,23 +441,26 @@ def DummiesExtManagerOp : AXI4DummiesOp<"ext_manager",
   let description = [{
     Models a manager whose implementation sits outside the module the network is
     described in. Returns the port it drives, along with a handle used to
-    declare the subordinates it accesses.
+    declare the subordinates it accesses. The name, if given, names the port
+    the manager connects to once lowered.
 
     Example:
     ```mlir
-    %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32,
-      data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+    %mgr, %access = axi4.dummies.ext_manager "core" %clk, %rst_ni
+      addr_width = 32, data_width = 64, outstanding_writes = 4,
+      outstanding_reads = 4
     ```
   }];
 
-  let arguments = (ins ClockType:$clock, I1:$reset, I32Attr:$addr_width,
+  let arguments = (ins ClockType:$clock, I1:$reset,
+                       OptionalAttr<StrAttr>:$name, I32Attr:$addr_width,
                        I32Attr:$data_width, I32Attr:$outstanding_writes,
                        I32Attr:$outstanding_reads);
   let results = (outs DummiesPortType:$port,
                       DummiesManagerAccessType:$access);
 
   let assemblyFormat = [{
-    $clock `,` $reset `addr_width` `=` $addr_width `,`
+    ($name^)? $clock `,` $reset `addr_width` `=` $addr_width `,`
       `data_width` `=` $data_width `,`
       `outstanding_writes` `=` $outstanding_writes `,`
       `outstanding_reads` `=` $outstanding_reads attr-dict
@@ -472,11 +475,12 @@ def DummiesExtSubordinateOp : AXI4DummiesOp<"ext_subordinate"> {
     Models a subordinate whose implementation sits outside the module the
     network is described in. Takes the upstream port it responds to and the
     window it handles requests to, and returns a handle used to declare the
-    managers that access it.
+    managers that access it. The name, if given, names the port the subordinate
+    connects to once lowered.
 
     Example:
     ```mlir
-    %access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr
+    %access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %mgr
       window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
       addr_width = 32, data_width = 64, outstanding_writes = 4,
       outstanding_reads = 4
@@ -484,14 +488,15 @@ def DummiesExtSubordinateOp : AXI4DummiesOp<"ext_subordinate"> {
   }];
 
   let arguments = (ins ClockType:$clock, I1:$reset,
-                       DummiesPortType:$upstream, WindowAttr:$window,
+                       DummiesPortType:$upstream, OptionalAttr<StrAttr>:$name,
+                       WindowAttr:$window,
                        I32Attr:$addr_width, I32Attr:$data_width,
                        I32Attr:$outstanding_writes,
                        I32Attr:$outstanding_reads);
   let results = (outs DummiesSubordinateAccessType:$access);
 
   let assemblyFormat = [{
-    $clock `,` $reset `,` $upstream `window` $window
+    ($name^)? $clock `,` $reset `,` $upstream `window` $window
       `addr_width` `=` $addr_width `,` `data_width` `=` $data_width `,`
       `outstanding_writes` `=` $outstanding_writes `,`
       `outstanding_reads` `=` $outstanding_reads attr-dict
