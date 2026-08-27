@@ -540,4 +540,27 @@ def DummiesXbarOp : AXI4DummiesOp<"xbar"> {
   let hasVerifier = 1;
 }
 
+def DummiesAccessesOp : AXI4DummiesOp<"accesses"> {
+  let summary = "Declares that a manager accesses a window of a subordinate";
+  let description = [{
+    Declares that a manager can access a window of a subordinate with some set
+    of bursts. A manager reaching several windows of one subordinate declares
+    an access to each; where they overlap, it reaches the union of the bursts
+    they declare.
+
+    Example:
+    ```mlir
+    axi4.dummies.accesses %core_access -> %mem_access
+      with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+    ```
+  }];
+
+  let arguments = (ins DummiesManagerAccessType:$manager,
+                       DummiesSubordinateAccessType:$subordinate,
+                       WindowAttr:$window);
+
+  let assemblyFormat =
+      "$manager `->` $subordinate `with` $window attr-dict";
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD
