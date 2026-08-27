@@ -500,4 +500,31 @@ def DummiesExtSubordinateOp : AXI4DummiesOp<"ext_subordinate"> {
   let hasVerifier = 1;
 }
 
+def DummiesXbarOp : AXI4DummiesOp<"xbar"> {
+  let summary = "An AXI4 crossbar interconnect";
+  let description = [{
+    Routes the requests of a set of upstream managers onto downstream
+    subordinates. Each use of its result corresponds to a physical downstream
+    port.
+
+    Example:
+    ```mlir
+    %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32,
+      data_width = 64
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset,
+                       Variadic<DummiesPortType>:$upstream,
+                       I32Attr:$addr_width, I32Attr:$data_width);
+  let results = (outs DummiesPortType:$downstream);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `mgrs` $upstream `addr_width` `=` $addr_width `,`
+      `data_width` `=` $data_width attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

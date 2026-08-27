@@ -459,6 +459,18 @@ LogicalResult DummiesExtSubordinateOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// DummiesXbarOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DummiesXbarOp::verify() {
+  if (getUpstream().empty())
+    return emitOpError("must have at least one upstream port");
+
+  auto emitError = [&]() { return emitOpError(); };
+  return verifyPortWidths(emitError, "", getAddrWidth(), getDataWidth());
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen generated logic.
 //===----------------------------------------------------------------------===//
 

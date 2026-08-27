@@ -324,3 +324,15 @@ hw.module @DummiesExtEndpoints(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: %{{.+}} = axi4.dummies.ext_subordinate %clk, %rst_ni, %[[MGR]] window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {b}
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {b}
 }
+
+// CHECK-LABEL: hw.module @DummiesXbar
+hw.module @DummiesXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
+  // CHECK: %[[XBAR:.+]] = axi4.dummies.xbar %clk, %rst_ni mgrs %{{.+}}, %{{.+}} addr_width = 32, data_width = 64 {a}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64 {a}
+  // CHECK: axi4.dummies.ext_subordinate %clk, %rst_ni, %[[XBAR]] window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  %mem_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: axi4.dummies.ext_subordinate %clk, %rst_ni, %[[XBAR]] window <base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>
+  %periph_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar window <base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>> addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
+}
