@@ -317,3 +317,11 @@ hw.module @ToMem(in %clk : !seq.clock, in %rst_ni : i1, in %port : !mem_port,
     axi4.to_mem %clk, %rst_ni, %port read %rvalid, %rdata : !mem_port
   hw.output %valid, %addr, %wdata, %strb, %we : i1, i32, i64, i8, i1
 }
+
+// CHECK-LABEL: hw.module @DummiesExtEndpoints
+hw.module @DummiesExtEndpoints(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: %[[MGR:.+]], %[[MGR_ACCESS:.+]] = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {a}
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {a}
+  // CHECK: %{{.+}} = axi4.dummies.ext_subordinate %clk, %rst_ni, %[[MGR]] windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {b}
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {b}
+}
