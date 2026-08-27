@@ -20,19 +20,29 @@ using namespace mlir;
 #define GET_TYPEDEF_CLASSES
 #include "circt/Dialect/AXI4/AXI4Types.cpp.inc"
 
+LogicalResult
+axi4::verifyPortWidths(function_ref<InFlightDiagnostic()> emitError,
+                       const Twine &prefix, uint32_t addrWidth,
+                       uint32_t dataWidth) {
+  if (addrWidth > 64)
+    return emitError() << prefix << "'addr_width' must be at most 64, got "
+                       << addrWidth;
+  if (dataWidth < 8 || dataWidth > 1024 || !llvm::isPowerOf2_32(dataWidth))
+    return emitError() << prefix
+                       << "'data_width' must be a power of two between 8 "
+                          "and 1024, got "
+                       << dataWidth;
+  return success();
+}
+
 LogicalResult PortType::verify(function_ref<InFlightDiagnostic()> emitError,
                                uint32_t addr_width, uint32_t data_width,
                                uint32_t write_id_width, uint32_t read_id_width,
                                uint32_t user_width, WindowSetAttr windows,
                                uint32_t outstanding_writes,
                                uint32_t outstanding_reads) {
-  if (addr_width > 64)
-    return emitError() << "port 'addr_width' must be at most 64, got "
-                       << addr_width;
-  if (data_width < 8 || data_width > 1024 || !llvm::isPowerOf2_32(data_width))
-    return emitError() << "port 'data_width' must be a power of two between 8 "
-                          "and 1024, got "
-                       << data_width;
+  if (failed(verifyPortWidths(emitError, "port ", addr_width, data_width)))
+    return failure();
   if (write_id_width > 32)
     return emitError() << "port 'write_id_width' must be at most 32, got "
                        << write_id_width;

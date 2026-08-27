@@ -13,6 +13,7 @@
 #ifndef CIRCT_DIALECT_AXI4_AXI4OPS_TD
 #define CIRCT_DIALECT_AXI4_AXI4OPS_TD
 
+include "circt/Dialect/AXI4/AXI4Attributes.td"
 include "circt/Dialect/AXI4/AXI4Dialect.td"
 include "circt/Dialect/AXI4/AXI4Types.td"
 include "circt/Dialect/HW/HWTypes.td"
@@ -49,6 +50,10 @@ defvar axi4Channels = ["AW", "W", "B", "AR", "R"];
 class AXI4ChannelStructOp<string mnemonic, list<Trait> traits = []> :
     AXI4Op<mnemonic, !listconcat(traits,
         !foreach(c, axi4Channels, PayloadMatches<c, !tolower(c)>))>;
+
+// Base class for the operations in the dummies subdialect.
+class AXI4DummiesOp<string mnemonic, list<Trait> traits = []> :
+    AXI4Op<"dummies." # mnemonic, traits>;
 
 def AbstractManagerOp : AXI4Op<"abstract_manager", [PortResultsAtMostOneUse]> {
   let summary = "A stand-alone AXI4 manager endpoint";
@@ -428,6 +433,71 @@ def ToMemOp : AXI4Op<"to_mem", [
     $clock `,` $reset `,` $port `read` $read_valid `,` $read_data
       attr-dict `:` qualified(type($port))
   }];
+}
+
+def DummiesExtManagerOp : AXI4DummiesOp<"ext_manager",
+                                        [PortResultsAtMostOneUse]> {
+  let summary = "An AXI4 manager outside the module describing the network";
+  let description = [{
+    Models a manager whose implementation sits outside the module the network is
+    described in. Returns the port it drives, along with a handle used to
+    declare the subordinates it accesses.
+
+    Example:
+    ```mlir
+    %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32,
+      data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset, I32Attr:$addr_width,
+                       I32Attr:$data_width, I32Attr:$outstanding_writes,
+                       I32Attr:$outstanding_reads);
+  let results = (outs DummiesPortType:$port,
+                      DummiesManagerAccessType:$access);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `addr_width` `=` $addr_width `,`
+      `data_width` `=` $data_width `,`
+      `outstanding_writes` `=` $outstanding_writes `,`
+      `outstanding_reads` `=` $outstanding_reads attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
+def DummiesExtSubordinateOp : AXI4DummiesOp<"ext_subordinate"> {
+  let summary = "An AXI4 subordinate outside the module describing the network";
+  let description = [{
+    Models a subordinate whose implementation sits outside the module the
+    network is described in. Takes the upstream port it responds to and the
+    window it handles requests to, and returns a handle used to declare the
+    managers that access it.
+
+    Example:
+    ```mlir
+    %access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr
+      window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+      addr_width = 32, data_width = 64, outstanding_writes = 4,
+      outstanding_reads = 4
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset,
+                       DummiesPortType:$upstream, WindowAttr:$window,
+                       I32Attr:$addr_width, I32Attr:$data_width,
+                       I32Attr:$outstanding_writes,
+                       I32Attr:$outstanding_reads);
+  let results = (outs DummiesSubordinateAccessType:$access);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `,` $upstream `window` $window
+      `addr_width` `=` $addr_width `,` `data_width` `=` $data_width `,`
+      `outstanding_writes` `=` $outstanding_writes `,`
+      `outstanding_reads` `=` $outstanding_reads attr-dict
+  }];
+
+  let hasVerifier = 1;
 }
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

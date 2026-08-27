@@ -12,7 +12,7 @@ hw.module @Clean(in %clk : !seq.clock, in %rst_ni : i1) {
 
 !port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 
-// expected-error @below {{AXI4 port must have at most one use; route through an 'axi4.xbar' to fan out to multiple endpoints}}
+// expected-error @below {{AXI4 port must have at most one use; route through an xbar to fan out to multiple endpoints}}
 hw.module @BlockArgFanout(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port) {
   axi4.abstract_subordinate %clk, %rst_ni, %port : !port
   axi4.abstract_subordinate %clk, %rst_ni, %port : !port
@@ -25,7 +25,7 @@ hw.module @BlockArgFanout(in %clk : !seq.clock, in %rst_ni : i1, in %port : !por
 hw.module.extern @Manager(in %clk : !seq.clock, in %rst_ni : i1, out axi : !port)
 
 hw.module @InstanceFanout(in %clk : !seq.clock, in %rst_ni : i1) {
-  // expected-error @below {{AXI4 port must have at most one use; route through an 'axi4.xbar' to fan out to multiple endpoints}}
+  // expected-error @below {{AXI4 port must have at most one use; route through an xbar to fan out to multiple endpoints}}
   %axi = hw.instance "mgr" @Manager(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1) -> (axi: !port)
   axi4.abstract_subordinate %clk, %rst_ni, %axi : !port
   axi4.abstract_subordinate %clk, %rst_ni, %axi : !port

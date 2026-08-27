@@ -419,6 +419,46 @@ LogicalResult MuxOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// Dummies endpoint helpers
+//===----------------------------------------------------------------------===//
+
+/// Verify the widths and outstanding request counts a dummies endpoint declares
+static LogicalResult verifyDummiesEndpoint(Operation *op, uint32_t addrWidth,
+                                           uint32_t dataWidth,
+                                           uint32_t outstandingWrites,
+                                           uint32_t outstandingReads) {
+  auto emitError = [&]() { return op->emitOpError(); };
+  if (failed(verifyPortWidths(emitError, "", addrWidth, dataWidth)))
+    return failure();
+
+  // A zero count describes an endpoint that can issue or accept nothing, and
+  // has no ID width to infer.
+  if (outstandingWrites < 1)
+    return op->emitOpError("'outstanding_writes' must be at least 1");
+  if (outstandingReads < 1)
+    return op->emitOpError("'outstanding_reads' must be at least 1");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DummiesExtManagerOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DummiesExtManagerOp::verify() {
+  return verifyDummiesEndpoint(*this, getAddrWidth(), getDataWidth(),
+                               getOutstandingWrites(), getOutstandingReads());
+}
+
+//===----------------------------------------------------------------------===//
+// DummiesExtSubordinateOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DummiesExtSubordinateOp::verify() {
+  return verifyDummiesEndpoint(*this, getAddrWidth(), getDataWidth(),
+                               getOutstandingWrites(), getOutstandingReads());
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen generated logic.
 //===----------------------------------------------------------------------===//
 

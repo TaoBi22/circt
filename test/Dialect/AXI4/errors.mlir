@@ -98,7 +98,7 @@
 !port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 
 hw.module @Fanout(in %clk : !seq.clock, in %rst_ni : i1) {
-  // expected-error @below {{'axi4.abstract_manager' op port result must have at most one use; route through an 'axi4.xbar' to fan out to multiple endpoints}}
+  // expected-error @below {{'axi4.abstract_manager' op port result must have at most one use; route through an xbar to fan out to multiple endpoints}}
   %mgr = axi4.abstract_manager %clk, %rst_ni : !port
   axi4.abstract_subordinate %clk, %rst_ni, %mgr : !port
   axi4.abstract_subordinate %clk, %rst_ni, %mgr : !port
@@ -588,4 +588,42 @@ hw.module @AddressSizedMemStrobe(in %clk : !seq.clock, in %rst_ni : i1,
                                  in %port : !mem_port, in %v : i1, in %rdata : i64) {
   // expected-error @below {{'axi4.to_mem' op failed to verify that strobe has a bit per byte of the port's data}}
   %valid, %addr, %wdata, %strb, %we = "axi4.to_mem"(%clk, %rst_ni, %port, %v, %rdata) : (!seq.clock, i1, !mem_port, i1, i64) -> (i1, i32, i64, i4, i1)
+}
+
+// -----
+
+hw.module @WideDummiesManagerAddress(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.ext_manager' op 'addr_width' must be at most 64, got 65}}
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 65, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+}
+
+// -----
+
+hw.module @UnalignedDummiesManagerData(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.ext_manager' op 'data_width' must be a power of two between 8 and 1024, got 48}}
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 48, outstanding_writes = 4, outstanding_reads = 4
+}
+
+// -----
+
+hw.module @NoDummiesManagerWrites(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.ext_manager' op 'outstanding_writes' must be at least 1}}
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 0, outstanding_reads = 4
+}
+
+// -----
+
+hw.module @NoDummiesSubordinateReads(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.ext_subordinate' op 'outstanding_reads' must be at least 1}}
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 0
+}
+
+// -----
+
+hw.module @FannedOutDummiesManager(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.ext_manager' op port result must have at most one use; route through an xbar to fan out to multiple endpoints}}
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %sub_access2 = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr window <base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
 }

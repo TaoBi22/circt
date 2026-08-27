@@ -72,8 +72,8 @@ static LogicalResult verifyPortUses(Value port) {
   }
   if (port.hasNUsesOrMore(2))
     return mlir::emitError(port.getLoc())
-           << "AXI4 port must have at most one use; route through an "
-              "'axi4.xbar' to fan out to multiple endpoints";
+           << "AXI4 port must have at most one use; route through an xbar to "
+              "fan out to multiple endpoints";
   return success();
 }
 
