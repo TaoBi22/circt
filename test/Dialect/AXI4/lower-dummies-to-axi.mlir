@@ -83,3 +83,52 @@ hw.module @ChainedCrossbars(in %clk : !seq.clock, in %rst_ni : i1) {
   axi4.dummies.accesses %core_access -> %mem_access with <<incr, len = 16>>
   // CHECK: hw.output %[[BOTTOM]]
 }
+
+// -----
+
+// An endpoint's ID width is log2 of the requests it can hold, so a converter
+// bridges a manager and subordinate that disagree
+// CHECK-LABEL: hw.module @NarrowerSubordinateIds(
+// CHECK-SAME:    in %manager : !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 4, outstanding_reads = 4>
+// CHECK-SAME:    out subordinate : !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} outstanding_writes = 2, outstanding_reads = 2>
+hw.module @NarrowerSubordinateIds(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[CONV:.+]] = axi4.id_width_converter %clk, %rst_ni, %manager : (!axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} outstanding_writes = 2, outstanding_reads = 2>
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
+  axi4.dummies.accesses %mgr_access -> %sub_access with <<incr, len = 16>>
+  // CHECK: hw.output %[[CONV]]
+}
+
+// -----
+
+// A crossbar's upstream ports must agree on their ID widths, so the narrower
+// manager is widened onto the wider one
+// CHECK-LABEL: hw.module @UnequalManagerIds(
+hw.module @UnequalManagerIds(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
+  // CHECK: %[[WIDENED:.+]] = axi4.id_width_converter %clk, %rst_ni, %debug : (!axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} outstanding_writes = 2, outstanding_reads = 2>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 2, outstanding_reads = 2>
+  // CHECK: axi4.xbar %clk, %rst_ni mgrs %core, %[[WIDENED]]
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64
+  %sub_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %core_access -> %sub_access with <<incr, len = 16>>
+  axi4.dummies.accesses %debug_access -> %sub_access with <<incr, len = 16>>
+}
+
+// -----
+
+// A crossbar widens IDs to tag which manager a request came from, so reaching a
+// subordinate that tags with fewer bits narrows them again
+// CHECK-LABEL: hw.module @NarrowSubordinateBelowXbar(
+// CHECK-SAME:    out mem : !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 4, outstanding_reads = 4>
+hw.module @NarrowSubordinateBelowXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[XBAR:.+]] = axi4.xbar {{.*}} -> !axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} outstanding_writes = 8, outstanding_reads = 8>
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64
+  // CHECK: %[[CONV:.+]] = axi4.id_width_converter %clk, %rst_ni, %[[XBAR]] : (!axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} outstanding_writes = 8, outstanding_reads = 8>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 4, outstanding_reads = 4>
+  %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %core_access -> %mem_access with <<incr, len = 16>>
+  axi4.dummies.accesses %debug_access -> %mem_access with <<incr, len = 16>>
+  // CHECK: hw.output %[[CONV]]
+}

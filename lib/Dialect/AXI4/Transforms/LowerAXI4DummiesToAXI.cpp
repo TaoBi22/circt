@@ -112,8 +112,7 @@ static void warnBottleneck(DummiesExtSubordinateOp subordinate, uint32_t writes,
 /// crossbar nor a connection can change.
 static LogicalResult checkSubordinate(DummiesExtSubordinateOp subordinate,
                                       const Twine &source, uint32_t addrWidth,
-                                      uint32_t dataWidth, uint32_t writeIdWidth,
-                                      uint32_t readIdWidth) {
+                                      uint32_t dataWidth) {
   if (subordinate.getAddrWidth() != addrWidth)
     return subordinate.emitOpError()
            << "'addr_width' (" << subordinate.getAddrWidth() << ") must match "
@@ -123,13 +122,37 @@ static LogicalResult checkSubordinate(DummiesExtSubordinateOp subordinate,
            << "'data_width' (" << subordinate.getDataWidth() << ") must match "
            << "the " << source << "'s (" << dataWidth
            << "); inserting data width converters is not yet implemented";
-  if (llvm::Log2_64_Ceil(subordinate.getOutstandingWrites()) != writeIdWidth ||
-      llvm::Log2_64_Ceil(subordinate.getOutstandingReads()) != readIdWidth)
-    return subordinate.emitOpError()
-           << "needs different ID widths to the " << source
-           << " reaching it; inserting ID width converters is not yet "
-              "implemented";
   return success();
+}
+
+/// The port type a subordinate presents, which carries what it declares
+/// rather than what reaches it.
+static PortType getSubordinatePortType(DummiesExtSubordinateOp subordinate,
+                                       WindowSetAttr windows) {
+  return PortType::get(subordinate.getContext(), subordinate.getAddrWidth(),
+                       subordinate.getDataWidth(),
+                       llvm::Log2_64_Ceil(subordinate.getOutstandingWrites()),
+                       llvm::Log2_64_Ceil(subordinate.getOutstandingReads()),
+                       /*user_width=*/0, windows,
+                       subordinate.getOutstandingWrites(),
+                       subordinate.getOutstandingReads());
+}
+
+/// The same port type with different ID widths.
+static PortType getPortTypeWithIdWidths(PortType port, uint32_t writeIdWidth,
+                                        uint32_t readIdWidth) {
+  return PortType::get(port.getContext(), port.getAddrWidth(),
+                       port.getDataWidth(), writeIdWidth, readIdWidth,
+                       port.getUserWidth(), port.getWindows(),
+                       port.getOutstandingWrites(), port.getOutstandingReads());
+}
+
+/// The clock and reset the op consuming a connection runs on.
+static std::pair<Value, Value> domainOf(Operation *op) {
+  if (auto xbar = dyn_cast<DummiesXbarOp>(op))
+    return {xbar.getClock(), xbar.getReset()};
+  auto subordinate = cast<DummiesExtSubordinateOp>(op);
+  return {subordinate.getClock(), subordinate.getReset()};
 }
 
 /// Whether a type belongs to the dummies subdialect.
@@ -183,6 +206,7 @@ private:
   LogicalResult inferManagerTypes();
   LogicalResult inferXbarTypes(DummiesXbarOp xbar);
   LogicalResult inferTypes();
+  void drive(OpOperand *connection, Value port);
   void emit();
 
   hw::HWModuleOp module;
@@ -200,8 +224,10 @@ private:
   DenseMap<OpOperand *, SmallVector<DummiesExtSubordinateOp>>
       reachableSubordinates;
   DenseSet<OpOperand *> visiting;
-  /// The port type each connection carries.
+  /// The port type each connection carries, and the one its consumer needs
+  /// where a converter has to bridge the two.
   DenseMap<OpOperand *, PortType> types;
+  DenseMap<OpOperand *, PortType> adapted;
   /// The crossbars in the order their downstream types were inferred.
   SmallVector<DummiesXbarOp> ordered;
   /// The `!axi4.port` value feeding each connection.
@@ -327,14 +353,20 @@ LogicalResult NetworkLowering::inferManagerTypes() {
                                 manager.getOutstandingWrites(),
                                 manager.getOutstandingReads())});
 
-    // A subordinate the manager reaches without a crossbar shares this one
-    // port type with it.
-    if (auto subordinate =
-            dyn_cast<DummiesExtSubordinateOp>(connections.front()->getOwner()))
-      if (failed(checkSubordinate(
-              subordinate, "manager", manager.getAddrWidth(),
-              manager.getDataWidth(), writeIdWidth, readIdWidth)))
+    // A subordinate the manager reaches without a crossbar has its own ID
+    // width, log2 of the requests it can hold, which need not be the
+    // manager's.
+    if (auto subordinate = dyn_cast<DummiesExtSubordinateOp>(
+            connections.front()->getOwner())) {
+      if (failed(checkSubordinate(subordinate, "manager",
+                                  manager.getAddrWidth(),
+                                  manager.getDataWidth())))
         return failure();
+      PortType port = getSubordinatePortType(subordinate, *windows);
+      if (port.getWriteIdWidth() != writeIdWidth ||
+          port.getReadIdWidth() != readIdWidth)
+        adapted.insert({connections.front(), port});
+    }
   }
   return success();
 }
@@ -361,14 +393,18 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
              << ") must match that of the port reaching it ("
              << type.getDataWidth()
              << "); inserting data width converters is not yet implemented";
-    if (connection != upstream.front() &&
-        (type.getWriteIdWidth() != writeIdWidth ||
-         type.getReadIdWidth() != readIdWidth))
-      return xbar.emitOpError(
-          "is reached by ports needing different ID widths; inserting ID width "
-          "converters is not yet implemented");
-    writeIdWidth = type.getWriteIdWidth();
-    readIdWidth = type.getReadIdWidth();
+
+    // Its upstream ports must all carry the same ID widths, so they are as
+    // wide as the widest port reaching it.
+    writeIdWidth = std::max(writeIdWidth, type.getWriteIdWidth());
+    readIdWidth = std::max(readIdWidth, type.getReadIdWidth());
+  }
+  for (OpOperand *connection : upstream) {
+    PortType type = types[connection];
+    if (type.getWriteIdWidth() != writeIdWidth ||
+        type.getReadIdWidth() != readIdWidth)
+      adapted.insert({connection, getPortTypeWithIdWidths(type, writeIdWidth,
+                                                          readIdWidth)});
   }
 
   // Transactions are tagged with the index of the manager they came from, so
@@ -385,15 +421,22 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
     // A subordinate declares how many requests it can hold; a crossbar below
     // this one carries what the managers above can issue to it.
     uint32_t writes = 0, reads = 0;
+    PortType port;
     if (auto subordinate =
             dyn_cast<DummiesExtSubordinateOp>(connection->getOwner())) {
       if (failed(checkSubordinate(subordinate, "crossbar", xbar.getAddrWidth(),
-                                  xbar.getDataWidth(), writeIdWidth,
-                                  readIdWidth)))
+                                  xbar.getDataWidth())))
         return failure();
+      port = getSubordinatePortType(subordinate, *windows);
       writes = subordinate.getOutstandingWrites();
       reads = subordinate.getOutstandingReads();
-    } else {
+    }
+    if (!port || port.getWriteIdWidth() != writeIdWidth ||
+        port.getReadIdWidth() != readIdWidth) {
+      // The crossbar tags requests with more ID bits than its managers use, so
+      // what it drives is only what a subordinate presents if they happen to
+      // agree.
+      writes = reads = 0;
       for (OpOperand *above : upstream) {
         PortType type = types[above];
         if (type.getWindows().overlaps(*windows)) {
@@ -401,6 +444,8 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
           reads += type.getOutstandingReads();
         }
       }
+      if (port)
+        adapted.insert({connection, port});
     }
 
     types.insert({connection,
@@ -441,6 +486,19 @@ LogicalResult NetworkLowering::inferTypes() {
   return success();
 }
 
+/// Record the value a connection carries, converting the ID widths of what its
+/// producer drives to what its consumer needs.
+void NetworkLowering::drive(OpOperand *connection, Value port) {
+  if (PortType needed = adapted.lookup(connection)) {
+    Operation *consumer = connection->getOwner();
+    auto [clock, reset] = domainOf(consumer);
+    OpBuilder builder(consumer);
+    port = IWConverterOp::create(builder, consumer->getLoc(), needed, clock,
+                                 reset, port);
+  }
+  lowered.insert({connection, port});
+}
+
 /// Replace the network with AXI4 ops, and its external endpoints with ports of
 /// the module describing it.
 void NetworkLowering::emit() {
@@ -449,7 +507,7 @@ void NetworkLowering::emit() {
     auto [name, arg] =
         module.appendInput(names.newName(manager.getName().value_or("manager")),
                            types[connection]);
-    lowered.insert({connection, arg});
+    drive(connection, arg);
   }
 
   for (DummiesXbarOp xbar : ordered) {
@@ -467,7 +525,7 @@ void NetworkLowering::emit() {
                                    xbar.getClock(), xbar.getReset(), upstream);
     for (auto [connection, result] :
          llvm::zip(downstream, axi4Xbar.getDownstream()))
-      lowered.insert({connection, result});
+      drive(connection, result);
   }
 
   for (DummiesExtSubordinateOp subordinate : subordinates) {
