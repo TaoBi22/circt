@@ -38,6 +38,13 @@ constexpr unsigned kLastWidth = 1;
 /// Build the `hw.struct` payload type for one channel of an `!axi4.port`.
 hw::StructType getChannelPayloadType(PortType port, AXI4Channel channel);
 
+/// Verify address and data widths are within the ranges AXI4 permits, naming
+/// the offending field after `prefix`.
+mlir::LogicalResult
+verifyPortWidths(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+                 const llvm::Twine &prefix, uint32_t addrWidth,
+                 uint32_t dataWidth);
+
 } // namespace axi4
 } // namespace circt
 
