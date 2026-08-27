@@ -31,4 +31,20 @@ def VerifyAXI4Networks : Pass<"verify-axi4-networks", "mlir::ModuleOp"> {
   let dependentDialects = ["circt::axi4::AXI4Dialect"];
 }
 
+def LowerAXI4DummiesToAXI : Pass<"lower-axi4-dummies-to-axi", "mlir::ModuleOp"> {
+  let summary = "Lower the dummies subdialect to the AXI4 dialect";
+  let description = [{
+    Rewrites a network described with the `axi4.dummies` operations into the
+    AXI4 dialect, inferring the parameterisation they leave out: the access
+    windows of each manager from the accesses it declares, the ID widths from
+    the outstanding request counts, and the placement of the width converters
+    needed where an endpoint and the interconnect it connects to disagree.
+
+    The external endpoints become ports of the module the network is described
+    in, so that module must not be instantiated.
+  }];
+
+  let dependentDialects = ["circt::axi4::AXI4Dialect", "circt::hw::HWDialect"];
+}
+
 #endif // CIRCT_DIALECT_AXI4_AXI4PASSES_TD
