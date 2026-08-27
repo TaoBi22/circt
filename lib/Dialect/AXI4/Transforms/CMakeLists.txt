@@ -1,4 +1,5 @@
 add_circt_dialect_library(CIRCTAXI4Transforms
+  LowerAXI4DummiesToAXI.cpp
   VerifyAXI4Networks.cpp
 
   DEPENDS
@@ -6,6 +7,7 @@ add_circt_dialect_library(CIRCTAXI4Transforms
 
   LINK_LIBS PUBLIC
   CIRCTAXI4
+  CIRCTHW
   CIRCTSupport
   MLIRIR
   MLIRPass
