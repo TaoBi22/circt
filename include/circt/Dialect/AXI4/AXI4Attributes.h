@@ -18,4 +18,13 @@
 #define GET_ATTRDEF_CLASSES
 #include "circt/Dialect/AXI4/AXI4Attributes.h.inc"
 
+namespace circt {
+namespace axi4 {
+
+/// The longest burst of a kind AXI4 permits.
+uint32_t getMaxBurstLen(BurstKind kind);
+
+} // namespace axi4
+} // namespace circt
+
 #endif // CIRCT_DIALECT_AXI4_AXI4ATTRIBUTES_H
