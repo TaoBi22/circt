@@ -61,17 +61,6 @@ hw.module @MismatchedAddresses(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
-// The declared bursts convert cleanly onto the subordinate here, so what it
-// cannot serve is the data width itself
-hw.module @MismatchedData(in %clk : !seq.clock, in %rst_ni : i1) {
-  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  // expected-error @below {{'axi4.dummies.ext_subordinate' op 'data_width' (32) must match the manager's (64); inserting data width converters is not yet implemented}}
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
-  axi4.dummies.accesses %mgr_access -> %sub_access with <<incr, len = 8>>
-}
-
-// -----
-
 // A manager's bursts count beats of its own data width, so 16 beats of 64 bits
 // is 32 beats of the subordinate's 32
 hw.module @BurstsBeyondSubordinate(in %clk : !seq.clock, in %rst_ni : i1) {
@@ -104,12 +93,27 @@ hw.module @Bottleneck(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
-hw.module @ConvertingXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+// A manager's bursts have to be expressible at every data width on the way to
+// the subordinate, the crossbar's included
+hw.module @IndivisibleThroughXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
-  // expected-error @below {{'axi4.dummies.xbar' op 'data_width' (64) must match that of the port reaching it (32); inserting data width converters is not yet implemented}}
+  // expected-error @below {{'axi4.dummies.xbar' op burst #axi4.burst_spec<incr, len = 1> does not divide into whole 64-bit beats}}
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
-  axi4.dummies.accesses %mgr_access -> %sub_access with <<incr, len = 16>>
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 32, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %mgr_access -> %sub_access with <<incr, len = 1>>
+}
+
+// -----
+
+// A subordinate below a crossbar that serves nothing as long as a beat of the
+// crossbar's is unreachable through it
+hw.module @UnreachableThroughXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64
+  %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar window <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.ext_subordinate' op supports no burst a port of 64 bits can ask for}}
+  %periph_access = axi4.dummies.ext_subordinate "periph" %clk, %rst_ni, %xbar window <base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 1>>> addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %mgr_access -> %mem_access with <<incr, len = 16>>
 }
 
 // -----

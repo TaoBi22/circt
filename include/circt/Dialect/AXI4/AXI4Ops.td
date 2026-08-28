@@ -537,6 +537,9 @@ def DummiesAccessesOp : AXI4DummiesOp<"accesses"> {
   let description = [{
     Declares that a manager can access a subordinate with someset of bursts.
 
+    The bursts are the manager's, so their lengths count beats of the manager's
+    data width.
+
     Example:
     ```mlir
     axi4.dummies.accesses %core_access -> %mem_access with <<incr, len = 16>>
