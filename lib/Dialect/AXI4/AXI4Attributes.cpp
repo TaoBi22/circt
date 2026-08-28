@@ -25,6 +25,17 @@ using namespace mlir;
 #define GET_ATTRDEF_CLASSES
 #include "circt/Dialect/AXI4/AXI4Attributes.cpp.inc"
 
+uint32_t axi4::getMaxBurstLen(BurstKind kind) {
+  switch (kind) {
+  case BurstKind::Fixed:
+  case BurstKind::Wrap:
+    return 16;
+  case BurstKind::Incr:
+    return 256;
+  }
+  llvm_unreachable("unknown burst kind");
+}
+
 LogicalResult
 BurstSpecAttr::verify(function_ref<InFlightDiagnostic()> emitError,
                       BurstKind kind, uint32_t len) {

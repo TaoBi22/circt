@@ -553,6 +553,9 @@ def DummiesAccessesOp : AXI4DummiesOp<"accesses"> {
     an access to each; where they overlap, it reaches the union of the bursts
     they declare.
 
+    The bursts are the manager's, so their lengths count beats of the manager's
+    data width.
+
     Example:
     ```mlir
     axi4.dummies.accesses %core_access -> %mem_access
