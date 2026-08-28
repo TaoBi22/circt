@@ -61,6 +61,54 @@ static FailureOr<BurstSetAttr> convertBursts(Operation *op, BurstSetAttr bursts,
   return BurstSetAttr::get(op->getContext(), converted);
 }
 
+/// The same windows with their bursts adjusted to a new data width
+static FailureOr<WindowSetAttr> convertWindows(Operation *op,
+                                               WindowSetAttr windows,
+                                               uint32_t from, uint32_t to) {
+  if (from == to)
+    return windows;
+
+  SmallVector<WindowAttr> converted;
+  for (WindowAttr window : windows.getWindows()) {
+    FailureOr<BurstSetAttr> bursts =
+        convertBursts(op, window.getBurstSpecs(), from, to);
+    if (failed(bursts))
+      return failure();
+    converted.push_back(WindowAttr::get(op->getContext(), window.getBase(),
+                                        window.getLast(), *bursts));
+  }
+  return WindowSetAttr::get(op->getContext(), converted);
+}
+
+/// Converts a set of supported bursts to a new data_width,
+/// rounding down to the nearest legal burst length (dropping specs for which
+/// there is no legal length to round down to). Fails if there are no legal
+/// bursts left after conversion.
+static FailureOr<BurstSetAttr>
+convertSupport(Operation *op, BurstSetAttr bursts, uint32_t from, uint32_t to) {
+  if (from == to)
+    return bursts;
+
+  SmallVector<BurstSpecAttr> supported;
+  for (BurstSpecAttr spec : bursts.getBurstSpecs()) {
+    // A `len` is a maximum, so asking for a shorter burst is always safe.
+    uint64_t beats = std::min<uint64_t>(uint64_t{spec.getLen()} * from / to,
+                                        getMaxBurstLen(spec.getKind()));
+    // Keep it a whole number of `from`-bit beats.
+    if (to < from)
+      beats -= beats % (from / to);
+    if (beats == 0 || (spec.getKind() == BurstKind::Wrap && beats < 2))
+      continue;
+    supported.push_back(BurstSpecAttr::get(op->getContext(), spec.getKind(),
+                                           static_cast<uint32_t>(beats)));
+  }
+
+  if (supported.empty())
+    return op->emitOpError()
+           << "supports no burst a port of " << to << " bits can ask for";
+  return BurstSetAttr::get(op->getContext(), supported);
+}
+
 /// Check `served` covers every address the access declares, and supports
 /// `supported` wherever it does.
 static LogicalResult checkServed(DummiesAccessesOp access, WindowSetAttr served,
@@ -131,20 +179,14 @@ static void warnBottleneck(DummiesExtSubordinateOp subordinate, uint32_t writes,
         << subordinate.getOutstandingReads() << " < " << reads << ")";
 }
 
-/// Check a subordinate agrees with whatever reaches it on the widths neither a
-/// crossbar nor a connection can change.
+/// Check a subordinate agrees with whatever reaches it on its address width,
+/// which no converter currently changes.
 static LogicalResult checkSubordinate(DummiesExtSubordinateOp subordinate,
-                                      const Twine &source, uint32_t addrWidth,
-                                      uint32_t dataWidth) {
+                                      const Twine &source, uint32_t addrWidth) {
   if (subordinate.getAddrWidth() != addrWidth)
     return subordinate.emitOpError()
            << "'addr_width' (" << subordinate.getAddrWidth() << ") must match "
            << "the " << source << "'s (" << addrWidth << ")";
-  if (subordinate.getDataWidth() != dataWidth)
-    return subordinate.emitOpError()
-           << "'data_width' (" << subordinate.getDataWidth() << ") must match "
-           << "the " << source << "'s (" << dataWidth
-           << "); inserting data width converters is not yet implemented";
   return success();
 }
 
@@ -179,12 +221,42 @@ static PortType getPortTypeWithIdWidths(PortType port, uint32_t writeIdWidth,
                        port.getOutstandingWrites(), port.getOutstandingReads());
 }
 
+/// The same port type with a different data width, which its bursts are
+/// counted in beats of.
+static FailureOr<PortType>
+getPortTypeWithDataWidth(Operation *op, PortType port, uint32_t dataWidth) {
+  FailureOr<WindowSetAttr> windows =
+      convertWindows(op, port.getWindows(), port.getDataWidth(), dataWidth);
+  if (failed(windows))
+    return failure();
+  return PortType::get(port.getContext(), port.getAddrWidth(), dataWidth,
+                       port.getWriteIdWidth(), port.getReadIdWidth(),
+                       port.getUserWidth(), *windows,
+                       port.getOutstandingWrites(), port.getOutstandingReads());
+}
+
+/// Whether a converter has to bridge a port to a connection carrying these
+/// widths.
+static bool needsConverter(PortType port, uint32_t dataWidth,
+                           uint32_t writeIdWidth, uint32_t readIdWidth) {
+  return port.getDataWidth() != dataWidth ||
+         port.getWriteIdWidth() != writeIdWidth ||
+         port.getReadIdWidth() != readIdWidth;
+}
+
 /// The clock and reset the op consuming a connection runs on.
 static std::pair<Value, Value> domainOf(Operation *op) {
   if (auto xbar = dyn_cast<DummiesXbarOp>(op))
     return {xbar.getClock(), xbar.getReset()};
   auto subordinate = cast<DummiesExtSubordinateOp>(op);
   return {subordinate.getClock(), subordinate.getReset()};
+}
+
+/// The data width the op consuming a connection presents.
+static uint32_t dataWidthOf(Operation *op) {
+  if (auto xbar = dyn_cast<DummiesXbarOp>(op))
+    return xbar.getDataWidth();
+  return cast<DummiesExtSubordinateOp>(op).getDataWidth();
 }
 
 /// Whether a type belongs to the dummies subdialect.
@@ -234,7 +306,8 @@ private:
   LogicalResult checkOneModule();
   FailureOr<SmallVector<DummiesExtSubordinateOp>>
   getReachableSubordinates(OpOperand *connection);
-  FailureOr<WindowSetAttr> windowsBelow(OpOperand *connection);
+  FailureOr<WindowSetAttr> windowsBelow(OpOperand *connection,
+                                        uint32_t dataWidth);
   LogicalResult inferManagerTypes();
   LogicalResult inferXbarTypes(DummiesXbarOp xbar);
   LogicalResult inferTypes();
@@ -333,17 +406,37 @@ NetworkLowering::getReachableSubordinates(OpOperand *connection) {
   return found;
 }
 
-/// The windows a connection carries, which are those of the subordinates below
-/// it.
-FailureOr<WindowSetAttr> NetworkLowering::windowsBelow(OpOperand *connection) {
-  FailureOr<SmallVector<DummiesExtSubordinateOp>> below =
-      getReachableSubordinates(connection);
-  if (failed(below))
-    return failure();
+/// The windows a connection carries: those of the subordinates below it, in
+/// beats of `dataWidth`.
+FailureOr<WindowSetAttr> NetworkLowering::windowsBelow(OpOperand *connection,
+                                                       uint32_t dataWidth) {
+  Operation *consumer = connection->getOwner();
+
+  // A crossbar carries the windows of everything below it, each of them
+  // already in beats of its own data width.
+  SmallVector<WindowAttr> presented;
+  if (auto subordinate = dyn_cast<DummiesExtSubordinateOp>(consumer)) {
+    llvm::append_range(presented, subordinate.getWindows().getWindows());
+  } else {
+    auto xbar = cast<DummiesXbarOp>(consumer);
+    for (OpOperand *below : outgoingConnections(xbar.getDownstream())) {
+      FailureOr<WindowSetAttr> windows =
+          windowsBelow(below, xbar.getDataWidth());
+      if (failed(windows))
+        return failure();
+      llvm::append_range(presented, windows->getWindows());
+    }
+  }
 
   SmallVector<WindowAttr> windows;
-  for (DummiesExtSubordinateOp subordinate : *below)
-    llvm::append_range(windows, subordinate.getWindows().getWindows());
+  for (WindowAttr window : presented) {
+    FailureOr<BurstSetAttr> bursts = convertSupport(
+        consumer, window.getBurstSpecs(), dataWidthOf(consumer), dataWidth);
+    if (failed(bursts))
+      return failure();
+    windows.push_back(WindowAttr::get(module.getContext(), window.getBase(),
+                                      window.getLast(), *bursts));
+  }
   return WindowSetAttr::get(module.getContext(), windows);
 }
 
@@ -385,20 +478,26 @@ LogicalResult NetworkLowering::inferManagerTypes() {
                                 manager.getOutstandingWrites(),
                                 manager.getOutstandingReads())});
 
-    // A subordinate the manager reaches without a crossbar has its own ID
-    // width, log2 of the requests it can hold, which need not be the
-    // manager's.
+    // A subordinate the manager reaches without a crossbar presents a port of
+    // its own: its own data width, and its own ID widths, log2 of the requests
+    // it can hold.
     if (auto subordinate = dyn_cast<DummiesExtSubordinateOp>(
             connections.front()->getOwner())) {
-      if (failed(checkSubordinate(subordinate, "manager",
-                                  manager.getAddrWidth(),
-                                  manager.getDataWidth())))
+      if (failed(
+              checkSubordinate(subordinate, "manager", manager.getAddrWidth())))
         return failure();
-      PortType port = getSubordinatePortType(subordinate, *windows,
+
+      // It serves the manager's bursts in beats of its own data width.
+      FailureOr<WindowSetAttr> served =
+          convertWindows(subordinate, *windows, manager.getDataWidth(),
+                         subordinate.getDataWidth());
+      if (failed(served))
+        return failure();
+      PortType port = getSubordinatePortType(subordinate, *served,
                                              manager.getOutstandingWrites(),
                                              manager.getOutstandingReads());
-      if (port.getWriteIdWidth() != writeIdWidth ||
-          port.getReadIdWidth() != readIdWidth)
+      if (needsConverter(port, manager.getDataWidth(), writeIdWidth,
+                         readIdWidth))
         adapted.insert({connections.front(), port});
     }
   }
@@ -412,8 +511,8 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
   SmallVector<OpOperand *> downstream =
       outgoingConnections(xbar.getDownstream());
 
-  // A crossbar routes, it does not convert, so it must agree with everything
-  // it connects on the widths it cannot change.
+  // A crossbar routes, it does not re-address, so it must agree with
+  // everything it connects on the address width.
   uint32_t writeIdWidth = 0, readIdWidth = 0;
   for (OpOperand *connection : upstream) {
     PortType type = types[connection];
@@ -421,12 +520,6 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
       return xbar.emitOpError() << "'addr_width' (" << xbar.getAddrWidth()
                                 << ") must match that of the port reaching it ("
                                 << type.getAddrWidth() << ")";
-    if (type.getDataWidth() != xbar.getDataWidth())
-      return xbar.emitOpError()
-             << "'data_width' (" << xbar.getDataWidth()
-             << ") must match that of the port reaching it ("
-             << type.getDataWidth()
-             << "); inserting data width converters is not yet implemented";
 
     // Its upstream ports must all carry the same ID widths, so they are as
     // wide as the widest port reaching it.
@@ -435,10 +528,14 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
   }
   for (OpOperand *connection : upstream) {
     PortType type = types[connection];
-    if (type.getWriteIdWidth() != writeIdWidth ||
-        type.getReadIdWidth() != readIdWidth)
-      adapted.insert({connection, getPortTypeWithIdWidths(type, writeIdWidth,
-                                                          readIdWidth)});
+    if (!needsConverter(type, xbar.getDataWidth(), writeIdWidth, readIdWidth))
+      continue;
+    FailureOr<PortType> needed = getPortTypeWithDataWidth(
+        xbar, getPortTypeWithIdWidths(type, writeIdWidth, readIdWidth),
+        xbar.getDataWidth());
+    if (failed(needed))
+      return failure();
+    adapted.insert({connection, *needed});
   }
 
   // Transactions are tagged with the index of the manager they came from, so
@@ -448,12 +545,11 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
   readIdWidth += tagBits;
 
   for (OpOperand *connection : downstream) {
-    FailureOr<WindowSetAttr> windows = windowsBelow(connection);
+    FailureOr<WindowSetAttr> windows =
+        windowsBelow(connection, xbar.getDataWidth());
     if (failed(windows))
       return failure();
 
-    // A subordinate declares how many requests it can hold; a crossbar below
-    // this one carries what the managers above can issue to it.
     // A connection carries what the managers that can address it issue there.
     uint32_t writes = 0, reads = 0;
     for (OpOperand *above : upstream) {
@@ -467,17 +563,25 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
     PortType port;
     if (auto subordinate =
             dyn_cast<DummiesExtSubordinateOp>(connection->getOwner())) {
-      if (failed(checkSubordinate(subordinate, "crossbar", xbar.getAddrWidth(),
-                                  xbar.getDataWidth())))
+      if (failed(
+              checkSubordinate(subordinate, "crossbar", xbar.getAddrWidth())))
         return failure();
       warnBottleneck(subordinate, writes, reads);
-      port = getSubordinatePortType(subordinate, *windows, writes, reads);
+
+      // It serves the crossbar's bursts in beats of its own data width.
+      FailureOr<WindowSetAttr> served =
+          convertWindows(subordinate, *windows, xbar.getDataWidth(),
+                         subordinate.getDataWidth());
+      if (failed(served))
+        return failure();
+      port = getSubordinatePortType(subordinate, *served, writes, reads);
     }
+
     // The crossbar tags requests with more ID bits than its managers use, so
     // what it drives is only what a subordinate presents if they happen to
     // agree.
-    if (port && (port.getWriteIdWidth() != writeIdWidth ||
-                 port.getReadIdWidth() != readIdWidth))
+    if (port &&
+        needsConverter(port, xbar.getDataWidth(), writeIdWidth, readIdWidth))
       adapted.insert({connection, port});
 
     types.insert({connection,
@@ -518,15 +622,31 @@ LogicalResult NetworkLowering::inferTypes() {
   return success();
 }
 
-/// Record the value a connection carries, converting the ID widths of what its
+/// Record the value a connection carries, converting the widths of what its
 /// producer drives to what its consumer needs.
 void NetworkLowering::drive(OpOperand *connection, Value port) {
   if (PortType needed = adapted.lookup(connection)) {
     Operation *consumer = connection->getOwner();
     auto [clock, reset] = domainOf(consumer);
     OpBuilder builder(consumer);
-    port = IWConverterOp::create(builder, consumer->getLoc(), needed, clock,
-                                 reset, port);
+
+    // Re-widthing beats and re-tagging them are independent, each preserving
+    // what the other changes. Widths come first, so the port between the two
+    // carries the consumer's beats with the producer's tags.
+    auto driven = cast<PortType>(port.getType());
+    if (driven.getDataWidth() != needed.getDataWidth())
+      port = DWConverterOp::create(
+          builder, consumer->getLoc(),
+          PortType::get(needed.getContext(), needed.getAddrWidth(),
+                        needed.getDataWidth(), driven.getWriteIdWidth(),
+                        driven.getReadIdWidth(), needed.getUserWidth(),
+                        needed.getWindows(), driven.getOutstandingWrites(),
+                        driven.getOutstandingReads()),
+          clock, reset, port);
+    if (driven.getWriteIdWidth() != needed.getWriteIdWidth() ||
+        driven.getReadIdWidth() != needed.getReadIdWidth())
+      port = IWConverterOp::create(builder, consumer->getLoc(), needed, clock,
+                                   reset, port);
   }
   lowered.insert({connection, port});
 }
