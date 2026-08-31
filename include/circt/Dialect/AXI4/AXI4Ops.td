@@ -242,6 +242,8 @@ def CDCOp : AXI4Op<"cdc", [PortResultsAtMostOneUse,
     `from` $upstream_clock `to` $downstream_clock `,` $reset `,` $upstream
       attr-dict `:` qualified(type($upstream))
   }];
+
+  let hasCanonicalizeMethod = 1;
 }
 
 def DWConverterOp : AXI4Op<"data_width_converter", [PortResultsAtMostOneUse]> {
@@ -265,6 +267,7 @@ def DWConverterOp : AXI4Op<"data_width_converter", [PortResultsAtMostOneUse]> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def IWConverterOp : AXI4Op<"id_width_converter", [PortResultsAtMostOneUse]> {
@@ -292,6 +295,7 @@ def IWConverterOp : AXI4Op<"id_width_converter", [PortResultsAtMostOneUse]> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def BurstSplitterOp : AXI4Op<"burst_splitter", [PortResultsAtMostOneUse]> {
@@ -318,6 +322,7 @@ def BurstSplitterOp : AXI4Op<"burst_splitter", [PortResultsAtMostOneUse]> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def BurstUnwrapperOp : AXI4Op<"burst_unwrapper", [PortResultsAtMostOneUse]> {
@@ -346,6 +351,7 @@ def BurstUnwrapperOp : AXI4Op<"burst_unwrapper", [PortResultsAtMostOneUse]> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def DemuxOp : AXI4Op<"demux", [PortResultsAtMostOneUse]> {
