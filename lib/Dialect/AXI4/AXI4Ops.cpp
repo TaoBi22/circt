@@ -97,6 +97,14 @@ static LogicalResult verifyWindowsConvert(
   return success();
 }
 
+bool axi4::isReachable(PortType downstream, ValueRange upstream) {
+  return llvm::any_of(upstream, [&](Value value) {
+    return cast<PortType>(value.getType())
+        .getWindows()
+        .overlaps(downstream.getWindows());
+  });
+}
+
 /// The downstream port and window covering `address`, or a null window if no
 /// downstream port covers it.
 static std::pair<size_t, WindowAttr> findDownstreamWindow(ValueRange downstream,
