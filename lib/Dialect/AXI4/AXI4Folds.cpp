@@ -18,19 +18,25 @@ using namespace axi4;
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
-// Adaptor helpers
+// Shared helpers
 //===----------------------------------------------------------------------===//
 
-/// Erase an adaptor whose upstream and downstream ports have the same type, so
-/// it does nothing to the connection it sits on. An adaptor's downstream port
-/// type describes everything it does, so equal types mean no conversion.
-template <typename Op>
-static LogicalResult eraseIdentityAdaptor(Op op, PatternRewriter &rewriter) {
-  if (op.getUpstream().getType() != op.getDownstream().getType())
-    return rewriter.notifyMatchFailure(op, "adaptor changes the port type");
-  rewriter.replaceOp(op, op.getUpstream());
+/// Erase an op whose upstream and downstream ports have the same type, so it
+/// does nothing to the connection it sits on. A downstream port type describes
+/// everything an op does to a connection, so equal types mean no change.
+static LogicalResult eraseIdentity(Operation *op, Value upstream,
+                                   Value downstream,
+                                   PatternRewriter &rewriter) {
+  if (upstream.getType() != downstream.getType())
+    return rewriter.notifyMatchFailure(op, "op changes the port type");
+  rewriter.replaceAllUsesWith(downstream, upstream);
+  rewriter.eraseOp(op);
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// Adaptor helpers
+//===----------------------------------------------------------------------===//
 
 /// Fuse an adaptor with the like adaptor directly upstream of it, leaving one
 /// adaptor converting straight to the final port type. `fuses` decides whether
@@ -87,6 +93,12 @@ static LogicalResult dropDeadDownstream(Op op, ValueRange upstream,
   return success();
 }
 
+/// Whether `port` tags transactions with the same ID widths as `reference`.
+static bool sameIdWidths(PortType port, PortType reference) {
+  return port.getWriteIdWidth() == reference.getWriteIdWidth() &&
+         port.getReadIdWidth() == reference.getReadIdWidth();
+}
+
 //===----------------------------------------------------------------------===//
 // CDCOp
 //===----------------------------------------------------------------------===//
@@ -96,7 +108,7 @@ LogicalResult CDCOp::canonicalize(CDCOp op, PatternRewriter &rewriter) {
   // test for whether it crosses anything.
   if (op.getUpstreamClock() != op.getDownstreamClock())
     return rewriter.notifyMatchFailure(op, "crossing changes clock domain");
-  return eraseIdentityAdaptor(op, rewriter);
+  return eraseIdentity(op, op.getUpstream(), op.getDownstream(), rewriter);
 }
 
 //===----------------------------------------------------------------------===//
@@ -105,7 +117,8 @@ LogicalResult CDCOp::canonicalize(CDCOp op, PatternRewriter &rewriter) {
 
 LogicalResult DWConverterOp::canonicalize(DWConverterOp op,
                                           PatternRewriter &rewriter) {
-  if (succeeded(eraseIdentityAdaptor(op, rewriter)))
+  if (succeeded(
+          eraseIdentity(op, op.getUpstream(), op.getDownstream(), rewriter)))
     return success();
   // A data-width converter pair can always be fused
   return fuseAdaptorPair(op, rewriter,
@@ -118,7 +131,8 @@ LogicalResult DWConverterOp::canonicalize(DWConverterOp op,
 
 LogicalResult IWConverterOp::canonicalize(IWConverterOp op,
                                           PatternRewriter &rewriter) {
-  if (succeeded(eraseIdentityAdaptor(op, rewriter)))
+  if (succeeded(
+          eraseIdentity(op, op.getUpstream(), op.getDownstream(), rewriter)))
     return success();
   // Transactions must be ordered if ID width is narrowed - widening again will
   // not undo this, so we cannot safely fuse a pair of ID width converters if
@@ -145,9 +159,24 @@ LogicalResult IWConverterOp::canonicalize(IWConverterOp op,
 
 LogicalResult BurstSplitterOp::canonicalize(BurstSplitterOp op,
                                             PatternRewriter &rewriter) {
-  if (succeeded(eraseIdentityAdaptor(op, rewriter)))
+  if (succeeded(
+          eraseIdentity(op, op.getUpstream(), op.getDownstream(), rewriter)))
     return success();
   // Splitting twice is equivalent to splitting once
+  return fuseAdaptorPair(op, rewriter,
+                         [](PortType, PortType, PortType) { return true; });
+}
+
+//===----------------------------------------------------------------------===//
+// BurstUnwrapperOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult BurstUnwrapperOp::canonicalize(BurstUnwrapperOp op,
+                                             PatternRewriter &rewriter) {
+  if (succeeded(
+          eraseIdentity(op, op.getUpstream(), op.getDownstream(), rewriter)))
+    return success();
+  // Unwrapping twice is equivalent to unwrapping once
   return fuseAdaptorPair(op, rewriter,
                          [](PortType, PortType, PortType) { return true; });
 }
@@ -157,7 +186,40 @@ LogicalResult BurstSplitterOp::canonicalize(BurstSplitterOp op,
 //===----------------------------------------------------------------------===//
 
 LogicalResult XbarOp::canonicalize(XbarOp op, PatternRewriter &rewriter) {
-  return dropDeadDownstream(op, op.getUpstream(), rewriter);
+  if (succeeded(dropDeadDownstream(op, op.getUpstream(), rewriter)))
+    return success();
+
+  ValueRange upstream = op.getUpstream();
+  ValueRange downstream = op.getDownstream();
+
+  // A crossbar between one manager and one subordinate that agree is a wire
+  if (upstream.size() == 1 && downstream.size() == 1 &&
+      succeeded(eraseIdentity(op, upstream[0], downstream[0], rewriter)))
+    return success();
+
+  // A single manager xbar has no transactions to tell apart, so it is a demux
+  // (as long as it doesn't change ID widths)
+  if (upstream.size() == 1) {
+    auto upstreamTy = cast<PortType>(upstream[0].getType());
+    if (llvm::all_of(downstream, [&](Value value) {
+          return sameIdWidths(cast<PortType>(value.getType()), upstreamTy);
+        })) {
+      auto demux = DemuxOp::create(rewriter, op.getLoc(), downstream.getTypes(),
+                                   op.getClock(), op.getReset(), upstream[0]);
+      rewriter.replaceOp(op, demux.getDownstream());
+      return success();
+    }
+  }
+
+  // And an xbar with one subordinate can be treated as a mux
+  if (downstream.size() == 1) {
+    auto mux = MuxOp::create(rewriter, op.getLoc(), downstream[0].getType(),
+                             op.getClock(), op.getReset(), upstream);
+    rewriter.replaceOp(op, mux.getDownstream());
+    return success();
+  }
+
+  return rewriter.notifyMatchFailure(op, "crossbar routes between ports");
 }
 
 //===----------------------------------------------------------------------===//
@@ -165,18 +227,19 @@ LogicalResult XbarOp::canonicalize(XbarOp op, PatternRewriter &rewriter) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult DemuxOp::canonicalize(DemuxOp op, PatternRewriter &rewriter) {
-  return dropDeadDownstream(op, op.getUpstream(), rewriter);
+  if (succeeded(dropDeadDownstream(op, op.getUpstream(), rewriter)))
+    return success();
+  if (op.getDownstream().size() != 1)
+    return rewriter.notifyMatchFailure(op, "demux routes between ports");
+  return eraseIdentity(op, op.getUpstream(), op.getDownstream()[0], rewriter);
 }
 
 //===----------------------------------------------------------------------===//
-// BurstUnwrapperOp
+// MuxOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult BurstUnwrapperOp::canonicalize(BurstUnwrapperOp op,
-                                             PatternRewriter &rewriter) {
-  if (succeeded(eraseIdentityAdaptor(op, rewriter)))
-    return success();
-  // Unwrapping twice is equivalent to unwrapping once
-  return fuseAdaptorPair(op, rewriter,
-                         [](PortType, PortType, PortType) { return true; });
+LogicalResult MuxOp::canonicalize(MuxOp op, PatternRewriter &rewriter) {
+  if (op.getUpstream().size() != 1)
+    return rewriter.notifyMatchFailure(op, "mux arbitrates between ports");
+  return eraseIdentity(op, op.getUpstream()[0], op.getDownstream(), rewriter);
 }
