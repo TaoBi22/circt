@@ -205,3 +205,86 @@ hw.module @UnreachableDeadDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
   axi4.abstract_subordinate %clk, %rst_ni, %lo : !mgr_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi : !mgr_hi
 }
+
+//===----------------------------------------------------------------------===//
+// Degenerate routing ops
+//===----------------------------------------------------------------------===//
+
+// Check that routing ops with nothing left to route collapse, that a crossbar
+// with one manager becomes a demux, and that one with one subordinate becomes a
+// mux
+!sub_lo_untagged = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @OneToOneXbar
+hw.module @OneToOneXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK-NEXT: %[[MGR:.+]] = axi4.abstract_manager
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[MGR]]
+  // CHECK-NOT: axi4.xbar
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr : (!mgr_lo) -> (!sub_lo_untagged)
+  axi4.abstract_subordinate %clk, %rst_ni, %sub : !sub_lo_untagged
+}
+
+// CHECK-LABEL: hw.module @SingleManagerXbar
+hw.module @SingleManagerXbar(in %clk : !seq.clock, in %rst_ni : i1,
+                             in %upstream : !demuxed) {
+  // CHECK-NEXT: %[[DOWN:.+]]:2 = axi4.demux %clk, %rst_ni, %upstream
+  // CHECK-NOT: axi4.xbar
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %upstream
+    : (!demuxed) -> (!mgr_lo, !mgr_hi)
+  axi4.abstract_subordinate %clk, %rst_ni, %lo : !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi : !mgr_hi
+}
+
+!sub_both = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @SingleSubordinateXbar
+hw.module @SingleSubordinateXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: %[[DOWN:.+]] = axi4.mux %clk, %rst_ni, %{{.+}}, %{{.+}}
+  // CHECK-NOT: axi4.xbar
+  %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
+  %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+    : (!mgr_lo, !mgr_hi) -> (!sub_both)
+  axi4.abstract_subordinate %clk, %rst_ni, %sub : !sub_both
+}
+
+// CHECK-LABEL: hw.module @OneWayDemux
+hw.module @OneWayDemux(in %clk : !seq.clock, in %rst_ni : i1,
+                       in %upstream : !mgr_lo) {
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
+  // CHECK-NOT: axi4.demux
+  %down = axi4.demux %clk, %rst_ni, %upstream : (!mgr_lo) -> (!mgr_lo)
+  axi4.abstract_subordinate %clk, %rst_ni, %down : !mgr_lo
+}
+
+// CHECK-LABEL: hw.module @OneWayMux
+hw.module @OneWayMux(in %clk : !seq.clock, in %rst_ni : i1,
+                     in %upstream : !mgr_lo) {
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
+  // CHECK-NOT: axi4.mux
+  %down = axi4.mux %clk, %rst_ni, %upstream : (!mgr_lo) -> (!mgr_lo)
+  axi4.abstract_subordinate %clk, %rst_ni, %down : !mgr_lo
+}
+
+// A demux advertising a wider window than it is given still filters addresses
+!wider_window = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @OneWayDemuxWideningWindow
+hw.module @OneWayDemuxWideningWindow(in %clk : !seq.clock, in %rst_ni : i1,
+                                     in %upstream : !mgr_lo) {
+  // CHECK-NEXT: %[[DOWN:.+]] = axi4.demux %clk, %rst_ni, %upstream
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[DOWN]]
+  %down = axi4.demux %clk, %rst_ni, %upstream : (!mgr_lo) -> (!wider_window)
+  axi4.abstract_subordinate %clk, %rst_ni, %down : !wider_window
+}
+
+// A mux widening the ID width still tags, however little there is to arbitrate
+// CHECK-LABEL: hw.module @OneWayMuxWideningIds
+hw.module @OneWayMuxWideningIds(in %clk : !seq.clock, in %rst_ni : i1,
+                                in %upstream : !mgr_lo) {
+  // CHECK-NEXT: %[[DOWN:.+]] = axi4.mux %clk, %rst_ni, %upstream
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[DOWN]]
+  %down = axi4.mux %clk, %rst_ni, %upstream : (!mgr_lo) -> (!sub_lo)
+  axi4.abstract_subordinate %clk, %rst_ni, %down : !sub_lo
+}

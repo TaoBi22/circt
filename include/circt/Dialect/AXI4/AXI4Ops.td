@@ -403,6 +403,7 @@ def MuxOp : AXI4Op<"mux", [PortResultsAtMostOneUse]> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def ToMemOp : AXI4Op<"to_mem", [
