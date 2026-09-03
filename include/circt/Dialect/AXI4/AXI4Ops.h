@@ -36,6 +36,10 @@ public:
   }
 };
 } // namespace OpTrait
+
+/// Whether any of the `upstream` manager ports can address `downstream`.
+bool isReachable(PortType downstream, mlir::ValueRange upstream);
+
 } // namespace axi4
 } // namespace circt
 
