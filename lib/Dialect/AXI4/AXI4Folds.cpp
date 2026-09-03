@@ -59,6 +59,35 @@ fuseAdaptorPair(Op op, PatternRewriter &rewriter,
 }
 
 //===----------------------------------------------------------------------===//
+// Routing helpers
+//===----------------------------------------------------------------------===//
+
+/// Drop the downstream ports of a routing op that nothing consumes and that no
+/// upstream manager can address.
+template <typename Op>
+static LogicalResult dropDeadDownstream(Op op, ValueRange upstream,
+                                        PatternRewriter &rewriter) {
+  SmallVector<Type> types;
+  SmallVector<Value> kept;
+  for (Value downstream : op.getDownstream()) {
+    auto port = cast<PortType>(downstream.getType());
+    if (downstream.use_empty() && !isReachable(port, upstream))
+      continue;
+    types.push_back(port);
+    kept.push_back(downstream);
+  }
+  if (kept.size() == op.getDownstream().size())
+    return rewriter.notifyMatchFailure(op, "every downstream port is live");
+
+  auto rebuilt = Op::create(rewriter, op.getLoc(), types, op->getOperands(),
+                            op->getAttrs());
+  for (auto [before, after] : llvm::zip_equal(kept, rebuilt.getDownstream()))
+    rewriter.replaceAllUsesWith(before, after);
+  rewriter.eraseOp(op);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // CDCOp
 //===----------------------------------------------------------------------===//
 
@@ -121,6 +150,22 @@ LogicalResult BurstSplitterOp::canonicalize(BurstSplitterOp op,
   // Splitting twice is equivalent to splitting once
   return fuseAdaptorPair(op, rewriter,
                          [](PortType, PortType, PortType) { return true; });
+}
+
+//===----------------------------------------------------------------------===//
+// XbarOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult XbarOp::canonicalize(XbarOp op, PatternRewriter &rewriter) {
+  return dropDeadDownstream(op, op.getUpstream(), rewriter);
+}
+
+//===----------------------------------------------------------------------===//
+// DemuxOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DemuxOp::canonicalize(DemuxOp op, PatternRewriter &rewriter) {
+  return dropDeadDownstream(op, op.getUpstream(), rewriter);
 }
 
 //===----------------------------------------------------------------------===//
