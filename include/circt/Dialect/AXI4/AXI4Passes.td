@@ -31,6 +31,20 @@ def VerifyAXI4Networks : Pass<"verify-axi4-networks", "mlir::ModuleOp"> {
   let dependentDialects = ["circt::axi4::AXI4Dialect"];
 }
 
+def PruneAXI4Networks : Pass<"prune-axi4-networks", "mlir::ModuleOp"> {
+  let summary = "Prune the unreachable parts of AXI4 networks";
+  let description = [{
+    Removes the downstream ports of `axi4.xbar` and `axi4.demux` operations
+    that no upstream manager can address, along with the ops downstream of them.
+
+    Where such a port feeds something this pass will not erase - an interface
+    bridged out into HW logic, a memory interface driving live logic, or another
+    routing operation - it warns and leaves the branch alone.
+  }];
+
+  let dependentDialects = ["circt::axi4::AXI4Dialect"];
+}
+
 def LowerAXI4DummiesToAXI : Pass<"lower-axi4-dummies-to-axi", "mlir::ModuleOp"> {
   let summary = "Lower the dummies subdialect to the AXI4 dialect";
   let description = [{
