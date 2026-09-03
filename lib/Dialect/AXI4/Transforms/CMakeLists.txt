@@ -1,5 +1,6 @@
 add_circt_dialect_library(CIRCTAXI4Transforms
   LowerAXI4DummiesToAXI.cpp
+  PruneAXI4Networks.cpp
   VerifyAXI4Networks.cpp
 
   DEPENDS
