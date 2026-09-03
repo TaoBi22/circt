@@ -193,6 +193,7 @@ def XbarOp : AXI4Op<"xbar", [PortResultsAtMostOneUse]> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def CutOp : AXI4Op<"cut", [PortResultsAtMostOneUse,
@@ -377,6 +378,7 @@ def DemuxOp : AXI4Op<"demux", [PortResultsAtMostOneUse]> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
 }
 
 def MuxOp : AXI4Op<"mux", [PortResultsAtMostOneUse]> {

@@ -142,3 +142,66 @@ hw.module @ConverterPairChangingOutstanding(in %clk : !seq.clock, in %rst_ni : i
   %wide = axi4.data_width_converter %clk, %rst_ni, %narrow : (!thin) -> !more_reads
   axi4.abstract_subordinate %clk, %rst_ni, %wide : !more_reads
 }
+
+//===----------------------------------------------------------------------===//
+// Dead routing ports
+//===----------------------------------------------------------------------===//
+
+// Check that downstream ports nothing consumes and no manager can address are
+// dropped from the ops routing to them
+!mgr_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mgr_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub_gap = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @UnreachableDeadXbarPort
+hw.module @UnreachableDeadXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: %[[SUBS:.+]]:2 = axi4.xbar
+  // CHECK-SAME: -> (!axi4.port<{{.*}}base = 0x0{{.*}}>, !axi4.port<{{.*}}base = 0x2000{{.*}}>)
+  // CHECK-NOT: 0x4000
+  %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
+  %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
+  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+    : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
+  axi4.abstract_subordinate %clk, %rst_ni, %lo : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi : !sub_hi
+}
+
+// We don't want to drop ports necessary for full coverage of upstream ports
+// CHECK-LABEL: hw.module @ReachableDeadXbarPort
+hw.module @ReachableDeadXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: %[[SUBS:.+]]:2 = axi4.xbar
+  // CHECK-SAME: -> (!axi4.port<{{.*}}base = 0x0{{.*}}>, !axi4.port<{{.*}}base = 0x2000{{.*}}>)
+  %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
+  %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+    : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi)
+  axi4.abstract_subordinate %clk, %rst_ni, %lo : !sub_lo
+}
+
+// CHECK-LABEL: hw.module @UnreachableLiveXbarPort
+hw.module @UnreachableLiveXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: %[[SUBS:.+]]:3 = axi4.xbar
+  %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
+  %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
+  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+    : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
+  axi4.abstract_subordinate %clk, %rst_ni, %lo : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi : !sub_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %gap : !sub_gap
+}
+
+!demuxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!demux_gap = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// CHECK-LABEL: hw.module @UnreachableDeadDemuxPort
+hw.module @UnreachableDeadDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
+                                    in %upstream : !demuxed) {
+  // CHECK-NEXT: %[[DOWN:.+]]:2 = axi4.demux
+  // CHECK-NOT: 0x4000
+  %lo, %hi, %gap = axi4.demux %clk, %rst_ni, %upstream
+    : (!demuxed) -> (!mgr_lo, !mgr_hi, !demux_gap)
+  axi4.abstract_subordinate %clk, %rst_ni, %lo : !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi : !mgr_hi
+}
