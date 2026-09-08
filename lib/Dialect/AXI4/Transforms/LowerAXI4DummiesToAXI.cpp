@@ -167,8 +167,8 @@ static LogicalResult checkSubordinate(DummiesExtSubordinateOp subordinate,
   return success();
 }
 
-/// The port type a subordinate presents, which carries what it declares
-/// rather than what reaches it.
+/// The port type a subordinate presents over `windows`, with ID widths wide
+/// enough to tag every request it can hold.
 static PortType getSubordinatePortType(DummiesExtSubordinateOp subordinate,
                                        WindowSetAttr windows) {
   return PortType::get(subordinate.getContext(), subordinate.getAddrWidth(),
