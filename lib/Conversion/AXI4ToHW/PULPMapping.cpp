@@ -26,12 +26,6 @@ using namespace axi4;
 using namespace mlir;
 using namespace circt::AXI4ToHW;
 
-/// The width of PULP's `user_t`. A port with no user field still gets a bit,
-/// since a zero-width typedef is not legal SystemVerilog.
-static unsigned pulpUserWidth(PortType port) {
-  return std::max(port.getUserWidth(), 1u);
-}
-
 /// Report a port carrying no ID bits on a channel, which no wrapper can
 /// express: they type their ID fields through a typedef, and a zero-width
 /// typedef is not legal SystemVerilog.

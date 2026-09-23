@@ -51,6 +51,11 @@ def AXI4ToHW : Pass<"lower-axi4-to-hw", "mlir::ModuleOp"> {
     ports are rewritten in terms of those signals, as are the instances of
     those modules.
 
+    With `req-resp-ports`, a module interface instead carries one request and
+    one response struct per port, in the layout of PULP's `axi_req_t` and
+    `axi_resp_t`. The external modules the components become keep their
+    per-channel signals either way.
+
     Crossbars become instances of generic external modules, optionally wrapping
     a concrete implementation from the PULP Platform AXI library.
 
@@ -63,7 +68,11 @@ def AXI4ToHW : Pass<"lower-axi4-to-hw", "mlir::ModuleOp"> {
   let options = [
     Option<"pulpMapping", "pulp-mapping", "bool", "false",
            "Map components onto the PULP Platform AXI library, emitting a "
-           "SystemVerilog wrapper implementing each external module">
+           "SystemVerilog wrapper implementing each external module">,
+    Option<"reqRespPorts", "req-resp-ports", "bool", "false",
+           "Lower each module's AXI4 ports to a request and a response struct "
+           "in the layout of PULP's `axi_req_t` and `axi_resp_t`, rather than "
+           "a signal per channel">
   ];
 }
 

@@ -64,10 +64,172 @@ static SmallVector<SignalInfo, 15> portSignals(PortType port) {
   return signals;
 }
 
+/// The types of the signals `port` explodes into that one end drives, in AXI4
+/// order - the order the bridge ops take and return them in.
+static SmallVector<Type> signalTypes(PortType port, bool managerDriven) {
+  SmallVector<Type> types;
+  for (const SignalInfo &signal : portSignals(port))
+    if (signal.managerDrives == managerDriven)
+      types.push_back(signal.type);
+  return types;
+}
+
 /// The types of `ports`, in order.
 static SmallVector<Type> portTypes(ArrayRef<hw::PortInfo> ports) {
   return llvm::map_to_vector(
       ports, [](const hw::PortInfo &port) { return port.type; });
+}
+
+//===----------------------------------------------------------------------===//
+// Request and response structs
+//===----------------------------------------------------------------------===//
+
+/// The width of the `atop` field PULP's AW channel carries and the dialect does
+/// not model.
+static constexpr unsigned kAtopWidth = 6;
+
+namespace {
+/// A field of PULP's `axi_req_t` or `axi_resp_t`: its name, the index its
+/// signal takes in AXI4 order, and the channel whose payload it carries, if it
+/// carries one.
+struct StructField {
+  StringLiteral name;
+  unsigned index;
+  std::optional<AXI4Channel> payload;
+};
+} // namespace
+
+/// The fields of `axi_req_t`, carrying the signals a manager drives.
+static constexpr StructField kRequestFields[] = {
+    {StringLiteral("aw"), 0, AXI4Channel::AW},
+    {StringLiteral("aw_valid"), 1, std::nullopt},
+    {StringLiteral("w"), 2, AXI4Channel::W},
+    {StringLiteral("w_valid"), 3, std::nullopt},
+    {StringLiteral("b_ready"), 4, std::nullopt},
+    {StringLiteral("ar"), 5, AXI4Channel::AR},
+    {StringLiteral("ar_valid"), 6, std::nullopt},
+    {StringLiteral("r_ready"), 7, std::nullopt}};
+
+/// The fields of `axi_resp_t`, carrying the signals a subordinate drives. PULP
+/// orders them differently to the AXI4 signal order.
+static constexpr StructField kResponseFields[] = {
+    {StringLiteral("aw_ready"), 0, std::nullopt},
+    {StringLiteral("ar_ready"), 4, std::nullopt},
+    {StringLiteral("w_ready"), 1, std::nullopt},
+    {StringLiteral("b_valid"), 3, std::nullopt},
+    {StringLiteral("b"), 2, AXI4Channel::B},
+    {StringLiteral("r_valid"), 6, std::nullopt},
+    {StringLiteral("r"), 5, AXI4Channel::R}};
+
+/// The payload struct PULP's typedefs build for `channel`: the dialect's
+/// payload plus the fields PULP always carries - AW's `atop`, and a `user` of
+/// at least one bit.
+static hw::StructType pulpPayloadType(PortType port, AXI4Channel channel) {
+  MLIRContext *context = port.getContext();
+  SmallVector<hw::StructType::FieldInfo> fields;
+  for (const auto &field : getChannelPayloadType(port, channel).getElements()) {
+    // `user` ends every channel, and `atop` sits just ahead of it.
+    if (field.name.getValue() != "user") {
+      fields.push_back(field);
+      continue;
+    }
+    if (channel == AXI4Channel::AW)
+      fields.push_back({StringAttr::get(context, "atop"),
+                        IntegerType::get(context, kAtopWidth)});
+    fields.push_back(
+        {field.name, IntegerType::get(context, pulpUserWidth(port))});
+  }
+  return hw::StructType::get(context, fields);
+}
+
+/// The struct `layout` describes for `port`.
+static hw::StructType structType(PortType port, ArrayRef<StructField> layout) {
+  MLIRContext *context = port.getContext();
+  return hw::StructType::get(
+      context, llvm::map_to_vector(layout, [&](const StructField &field) {
+        Type type = field.payload ? Type(pulpPayloadType(port, *field.payload))
+                                  : IntegerType::get(context, 1);
+        return hw::StructType::FieldInfo{StringAttr::get(context, field.name),
+                                         type};
+      }));
+}
+
+/// The fields of the struct `value`, by name.
+static llvm::StringMap<Value> explodeFields(ImplicitLocOpBuilder &b,
+                                            Value value) {
+  auto type = cast<hw::StructType>(value.getType());
+  auto exploded = hw::StructExplodeOp::create(b, value);
+  llvm::StringMap<Value> fields;
+  for (auto [field, result] :
+       llvm::zip_equal(type.getElements(), exploded.getResults()))
+    fields[field.name.getValue()] = result;
+  return fields;
+}
+
+/// Repack `payload` into PULP's layout, zeroing the fields PULP carries that
+/// the dialect does not.
+static Value toPulpPayload(ImplicitLocOpBuilder &b, PortType port,
+                           AXI4Channel channel, Value payload) {
+  hw::StructType type = pulpPayloadType(port, channel);
+  if (type == payload.getType())
+    return payload;
+  llvm::StringMap<Value> fields = explodeFields(b, payload);
+  auto values = llvm::map_to_vector(
+      type.getElements(), [&](const hw::StructType::FieldInfo &field) -> Value {
+        StringRef name = field.name.getValue();
+        // `atop` has no signal behind it, and neither has `user` on a port
+        // carrying none.
+        if (name == "atop" || (name == "user" && port.getUserWidth() == 0))
+          return hw::ConstantOp::create(
+              b, APInt::getZero(hw::getBitWidth(field.type)));
+        return fields.lookup(name);
+      });
+  return hw::StructCreateOp::create(b, type, values);
+}
+
+/// Repack `payload` from PULP's layout into the dialect's, dropping the fields
+/// the dialect does not carry.
+static Value fromPulpPayload(ImplicitLocOpBuilder &b, PortType port,
+                             AXI4Channel channel, Value payload) {
+  hw::StructType type = getChannelPayloadType(port, channel);
+  if (type == payload.getType())
+    return payload;
+  llvm::StringMap<Value> fields = explodeFields(b, payload);
+  auto values = llvm::map_to_vector(
+      type.getElements(), [&](const hw::StructType::FieldInfo &field) -> Value {
+        StringRef name = field.name.getValue();
+        if (name == "user" && port.getUserWidth() == 0)
+          return hw::ConstantOp::create(b, APInt::getZero(0));
+        return fields.lookup(name);
+      });
+  return hw::StructCreateOp::create(b, type, values);
+}
+
+/// The signals the struct `value` of `layout` carries, in AXI4 order.
+static SmallVector<Value> explodeStruct(ImplicitLocOpBuilder &b, PortType port,
+                                        ArrayRef<StructField> layout,
+                                        Value value) {
+  llvm::StringMap<Value> fields = explodeFields(b, value);
+  SmallVector<Value> signals(layout.size());
+  for (const StructField &field : layout) {
+    Value signal = fields.lookup(field.name);
+    signals[field.index] =
+        field.payload ? fromPulpPayload(b, port, *field.payload, signal)
+                      : signal;
+  }
+  return signals;
+}
+
+/// The struct of `layout` carrying `signals`, which arrive in AXI4 order.
+static Value packStruct(ImplicitLocOpBuilder &b, PortType port,
+                        ArrayRef<StructField> layout, ValueRange signals) {
+  auto fields =
+      llvm::map_to_vector(layout, [&](const StructField &field) -> Value {
+        Value signal = signals[field.index];
+        return field.payload ? toPulpPayload(b, port, *field.payload, signal)
+                             : signal;
+      });
+  return hw::StructCreateOp::create(b, structType(port, layout), fields);
 }
 
 //===----------------------------------------------------------------------===//
@@ -241,7 +403,8 @@ static SmallVector<hw::ModulePort> componentPorts(const Component &component) {
 
 /// Replace every component with an instance of an external module of its shape,
 /// shared by components of the same kind whose ports match.
-static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping) {
+static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
+                                     DenseSet<Operation *> &componentModules) {
   SmallVector<Component> components;
   module.walk([&](Operation *op) {
     if (std::optional<Component> component = getComponent(op))
@@ -271,6 +434,7 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping) {
           }));
       // Two shapes can want the same name, so let the symbol table unique it.
       symbolTable.insert(shape);
+      componentModules.insert(shape);
       if (pulpMapping)
         attachPulpSource(b, shape, op);
     }
@@ -399,6 +563,15 @@ static LogicalResult annihilateBridges(ModuleOp module, FillerDomain &filler) {
 // Port conversion
 //===----------------------------------------------------------------------===//
 
+/// The number of outstanding writes/reads that can concurrently be in flight
+/// down `port`.
+static SmallVector<NamedAttribute, 2> concurrency(Builder &b, PortType port) {
+  return {b.getNamedAttr("concurrent_writes",
+                         b.getI32IntegerAttr(port.getOutstandingWrites())),
+          b.getNamedAttr("concurrent_reads",
+                         b.getI32IntegerAttr(port.getOutstandingReads()))};
+}
+
 namespace {
 /// Lowers an `!axi4.port` module port to a payload, valid and ready port per
 /// channel, bridged to the original port value by a channel struct op.
@@ -430,14 +603,9 @@ private:
   /// Create an output port for each value in `values` (and connect
   /// accordingly).
   void createOutputPorts(ValueRange values);
-  /// The types of the exploded signals this module drives.
-  SmallVector<Type> drivenTypes();
   /// The signals the new instance drives for this port, in signal order. They
   /// come back as backedges because the instance is not built yet.
   SmallVector<Value> instanceDriven(ArrayRef<Backedge> newResults);
-  /// The number of outstanding writes/reads that can concurrently be in flight
-  /// down this port
-  SmallVector<NamedAttribute, 2> concurrency(Builder &b);
 
   FillerDomain &filler;
   PortType portType;
@@ -446,21 +614,58 @@ private:
   SmallVector<hw::PortInfo> inputPorts, outputPorts;
 };
 
+/// Lowers an `!axi4.port` module port to a request and a response struct in the
+/// layout of PULP's `axi_req_t` and `axi_resp_t`, bridged to the original port
+/// value by a channel struct op.
+class AXI4StructPortConversion : public hw::PortConversion {
+public:
+  AXI4StructPortConversion(hw::PortConverterImpl &converter,
+                           hw::PortInfo origPort, FillerDomain &filler)
+      : PortConversion(converter, origPort), filler(filler),
+        portType(cast<PortType>(origPort.type)) {}
+
+protected:
+  void buildInputSignals() override;
+  void buildOutputSignals() override;
+  void mapInputSignals(OpBuilder &b, Operation *inst, Value instValue,
+                       SmallVectorImpl<Value> &newOperands,
+                       ArrayRef<Backedge> newResults) override;
+  void mapOutputSignals(OpBuilder &b, Operation *inst, Value instValue,
+                        SmallVectorImpl<Value> &newOperands,
+                        ArrayRef<Backedge> newResults) override;
+
+private:
+  /// The types a port bridge returns: the port, then the signals the
+  /// subordinate end drives.
+  SmallVector<Type> portAndResponseTypes();
+
+  FillerDomain &filler;
+  PortType portType;
+  /// The generated request and response ports
+  hw::PortInfo reqPort, respPort;
+};
+
 class AXI4PortConversionBuilder : public hw::PortConversionBuilder {
 public:
   AXI4PortConversionBuilder(hw::PortConverterImpl &converter,
-                            FillerDomain &filler)
-      : PortConversionBuilder(converter), filler(filler) {}
+                            FillerDomain &filler, bool structPorts)
+      : PortConversionBuilder(converter), filler(filler),
+        structPorts(structPorts) {}
 
   FailureOr<std::unique_ptr<hw::PortConversion>>
   build(hw::PortInfo port) override {
-    if (isa<PortType>(port.type))
+    if (isa<PortType>(port.type)) {
+      if (structPorts)
+        return {std::make_unique<AXI4StructPortConversion>(converter, port,
+                                                           filler)};
       return {std::make_unique<AXI4PortConversion>(converter, port, filler)};
+    }
     return PortConversionBuilder::build(port);
   }
 
 private:
   FillerDomain &filler;
+  bool structPorts;
 };
 } // namespace
 
@@ -485,14 +690,6 @@ void AXI4PortConversion::createOutputPorts(ValueRange values) {
     converter.createNewOutput(origPort, signal.suffix, signal.type, value,
                               port);
   }
-}
-
-SmallVector<Type> AXI4PortConversion::drivenTypes() {
-  SmallVector<Type> types;
-  for (const SignalInfo &signal : portSignals(portType))
-    if (signal.managerDrives == isManager())
-      types.push_back(signal.type);
-  return types;
 }
 
 SmallVector<Value>
@@ -522,7 +719,7 @@ void AXI4PortConversion::buildInputSignals() {
   SmallVector<Value> operands{clock, reset};
   llvm::append_range(operands, inputs);
   SmallVector<Type> resultTypes{portType};
-  llvm::append_range(resultTypes, drivenTypes());
+  llvm::append_range(resultTypes, signalTypes(portType, isManager()));
 
   ImplicitLocOpBuilder b(origPort.loc, body->getTerminator());
   auto toPort = ChannelStructsToPortOp::create(b, resultTypes, operands);
@@ -552,16 +749,10 @@ void AXI4PortConversion::buildOutputSignals() {
   llvm::append_range(operands, inputs);
 
   ImplicitLocOpBuilder b(origPort.loc, terminator);
-  auto fromPort = PortToChannelStructsOp::create(b, drivenTypes(), operands,
-                                                 concurrency(b));
+  auto fromPort =
+      PortToChannelStructsOp::create(b, signalTypes(portType, isManager()),
+                                     operands, concurrency(b, portType));
   createOutputPorts(fromPort.getResults());
-}
-
-SmallVector<NamedAttribute, 2> AXI4PortConversion::concurrency(Builder &b) {
-  return {b.getNamedAttr("concurrent_writes",
-                         b.getI32IntegerAttr(portType.getOutstandingWrites())),
-          b.getNamedAttr("concurrent_reads",
-                         b.getI32IntegerAttr(portType.getOutstandingReads()))};
 }
 
 // Map to the newly created ports on the instances of the modified subordinate
@@ -579,7 +770,7 @@ void AXI4PortConversion::mapInputSignals(OpBuilder &b, Operation *inst,
   ImplicitLocOpBuilder builder(origPort.loc, b.getInsertionBlock(),
                                b.getInsertionPoint());
   auto fromPort = PortToChannelStructsOp::create(
-      builder, portTypes(inputPorts), operands, concurrency(builder));
+      builder, portTypes(inputPorts), operands, concurrency(builder, portType));
 
   for (auto [port, value] : llvm::zip_equal(inputPorts, fromPort.getResults()))
     newOperands[port.argNum] = value;
@@ -607,6 +798,116 @@ void AXI4PortConversion::mapOutputSignals(OpBuilder &b, Operation *inst,
   for (auto [port, value] :
        llvm::zip_equal(inputPorts, toPort.getResults().drop_front()))
     newOperands[port.argNum] = value;
+}
+
+SmallVector<Type> AXI4StructPortConversion::portAndResponseTypes() {
+  SmallVector<Type> types{portType};
+  llvm::append_range(types, signalTypes(portType, /*managerDriven=*/false));
+  return types;
+}
+
+/// Build the request and response ports for an !axi4.port input
+void AXI4StructPortConversion::buildInputSignals() {
+  // This hook is called when an !axi.port is an input to a module, so we're in
+  // a subordinate: the manager drives the request and we drive the response
+  Value request = converter.createNewInput(
+      origPort, "_req", structType(portType, kRequestFields), reqPort);
+  auto driveResponse = [&](Value value) {
+    converter.createNewOutput(origPort, "_resp",
+                              structType(portType, kResponseFields), value,
+                              respPort);
+  };
+
+  // A module with no body (e.g. extern) can't do anything with values, so just
+  // add the ports
+  if (!body)
+    return driveResponse({});
+
+  // Unpack the request into the signals the !axi.port value that was already
+  // being digested is built from
+  auto [clock, reset] = filler.get(body);
+  ImplicitLocOpBuilder b(origPort.loc, body->getTerminator());
+  SmallVector<Value> operands{clock, reset};
+  llvm::append_range(operands,
+                     explodeStruct(b, portType, kRequestFields, request));
+
+  auto toPort =
+      ChannelStructsToPortOp::create(b, portAndResponseTypes(), operands);
+  body->getArgument(origPort.argNum).replaceAllUsesWith(toPort.getPort());
+  driveResponse(packStruct(b, portType, kResponseFields,
+                           toPort.getResults().drop_front()));
+}
+
+/// Build the request and response ports for an !axi4.port output
+void AXI4StructPortConversion::buildOutputSignals() {
+  // This hook is called when an !axi.port is an output of a module, so we're in
+  // a manager: we drive the request and the subordinate drives the response
+  Value response = converter.createNewInput(
+      origPort, "_resp", structType(portType, kResponseFields), respPort);
+  auto driveRequest = [&](Value value) {
+    converter.createNewOutput(
+        origPort, "_req", structType(portType, kRequestFields), value, reqPort);
+  };
+
+  // A module with no body (e.g. extern) can't do anything with values, so just
+  // add the ports
+  if (!body)
+    return driveRequest({});
+
+  // Break the !axi.port value that was already being driven into the signals
+  // the request is built from
+  auto [clock, reset] = filler.get(body);
+  Operation *terminator = body->getTerminator();
+  ImplicitLocOpBuilder b(origPort.loc, terminator);
+  SmallVector<Value> operands{clock, reset,
+                              terminator->getOperand(origPort.argNum)};
+  llvm::append_range(operands,
+                     explodeStruct(b, portType, kResponseFields, response));
+
+  auto fromPort = PortToChannelStructsOp::create(
+      b, signalTypes(portType, /*managerDriven=*/true), operands,
+      concurrency(b, portType));
+  driveRequest(packStruct(b, portType, kRequestFields, fromPort.getResults()));
+}
+
+// Map to the newly created ports on the instances of the modified subordinate
+void AXI4StructPortConversion::mapInputSignals(
+    OpBuilder &b, Operation *inst, Value instValue,
+    SmallVectorImpl<Value> &newOperands, ArrayRef<Backedge> newResults) {
+  // Break down the port that was previously an input to the instance, and feed
+  // the instance the request its signals make up
+  auto [clock, reset] = filler.get(inst->getBlock());
+  ImplicitLocOpBuilder builder(origPort.loc, b.getInsertionBlock(),
+                               b.getInsertionPoint());
+  SmallVector<Value> operands{clock, reset, instValue};
+  llvm::append_range(operands, explodeStruct(builder, portType, kResponseFields,
+                                             newResults[respPort.argNum]));
+
+  auto fromPort = PortToChannelStructsOp::create(
+      builder, signalTypes(portType, /*managerDriven=*/true), operands,
+      concurrency(builder, portType));
+  newOperands[reqPort.argNum] =
+      packStruct(builder, portType, kRequestFields, fromPort.getResults());
+}
+
+// Map to the newly created ports on the instances of the modified manager
+void AXI4StructPortConversion::mapOutputSignals(
+    OpBuilder &b, Operation *inst, Value instValue,
+    SmallVectorImpl<Value> &newOperands, ArrayRef<Backedge> newResults) {
+  // Wrap the request the instance now drives back into the !axi4.port it drove
+  // before, and hand it the response that port's signals make up
+  auto [clock, reset] = filler.get(inst->getBlock());
+  ImplicitLocOpBuilder builder(origPort.loc, b.getInsertionBlock(),
+                               b.getInsertionPoint());
+  SmallVector<Value> operands{clock, reset};
+  llvm::append_range(operands, explodeStruct(builder, portType, kRequestFields,
+                                             newResults[reqPort.argNum]));
+
+  auto toPort =
+      ChannelStructsToPortOp::create(builder, portAndResponseTypes(), operands);
+  instValue.replaceAllUsesWith(toPort.getPort());
+  newOperands[respPort.argNum] = packStruct(builder, portType, kResponseFields,
+                                            toPort.getResults().drop_front());
 }
 
 //===----------------------------------------------------------------------===//
@@ -677,16 +978,22 @@ void AXI4ToHWPass::runOnOperation() {
 
   // Components become instances, so they have to land before the instance graph
   // analysis is generated
-  if (failed(lowerComponents(module, pulpMapping)))
+  DenseSet<Operation *> componentModules;
+  if (failed(lowerComponents(module, pulpMapping, componentModules)))
     return signalPassFailure();
 
   FillerDomain filler;
   hw::InstanceGraph &instanceGraph = getAnalysis<hw::InstanceGraph>();
-  for (auto mod : module.getOps<hw::HWMutableModuleLike>())
+  for (auto mod : module.getOps<hw::HWMutableModuleLike>()) {
+    // The component externs are internal to the lowering, so they keep their
+    // signals however the boundary is expressed.
+    bool structPorts =
+        reqRespPorts && !componentModules.contains(mod.getOperation());
     if (failed(hw::PortConverter<AXI4PortConversionBuilder>(instanceGraph, mod,
-                                                            filler)
+                                                            filler, structPorts)
                    .run()))
       return signalPassFailure();
+  }
 
   if (failed(annihilateBridges(module, filler)))
     return signalPassFailure();
