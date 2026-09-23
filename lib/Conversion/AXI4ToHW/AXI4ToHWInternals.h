@@ -36,6 +36,12 @@ inline constexpr ChannelInfo kChannels[] = {
     {axi4::AXI4Channel::AR, llvm::StringLiteral("ar"), true},
     {axi4::AXI4Channel::R, llvm::StringLiteral("r"), false}};
 
+/// The width of PULP's `user_t`. A port with no user field still gets a bit,
+/// since a zero-width typedef is not legal SystemVerilog.
+inline unsigned pulpUserWidth(axi4::PortType port) {
+  return std::max(port.getUserWidth(), 1u);
+}
+
 /// Report the components PULP's AXI library cannot express.
 mlir::LogicalResult checkPulpSupported(mlir::Operation *op);
 
