@@ -184,6 +184,32 @@ struct FuseAdaptors : OpRewritePattern<Op> {
   }
 };
 
+/// Fuse every crossing with the crossing driving it, so a connection crosses
+/// once into the domain it ends up in.
+struct FuseCrossings : OpRewritePattern<CDCOp> {
+  using OpRewritePattern<CDCOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(CDCOp op,
+                                PatternRewriter &rewriter) const override {
+    // Adjacent only: a cut in between would cross into the upstream domain
+    // along with the port it carries
+    auto prev = op.getUpstream().getDefiningOp<CDCOp>();
+    if (!prev)
+      return rewriter.notifyMatchFailure(op, "upstream is not a crossing");
+
+    rewriter.modifyOpInPlace(op, [&] {
+      op.getUpstreamMutable().assign(prev.getUpstream());
+      op.getUpstreamClockMutable().assign(prev.getUpstreamClock());
+    });
+    rewriter.eraseOp(prev);
+
+    // A chain ending in the domain it started in crosses nothing
+    if (op.getUpstreamClock() == op.getDownstreamClock())
+      rewriter.replaceOp(op, op.getUpstream());
+    return success();
+  }
+};
+
 struct OptimizeAXI4NetworksPass
     : public circt::axi4::impl::OptimizeAXI4NetworksBase<
           OptimizeAXI4NetworksPass> {
@@ -209,8 +235,8 @@ void OptimizeAXI4NetworksPass::runOnOperation() {
   MLIRContext &context = getContext();
   RewritePatternSet patterns(&context);
   patterns.add<FuseAdaptors<DWConverterOp>, FuseAdaptors<IWConverterOp>,
-               FuseAdaptors<BurstSplitterOp>, FuseAdaptors<BurstUnwrapperOp>>(
-      &context);
+               FuseAdaptors<BurstSplitterOp>, FuseAdaptors<BurstUnwrapperOp>,
+               FuseCrossings>(&context);
   // Rewrite only the AXI4 ops, leaving the logic around them untouched
   Dialect *dialect = context.getLoadedDialect<AXI4Dialect>();
   SmallVector<Operation *> ops;
