@@ -96,3 +96,65 @@ hw.module @UnreachableDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !mgr_hi
   axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes 4 concurrent_reads 4 : !demux_gap
 }
+
+//===----------------------------------------------------------------------===//
+// Adaptor fusion
+//===----------------------------------------------------------------------===//
+
+// Check that adaptors fuse where canonicalization will not: through the cuts
+// and crossings in between, and without asking that the conversion invert
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 32>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// Narrowing merges the IDs in flight, so this pair orders transactions the
+// fused one leaves free - the same data still arrives
+// CHECK-LABEL: hw.module @FuseDippingIdWidths
+hw.module @FuseDippingIdWidths(in %clk : !seq.clock, in %rst_ni : i1,
+                               in %upstream : !mgr_lo) {
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
+  // CHECK-NOT: axi4.id_width_converter
+  %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream
+    : (!mgr_lo) -> !narrow_ids
+  %wide = axi4.id_width_converter %clk, %rst_ni, %narrow
+    : (!narrow_ids) -> !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %wide
+    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+}
+
+// The cut stays where it was put, but now carries the wider port
+// CHECK-LABEL: hw.module @FuseAcrossCut
+hw.module @FuseAcrossCut(in %clk : !seq.clock, in %rst_ni : i1,
+                         in %upstream : !mgr_lo) {
+  // CHECK-NEXT: %[[CUT:.+]] = axi4.cut %clk, %rst_ni, %upstream : !axi4.port<{{.*}}data_width = 64,
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[CUT]]
+  // CHECK-NOT: axi4.data_width_converter
+  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream
+    : (!mgr_lo) -> !thin
+  %cut = axi4.cut %clk, %rst_ni, %narrow : !thin
+  %wide = axi4.data_width_converter %clk, %rst_ni, %cut : (!thin) -> !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %wide
+    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+}
+
+// A crossing keeps both its clock domains, and widens like a cut
+// CHECK-LABEL: hw.module @FuseAcrossCdc
+hw.module @FuseAcrossCdc(in %aclk : !seq.clock, in %bclk : !seq.clock,
+                         in %rst_ni : i1, in %upstream : !mgr_lo) {
+  // CHECK-NEXT: %[[CDC:.+]] = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream : !axi4.port<{{.*}}data_width = 64,
+  // CHECK-NEXT: axi4.abstract_subordinate %bclk, %rst_ni, %[[CDC]]
+  // CHECK-NOT: axi4.data_width_converter
+  %narrow = axi4.data_width_converter %aclk, %rst_ni, %upstream
+    : (!mgr_lo) -> !thin
+  %cdc = axi4.cdc from %aclk to %bclk, %rst_ni, %narrow : !thin
+  %wide = axi4.data_width_converter %bclk, %rst_ni, %cdc : (!thin) -> !mgr_lo
+  axi4.abstract_subordinate %bclk, %rst_ni, %wide
+    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+}
+
+// Logic outside the network is left alone, dead or not
+// CHECK-LABEL: hw.module @UnrelatedLogic
+hw.module @UnrelatedLogic(in %a : i8, out o : i8) {
+  // CHECK-NEXT: comb.xor %a, %a
+  %dead = comb.xor %a, %a : i8
+  hw.output %a : i8
+}

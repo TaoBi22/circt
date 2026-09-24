@@ -6,13 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Removes the parts of an AXI4 network that no manager can address.
+// Optimizes AXI4 networks in ways that are not canonicalizations.
 //
 //===----------------------------------------------------------------------===//
 
 #include "circt/Dialect/AXI4/AXI4Ops.h"
 #include "circt/Dialect/AXI4/AXI4Passes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -111,9 +113,80 @@ static void pruneRouting(Op op, ValueRange upstream) {
     dropDownstream(op, drop);
 }
 
+//===----------------------------------------------------------------------===//
+// Adaptor fusion
+//===----------------------------------------------------------------------===//
+
+/// Search upstream from `port` for an adaptor of the same kind, stepping over
+/// the cuts and crossings on the way and collecting them into `carriers`,
+/// nearest `port` first. Null if anything else is reached first.
+template <typename Op>
+static Op findAdaptorThrough(Value port,
+                             SmallVectorImpl<Operation *> &carriers) {
+  while (Operation *def = port.getDefiningOp()) {
+    if (auto adaptor = dyn_cast<Op>(def))
+      return adaptor;
+    if (!isa<CutOp, CDCOp>(def))
+      break;
+    carriers.push_back(def);
+    port = TypeSwitch<Operation *, Value>(def).Case<CutOp, CDCOp>(
+        [](auto carrier) { return carrier.getUpstream(); });
+  }
+  return {};
+}
+
+/// Fuse `op` with the like adaptor driving it, leaving one adaptor converting
+/// straight to `op`'s downstream type. Unlike the canonicalization, this looks
+/// through cuts and crossings, and asks nothing of the conversion beyond
+/// composing - narrowing ID widths merges the IDs in flight, so a fused pair
+/// can leave transactions free to complete in an order the original ordered.
+template <typename Op>
+static LogicalResult fuseAdaptors(Op op, PatternRewriter &rewriter) {
+  SmallVector<Operation *> carriers;
+  Op prev = findAdaptorThrough<Op>(op.getUpstream(), carriers);
+  if (!prev)
+    return rewriter.notifyMatchFailure(op, "no like adaptor upstream");
+
+  Value original = prev.getUpstream();
+  if (carriers.empty()) {
+    rewriter.modifyOpInPlace(op,
+                             [&] { op.getUpstreamMutable().assign(original); });
+  } else {
+    // The carriers take their port unchanged, so they move onto the fused
+    // adaptor's upstream and carry its type
+    Operation *earliest = carriers.back();
+    rewriter.modifyOpInPlace(earliest, [&] {
+      TypeSwitch<Operation *>(earliest).Case<CutOp, CDCOp>(
+          [&](auto carrier) { carrier.getUpstreamMutable().assign(original); });
+    });
+    for (Operation *carrier : carriers)
+      rewriter.modifyOpInPlace(
+          carrier, [&] { carrier->getResult(0).setType(original.getType()); });
+  }
+  rewriter.eraseOp(prev);
+
+  // A pair restoring the original port type fuses into an adaptor that does
+  // nothing
+  if (op.getUpstream().getType() == op.getDownstream().getType())
+    rewriter.replaceOp(op, op.getUpstream());
+  return success();
+}
+
 namespace {
+/// Fuse every adaptor with the like adaptor driving it.
+template <typename Op>
+struct FuseAdaptors : OpRewritePattern<Op> {
+  using OpRewritePattern<Op>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(Op op,
+                                PatternRewriter &rewriter) const override {
+    return fuseAdaptors(op, rewriter);
+  }
+};
+
 struct OptimizeAXI4NetworksPass
-    : public circt::axi4::impl::OptimizeAXI4NetworksBase<OptimizeAXI4NetworksPass> {
+    : public circt::axi4::impl::OptimizeAXI4NetworksBase<
+          OptimizeAXI4NetworksPass> {
   void runOnOperation() override;
 };
 } // namespace
@@ -132,4 +205,23 @@ void OptimizeAXI4NetworksPass::runOnOperation() {
             [](XbarOp xbar) { pruneRouting(xbar, xbar.getUpstream()); })
         .Case<DemuxOp>(
             [](DemuxOp demux) { pruneRouting(demux, demux.getUpstream()); });
+
+  MLIRContext &context = getContext();
+  RewritePatternSet patterns(&context);
+  patterns.add<FuseAdaptors<DWConverterOp>, FuseAdaptors<IWConverterOp>,
+               FuseAdaptors<BurstSplitterOp>, FuseAdaptors<BurstUnwrapperOp>>(
+      &context);
+  // Rewrite only the AXI4 ops, leaving the logic around them untouched
+  Dialect *dialect = context.getLoadedDialect<AXI4Dialect>();
+  SmallVector<Operation *> ops;
+  getOperation()->walk([&](Operation *op) {
+    if (op->getDialect() == dialect)
+      ops.push_back(op);
+  });
+  GreedyRewriteConfig config;
+  config.setStrictness(GreedyRewriteStrictness::ExistingAndNewOps);
+  if (failed(applyOpPatternsGreedily(ops, std::move(patterns), config))) {
+    getOperation().emitError("AXI4 network optimization did not converge");
+    signalPassFailure();
+  }
 }
