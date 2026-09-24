@@ -675,9 +675,8 @@ void NetworkLowering::emit() {
     OpBuilder builder(xbar);
     auto axi4Xbar = XbarOp::create(builder, xbar.getLoc(), results,
                                    xbar.getClock(), xbar.getReset(), upstream);
-    for (NamedAttribute attr : xbar->getDiscardableAttrs())
-      if (attr.getName().strref().starts_with(kPulpConfigPrefix))
-        axi4Xbar->setAttr(attr.getName(), attr.getValue());
+    for (NamedAttribute attr : getPulpConfig(xbar))
+      axi4Xbar->setAttr(attr.getName(), attr.getValue());
     for (auto [connection, result] :
          llvm::zip(downstream, axi4Xbar.getDownstream()))
       drive(connection, result);

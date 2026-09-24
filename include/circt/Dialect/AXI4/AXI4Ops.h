@@ -44,6 +44,19 @@ bool isReachable(PortType downstream, mlir::ValueRange upstream);
 /// is mapped onto.
 inline constexpr llvm::StringLiteral kPulpConfigPrefix("PULP_CONFIG_");
 
+/// The attributes of `op` configuring the PULP IP it is mapped onto.
+mlir::DictionaryAttr getPulpConfig(mlir::Operation *op);
+
+/// The PULP config `prev` sets that `op` does not, or failure if the two set a
+/// parameter to different values.
+mlir::FailureOr<llvm::SmallVector<mlir::NamedAttribute>>
+pulpConfigToMerge(mlir::Operation *op, mlir::Operation *prev);
+
+/// Add `config`, taken from the op `op` is fused with, to `op`.
+void mergePulpConfig(mlir::Operation *op,
+                     llvm::ArrayRef<mlir::NamedAttribute> config,
+                     mlir::PatternRewriter &rewriter);
+
 } // namespace axi4
 } // namespace circt
 

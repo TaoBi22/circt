@@ -73,6 +73,30 @@ hw.module @ChainedDataWidthConverters(in %clk : !seq.clock, in %rst_ni : i1,
   axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes 4 concurrent_reads 4 : !thinner
 }
 
+// A fused adaptor takes the PULP config of both adaptors
+// CHECK-LABEL: hw.module @ChainedPulpConfig
+hw.module @ChainedPulpConfig(in %clk : !seq.clock, in %rst_ni : i1,
+                             in %upstream : !port) {
+  // CHECK-NEXT: %[[FUSED:.+]] = axi4.data_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_A = 1 : i32, PULP_CONFIG_B = 2 : i32}
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[FUSED]]
+  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_A = 1 : i32} : (!port) -> !thin
+  %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow {PULP_CONFIG_B = 2 : i32} : (!thin) -> !thinner
+  axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes 4 concurrent_reads 4 : !thinner
+}
+
+// Adaptors setting a PULP parameter to different values are not fused, so
+// neither value is lost
+// CHECK-LABEL: hw.module @ChainedPulpConfigConflict
+hw.module @ChainedPulpConfigConflict(in %clk : !seq.clock, in %rst_ni : i1,
+                                     in %upstream : !port) {
+  // CHECK-NEXT: %[[NARROW:.+]] = axi4.data_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_A = 1 : i32}
+  // CHECK-NEXT: %[[NARROWER:.+]] = axi4.data_width_converter %clk, %rst_ni, %[[NARROW]] {PULP_CONFIG_A = 2 : i32}
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[NARROWER]]
+  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_A = 1 : i32} : (!port) -> !thin
+  %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow {PULP_CONFIG_A = 2 : i32} : (!thin) -> !thinner
+  axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes 4 concurrent_reads 4 : !thinner
+}
+
 // CHECK-LABEL: hw.module @NarrowThenWidenData
 hw.module @NarrowThenWidenData(in %clk : !seq.clock, in %rst_ni : i1,
                                in %upstream : !port) {
@@ -232,6 +256,37 @@ hw.module @SingleSubordinateXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+    : (!mgr_lo, !mgr_hi) -> (!sub_both)
+  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes 4 concurrent_reads 4 : !sub_both
+}
+
+// A crossbar with PULP config is configuring axi_xbar, so it does not collapse
+// CHECK-LABEL: hw.module @ConfiguredOneToOneXbar
+hw.module @ConfiguredOneToOneXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: axi4.xbar %clk, %rst_ni mgrs %{{.+}} {PULP_CONFIG_PipelineStages = 1 : i32}
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr {PULP_CONFIG_PipelineStages = 1 : i32} : (!mgr_lo) -> (!sub_lo_untagged)
+  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes 4 concurrent_reads 4 : !sub_lo_untagged
+}
+
+// CHECK-LABEL: hw.module @ConfiguredSingleManagerXbar
+hw.module @ConfiguredSingleManagerXbar(in %clk : !seq.clock, in %rst_ni : i1,
+                                       in %upstream : !demuxed) {
+  // CHECK-NEXT: axi4.xbar %clk, %rst_ni mgrs %upstream {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
+  // CHECK-NOT: axi4.demux
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %upstream {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
+    : (!demuxed) -> (!mgr_lo, !mgr_hi)
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !mgr_hi
+}
+
+// CHECK-LABEL: hw.module @ConfiguredSingleSubordinateXbar
+hw.module @ConfiguredSingleSubordinateXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: axi4.xbar %clk, %rst_ni mgrs %{{.+}}, %{{.+}} {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
+  // CHECK-NOT: axi4.mux
+  %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
+  %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
     : (!mgr_lo, !mgr_hi) -> (!sub_both)
   axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes 4 concurrent_reads 4 : !sub_both
 }

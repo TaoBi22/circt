@@ -42,9 +42,6 @@ inline unsigned pulpUserWidth(axi4::PortType port) {
   return std::max(port.getUserWidth(), 1u);
 }
 
-/// The attributes of `op` configuring the PULP IP it is mapped onto.
-mlir::DictionaryAttr getPulpConfig(mlir::Operation *op);
-
 /// Report the components PULP's AXI library cannot express.
 mlir::LogicalResult checkPulpSupported(mlir::Operation *op);
 
