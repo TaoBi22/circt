@@ -280,14 +280,6 @@ struct PulpParam {
 };
 } // namespace
 
-DictionaryAttr circt::AXI4ToHW::getPulpConfig(Operation *op) {
-  SmallVector<NamedAttribute> config;
-  for (NamedAttribute attr : op->getDiscardableAttrs())
-    if (attr.getName().strref().starts_with(kPulpConfigPrefix))
-      config.push_back(attr);
-  return DictionaryAttr::get(op->getContext(), config);
-}
-
 /// The parameter a `PULP_CONFIG_` attribute names.
 static StringRef pulpConfigName(NamedAttribute attr) {
   return attr.getName().strref().drop_front(kPulpConfigPrefix.size());

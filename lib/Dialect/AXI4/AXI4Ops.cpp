@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "circt/Dialect/AXI4/AXI4Ops.h"
+#include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/MathExtras.h"
@@ -102,6 +103,37 @@ bool axi4::isReachable(PortType downstream, ValueRange upstream) {
     return cast<PortType>(value.getType())
         .getWindows()
         .overlaps(downstream.getWindows());
+  });
+}
+
+DictionaryAttr axi4::getPulpConfig(Operation *op) {
+  SmallVector<NamedAttribute> config;
+  for (NamedAttribute attr : op->getDiscardableAttrs())
+    if (attr.getName().strref().starts_with(kPulpConfigPrefix))
+      config.push_back(attr);
+  return DictionaryAttr::get(op->getContext(), config);
+}
+
+FailureOr<SmallVector<NamedAttribute>>
+axi4::pulpConfigToMerge(Operation *op, Operation *prev) {
+  SmallVector<NamedAttribute> missing;
+  for (NamedAttribute attr : getPulpConfig(prev)) {
+    Attribute existing = op->getDiscardableAttr(attr.getName());
+    if (!existing)
+      missing.push_back(attr);
+    else if (existing != attr.getValue())
+      return failure();
+  }
+  return missing;
+}
+
+void axi4::mergePulpConfig(Operation *op, ArrayRef<NamedAttribute> config,
+                           PatternRewriter &rewriter) {
+  if (config.empty())
+    return;
+  rewriter.modifyOpInPlace(op, [&] {
+    for (NamedAttribute attr : config)
+      op->setAttr(attr.getName(), attr.getValue());
   });
 }
 

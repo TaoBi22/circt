@@ -117,34 +117,6 @@ static void pruneRouting(Op op, ValueRange upstream) {
 // Adaptor fusion
 //===----------------------------------------------------------------------===//
 
-/// The PULP config `prev` sets that `op` does not, or failure if the two set a
-/// parameter to different values.
-static FailureOr<SmallVector<NamedAttribute>>
-pulpConfigToMerge(Operation *op, Operation *prev) {
-  SmallVector<NamedAttribute> missing;
-  for (NamedAttribute attr : prev->getDiscardableAttrs()) {
-    if (!attr.getName().strref().starts_with(kPulpConfigPrefix))
-      continue;
-    Attribute existing = op->getDiscardableAttr(attr.getName());
-    if (!existing)
-      missing.push_back(attr);
-    else if (existing != attr.getValue())
-      return failure();
-  }
-  return missing;
-}
-
-/// Add `config`, taken from the op `op` is fused with, to `op`.
-static void mergePulpConfig(Operation *op, ArrayRef<NamedAttribute> config,
-                            PatternRewriter &rewriter) {
-  if (config.empty())
-    return;
-  rewriter.modifyOpInPlace(op, [&] {
-    for (NamedAttribute attr : config)
-      op->setAttr(attr.getName(), attr.getValue());
-  });
-}
-
 /// Search upstream from `port` for an adaptor of the same kind, stepping over
 /// the cuts and crossings on the way and collecting them into `carriers`,
 /// nearest `port` first. Null if anything else is reached first.

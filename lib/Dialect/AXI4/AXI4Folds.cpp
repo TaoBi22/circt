@@ -56,8 +56,14 @@ fuseAdaptorPair(Op op, PatternRewriter &rewriter,
              cast<PortType>(op.getDownstream().getType())))
     return rewriter.notifyMatchFailure(op, "conversions do not compose");
 
+  FailureOr<SmallVector<NamedAttribute>> config = pulpConfigToMerge(op, prev);
+  if (failed(config))
+    return rewriter.notifyMatchFailure(
+        op, "adaptors set a PULP parameter to different values");
+
   rewriter.modifyOpInPlace(
       op, [&] { op.getUpstreamMutable().assign(prev.getUpstream()); });
+  mergePulpConfig(op, *config, rewriter);
   // Nothing here is `Pure`, so the adaptor left behind will not be dropped for
   // us.
   rewriter.eraseOp(prev);
@@ -188,6 +194,11 @@ LogicalResult BurstUnwrapperOp::canonicalize(BurstUnwrapperOp op,
 LogicalResult XbarOp::canonicalize(XbarOp op, PatternRewriter &rewriter) {
   if (succeeded(dropDeadDownstream(op, op.getUpstream(), rewriter)))
     return success();
+
+  // The config is for axi_xbar, so it would not configure what the crossbar
+  // collapses into
+  if (!getPulpConfig(op).empty())
+    return rewriter.notifyMatchFailure(op, "crossbar has PULP config");
 
   ValueRange upstream = op.getUpstream();
   ValueRange downstream = op.getDownstream();
