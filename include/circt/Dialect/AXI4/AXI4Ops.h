@@ -40,6 +40,10 @@ public:
 /// Whether any of the `upstream` manager ports can address `downstream`.
 bool isReachable(PortType downstream, mlir::ValueRange upstream);
 
+/// The prefix of the attributes naming a parameter of the PULP IP a component
+/// is mapped onto.
+inline constexpr llvm::StringLiteral kPulpConfigPrefix("PULP_CONFIG_");
+
 } // namespace axi4
 } // namespace circt
 
