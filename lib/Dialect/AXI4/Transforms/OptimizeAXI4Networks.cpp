@@ -117,6 +117,34 @@ static void pruneRouting(Op op, ValueRange upstream) {
 // Adaptor fusion
 //===----------------------------------------------------------------------===//
 
+/// The PULP config `prev` sets that `op` does not, or failure if the two set a
+/// parameter to different values.
+static FailureOr<SmallVector<NamedAttribute>>
+pulpConfigToMerge(Operation *op, Operation *prev) {
+  SmallVector<NamedAttribute> missing;
+  for (NamedAttribute attr : prev->getDiscardableAttrs()) {
+    if (!attr.getName().strref().starts_with(kPulpConfigPrefix))
+      continue;
+    Attribute existing = op->getDiscardableAttr(attr.getName());
+    if (!existing)
+      missing.push_back(attr);
+    else if (existing != attr.getValue())
+      return failure();
+  }
+  return missing;
+}
+
+/// Add `config`, taken from the op `op` is fused with, to `op`.
+static void mergePulpConfig(Operation *op, ArrayRef<NamedAttribute> config,
+                            PatternRewriter &rewriter) {
+  if (config.empty())
+    return;
+  rewriter.modifyOpInPlace(op, [&] {
+    for (NamedAttribute attr : config)
+      op->setAttr(attr.getName(), attr.getValue());
+  });
+}
+
 /// Search upstream from `port` for an adaptor of the same kind, stepping over
 /// the cuts and crossings on the way and collecting them into `carriers`,
 /// nearest `port` first. Null if anything else is reached first.
@@ -146,6 +174,10 @@ static LogicalResult fuseAdaptors(Op op, PatternRewriter &rewriter) {
   Op prev = findAdaptorThrough<Op>(op.getUpstream(), carriers);
   if (!prev)
     return rewriter.notifyMatchFailure(op, "no like adaptor upstream");
+  FailureOr<SmallVector<NamedAttribute>> config = pulpConfigToMerge(op, prev);
+  if (failed(config))
+    return rewriter.notifyMatchFailure(
+        op, "adaptors set a PULP parameter to different values");
 
   Value original = prev.getUpstream();
   if (carriers.empty()) {
@@ -163,6 +195,7 @@ static LogicalResult fuseAdaptors(Op op, PatternRewriter &rewriter) {
       rewriter.modifyOpInPlace(
           carrier, [&] { carrier->getResult(0).setType(original.getType()); });
   }
+  mergePulpConfig(op, *config, rewriter);
   rewriter.eraseOp(prev);
 
   // A pair restoring the original port type fuses into an adaptor that does
@@ -196,11 +229,16 @@ struct FuseCrossings : OpRewritePattern<CDCOp> {
     auto prev = op.getUpstream().getDefiningOp<CDCOp>();
     if (!prev)
       return rewriter.notifyMatchFailure(op, "upstream is not a crossing");
+    FailureOr<SmallVector<NamedAttribute>> config = pulpConfigToMerge(op, prev);
+    if (failed(config))
+      return rewriter.notifyMatchFailure(
+          op, "crossings set a PULP parameter to different values");
 
     rewriter.modifyOpInPlace(op, [&] {
       op.getUpstreamMutable().assign(prev.getUpstream());
       op.getUpstreamClockMutable().assign(prev.getUpstreamClock());
     });
+    mergePulpConfig(op, *config, rewriter);
     rewriter.eraseOp(prev);
 
     // A chain ending in the domain it started in crosses nothing

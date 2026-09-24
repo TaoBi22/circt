@@ -191,6 +191,54 @@ hw.module @CrossingsAcrossCut(in %aclk : !seq.clock, in %bclk : !seq.clock,
     concurrent_writes 4 concurrent_reads 4 : !mgr_lo
 }
 
+!mid_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 3, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// A fused adaptor takes the PULP config of both adaptors
+// CHECK-LABEL: hw.module @FusePulpConfig
+hw.module @FusePulpConfig(in %clk : !seq.clock, in %rst_ni : i1,
+                          in %upstream : !mgr_lo) {
+  // CHECK-NEXT: %[[IW:.+]] = axi4.id_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_AxiMstPortMaxUniqIds = 2 : i32, PULP_CONFIG_AxiSlvPortMaxTxns = 8 : i32}
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[IW]]
+  %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream
+    {PULP_CONFIG_AxiSlvPortMaxTxns = 8 : i32} : (!mgr_lo) -> !narrow_ids
+  %mid = axi4.id_width_converter %clk, %rst_ni, %narrow
+    {PULP_CONFIG_AxiMstPortMaxUniqIds = 2 : i32} : (!narrow_ids) -> !mid_ids
+  axi4.abstract_subordinate %clk, %rst_ni, %mid
+    concurrent_writes 4 concurrent_reads 4 : !mid_ids
+}
+
+// A fused crossing takes the PULP config of both crossings
+// CHECK-LABEL: hw.module @FuseCrossingPulpConfig
+hw.module @FuseCrossingPulpConfig(in %aclk : !seq.clock, in %bclk : !seq.clock,
+                                  in %cclk : !seq.clock, in %rst_ni : i1,
+                                  in %upstream : !mgr_lo) {
+  // CHECK-NEXT: %[[CDC:.+]] = axi4.cdc from %aclk to %cclk, %rst_ni, %upstream {PULP_CONFIG_LogDepth = 2 : i32, PULP_CONFIG_SyncStages = 3 : i32}
+  // CHECK-NEXT: axi4.abstract_subordinate %cclk, %rst_ni, %[[CDC]]
+  %ab = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream
+    {PULP_CONFIG_LogDepth = 2 : i32} : !mgr_lo
+  %bc = axi4.cdc from %bclk to %cclk, %rst_ni, %ab
+    {PULP_CONFIG_SyncStages = 3 : i32} : !mgr_lo
+  axi4.abstract_subordinate %cclk, %rst_ni, %bc
+    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+}
+
+// Crossings setting a PULP parameter to different values are not fused, so
+// neither value is lost
+// CHECK-LABEL: hw.module @PulpConfigConflict
+hw.module @PulpConfigConflict(in %aclk : !seq.clock, in %bclk : !seq.clock,
+                              in %cclk : !seq.clock, in %rst_ni : i1,
+                              in %upstream : !mgr_lo) {
+  // CHECK-NEXT: %[[AB:.+]] = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream {PULP_CONFIG_LogDepth = 2 : i32}
+  // CHECK-NEXT: %[[BC:.+]] = axi4.cdc from %bclk to %cclk, %rst_ni, %[[AB]] {PULP_CONFIG_LogDepth = 3 : i32}
+  // CHECK-NEXT: axi4.abstract_subordinate %cclk, %rst_ni, %[[BC]]
+  %ab = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream
+    {PULP_CONFIG_LogDepth = 2 : i32} : !mgr_lo
+  %bc = axi4.cdc from %bclk to %cclk, %rst_ni, %ab
+    {PULP_CONFIG_LogDepth = 3 : i32} : !mgr_lo
+  axi4.abstract_subordinate %cclk, %rst_ni, %bc
+    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+}
+
 // Logic outside the network is left alone, dead or not
 // CHECK-LABEL: hw.module @UnrelatedLogic
 hw.module @UnrelatedLogic(in %a : i8, out o : i8) {
