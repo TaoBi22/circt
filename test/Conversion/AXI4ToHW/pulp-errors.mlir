@@ -277,3 +277,46 @@ hw.module @ToMemWrappingBurst(in %clk : !seq.clock, in %rst_ni : i1,
   %valid, %addr, %wdata, %strb, %we = axi4.to_mem %clk, %rst_ni, %port read %rvalid, %rdata : !wrapping
   hw.output %valid, %addr, %wdata, %strb, %we : i1, i32, i64, i8, i1
 }
+
+// -----
+
+// The wrapper's typedefs are built from the ports, so config cannot change a
+// parameter derived from them
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @ConfigDerived(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
+  // expected-error @below {{'axi4.cut' op cannot set PULP parameter 'axi_req_t' through 'PULP_CONFIG_axi_req_t', because the wrapper derives it from the ports}}
+  %cut = axi4.cut %clk, %rst_ni, %port {PULP_CONFIG_axi_req_t = "logic"} : !port
+  hw.output %cut : !port
+}
+
+// -----
+
+// Nor can it change a field of the crossbar's Cfg derived from them
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @ConfigDerivedCfg(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
+  // expected-error @below {{'axi4.xbar' op cannot set PULP parameter 'AxiAddrWidth' through 'PULP_CONFIG_AxiAddrWidth', because the wrapper derives it from the ports}}
+  %s = axi4.xbar %clk, %rst_ni mgrs %port {PULP_CONFIG_AxiAddrWidth = 64 : i32} : (!port) -> (!port)
+  hw.output %s : !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @ConfigValue(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
+  // expected-error @below {{'axi4.cut' op has 'PULP_CONFIG_Bypass', which must be an integer or a string to set a PULP parameter}}
+  %cut = axi4.cut %clk, %rst_ni, %port {PULP_CONFIG_Bypass = [true]} : !port
+  hw.output %cut : !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @ConfigNoName(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
+  // expected-error @below {{'axi4.cut' op has a 'PULP_CONFIG_' attribute with no parameter name after the prefix}}
+  %cut = axi4.cut %clk, %rst_ni, %port {PULP_CONFIG_ = 1 : i32} : !port
+  hw.output %cut : !port
+}

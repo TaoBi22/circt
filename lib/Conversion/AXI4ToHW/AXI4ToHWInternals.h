@@ -42,13 +42,21 @@ inline unsigned pulpUserWidth(axi4::PortType port) {
   return std::max(port.getUserWidth(), 1u);
 }
 
+/// The prefix of the attributes naming a parameter of the PULP IP a component
+/// is mapped onto.
+inline constexpr llvm::StringLiteral kPulpConfigPrefix("PULP_CONFIG_");
+
+/// The attributes of `op` configuring the PULP IP it is mapped onto.
+mlir::DictionaryAttr getPulpConfig(mlir::Operation *op);
+
 /// Report the components PULP's AXI library cannot express.
 mlir::LogicalResult checkPulpSupported(mlir::Operation *op);
 
 /// Attach a PULP wrapper implementing `op` to `shape`, the external module it
 /// is lowered to.
-void attachPulpSource(mlir::ImplicitLocOpBuilder &b, hw::HWModuleExternOp shape,
-                      mlir::Operation *op);
+mlir::LogicalResult attachPulpSource(mlir::ImplicitLocOpBuilder &b,
+                                     hw::HWModuleExternOp shape,
+                                     mlir::Operation *op);
 
 } // namespace AXI4ToHW
 } // namespace circt
