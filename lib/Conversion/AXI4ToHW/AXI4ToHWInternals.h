@@ -42,10 +42,6 @@ inline unsigned pulpUserWidth(axi4::PortType port) {
   return std::max(port.getUserWidth(), 1u);
 }
 
-/// The prefix of the attributes naming a parameter of the PULP IP a component
-/// is mapped onto.
-inline constexpr llvm::StringLiteral kPulpConfigPrefix("PULP_CONFIG_");
-
 /// The attributes of `op` configuring the PULP IP it is mapped onto.
 mlir::DictionaryAttr getPulpConfig(mlir::Operation *op);
 

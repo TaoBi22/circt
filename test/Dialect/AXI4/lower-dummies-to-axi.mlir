@@ -153,6 +153,22 @@ hw.module @UnequalManagerIds(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
+// A crossbar's PULP config is kept on the crossbar it lowers to, but not put on
+// the converters inserted around it
+// CHECK-LABEL: hw.module @XbarPulpConfig(
+hw.module @XbarPulpConfig(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
+  // CHECK: axi4.id_width_converter %clk, %rst_ni, %debug :
+  // CHECK: axi4.xbar %clk, %rst_ni mgrs %core, %{{.+}} {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"} :
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64 {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY", other = 1 : i32}
+  %sub_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %core_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %debug_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
 // A crossbar widens IDs to tag which manager a request came from, so reaching a
 // subordinate that tags with fewer bits narrows them again
 // CHECK-LABEL: hw.module @NarrowSubordinateBelowXbar(
