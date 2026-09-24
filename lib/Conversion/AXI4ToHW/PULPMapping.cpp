@@ -269,6 +269,102 @@ static uint32_t maxOutstanding(ValueRange ports) {
   return most;
 }
 
+namespace {
+/// A parameter a wrapper sets on the PULP IP it instantiates.
+struct PulpParam {
+  StringRef name;
+  std::string value;
+  /// Whether the wrapper derives it from the ports, so that changing it would
+  /// break the wrapper.
+  bool derived = true;
+};
+} // namespace
+
+DictionaryAttr circt::AXI4ToHW::getPulpConfig(Operation *op) {
+  SmallVector<NamedAttribute> config;
+  for (NamedAttribute attr : op->getDiscardableAttrs())
+    if (attr.getName().strref().starts_with(kPulpConfigPrefix))
+      config.push_back(attr);
+  return DictionaryAttr::get(op->getContext(), config);
+}
+
+/// The parameter a `PULP_CONFIG_` attribute names.
+static StringRef pulpConfigName(NamedAttribute attr) {
+  return attr.getName().strref().drop_front(kPulpConfigPrefix.size());
+}
+
+/// Apply `config`, a list of `op`'s `PULP_CONFIG_` attributes, to `params`.
+/// Each one overrides the parameter it names, or is added if there is none. An
+/// integer is emitted in decimal, or as a bit if it is an `i1`, and a string
+/// verbatim.
+static LogicalResult applyPulpConfig(Operation *op,
+                                     ArrayRef<NamedAttribute> config,
+                                     SmallVectorImpl<PulpParam> &params) {
+  for (NamedAttribute attr : config) {
+    if (attr.getName() == kPulpConfigPrefix)
+      return op->emitOpError()
+             << "has a '" << kPulpConfigPrefix
+             << "' attribute with no parameter name after the prefix";
+    StringRef name = pulpConfigName(attr);
+
+    std::string value;
+    if (auto string = dyn_cast<StringAttr>(attr.getValue()))
+      value = string.str();
+    else if (auto integer = dyn_cast<IntegerAttr>(attr.getValue()))
+      value = integer.getType().isInteger(1)
+                  ? (integer.getValue().isOne() ? "1'b1" : "1'b0")
+                  : llvm::toString(integer.getValue(), 10,
+                                   !integer.getType().isUnsignedInteger());
+    else
+      return op->emitOpError()
+             << "has '" << attr.getName().strref()
+             << "', which must be an integer or a string to set a PULP "
+                "parameter";
+
+    auto *param = llvm::find_if(
+        params, [&](const PulpParam &param) { return param.name == name; });
+    if (param == params.end()) {
+      params.push_back({name, std::move(value), /*derived=*/false});
+      continue;
+    }
+    if (param->derived)
+      return op->emitOpError()
+             << "cannot set PULP parameter '" << name << "' through '"
+             << attr.getName().strref()
+             << "', because the wrapper derives it from the ports";
+    param->value = std::move(value);
+  }
+  return success();
+}
+
+/// Emit the start of an instance of PULP's `ip`, named `instance`: the
+/// parameter list, with `config` applied, up to the opening of the port list.
+static LogicalResult emitPulpInstance(llvm::raw_ostream &os, Operation *op,
+                                      ArrayRef<NamedAttribute> config,
+                                      StringRef ip, StringRef instance,
+                                      SmallVector<PulpParam> params) {
+  if (failed(applyPulpConfig(op, config, params)))
+    return failure();
+  size_t width = 0;
+  for (const PulpParam &param : params)
+    width = std::max(width, param.name.size());
+  os << "  " << ip << " #(\n";
+  for (auto [index, param] : llvm::enumerate(params))
+    os << "    ." << llvm::left_justify(param.name, width) << " ("
+       << param.value << ")" << (index + 1 == params.size() ? "\n" : ",\n");
+  os << "  ) " << instance << " (\n";
+  return success();
+}
+
+/// Emit the start of an instance of PULP's `ip`, named `instance`, with all of
+/// `op`'s config applied.
+static LogicalResult emitPulpInstance(llvm::raw_ostream &os, Operation *op,
+                                      StringRef ip, StringRef instance,
+                                      SmallVector<PulpParam> params) {
+  return emitPulpInstance(os, op, getPulpConfig(op).getValue(), ip, instance,
+                          std::move(params));
+}
+
 /// Emit the body of a wrapper around a PULP module whose upstream
 /// and downstream faces carry different ID widths. Leaves `os` inside the
 /// module.
@@ -347,7 +443,7 @@ static void emitDualIdWrapper(llvm::raw_ostream &os, StringRef name,
 
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_xbar, with the
 /// ports `xbar`'s external module lowers to.
-static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
+static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar) {
   auto upstream = cast<PortType>(xbar.getUpstream().front().getType());
   auto downstream = cast<PortType>(xbar.getDownstream().front().getType());
   unsigned numUpstream = xbar.getUpstream().size();
@@ -365,45 +461,68 @@ static std::string pulpXbarSource(StringRef name, XbarOp xbar) {
   SmallVector<std::string> rules =
       pulpAddrMapRules(xbar.getDownstream(), addrWidth);
 
+  // The fields of axi_pkg::xbar_cfg_t, which config naming them sets in Cfg
+  // rather than on axi_xbar itself.
+  auto isCfgField = [](StringRef name) {
+    return llvm::is_contained({"NoSlvPorts", "NoMstPorts", "MaxMstTrans",
+                               "MaxSlvTrans", "FallThrough", "LatencyMode",
+                               "PipelineStages", "AxiIdWidthSlvPorts",
+                               "AxiIdUsedSlvPorts", "UniqueIds", "AxiAddrWidth",
+                               "AxiDataWidth", "NoAddrRules"},
+                              name);
+  };
+  SmallVector<PulpParam> cfg = {
+      {"NoSlvPorts", Twine(numUpstream).str()},
+      {"NoMstPorts", Twine(numDownstream).str()},
+      {"MaxSlvTrans", Twine(maxOutstanding(xbar.getUpstream())).str(),
+       /*derived=*/false},
+      {"MaxMstTrans", Twine(maxOutstanding(xbar.getDownstream())).str(),
+       /*derived=*/false},
+      {"FallThrough", "1'b0", /*derived=*/false},
+      {"LatencyMode", "axi_pkg::CUT_ALL_AX", /*derived=*/false},
+      {"AxiIdWidthSlvPorts", Twine(upstreamId).str()},
+      {"AxiIdUsedSlvPorts", Twine(upstreamId).str(), /*derived=*/false},
+      {"UniqueIds", "1'b0", /*derived=*/false},
+      {"AxiAddrWidth", Twine(addrWidth).str()},
+      {"AxiDataWidth", Twine(upstream.getDataWidth()).str()},
+      {"NoAddrRules", Twine(rules.size()).str()}};
+  SmallVector<NamedAttribute> cfgConfig, xbarConfig;
+  for (NamedAttribute attr : getPulpConfig(xbar))
+    (isCfgField(pulpConfigName(attr)) ? cfgConfig : xbarConfig).push_back(attr);
+  if (failed(applyPulpConfig(xbar, cfgConfig, cfg)))
+    return failure();
+
   // `default: '0` covers the Cfg fields later PULP versions added.
+  size_t width = 0;
+  for (const PulpParam &field : cfg)
+    width = std::max(width, field.name.size() + 1);
   os << "  localparam axi_pkg::xbar_cfg_t Cfg = '{\n";
-  os << "    NoSlvPorts:         " << numUpstream << ",\n";
-  os << "    NoMstPorts:         " << numDownstream << ",\n";
-  os << "    MaxSlvTrans:        " << maxOutstanding(xbar.getUpstream())
-     << ",\n";
-  os << "    MaxMstTrans:        " << maxOutstanding(xbar.getDownstream())
-     << ",\n";
-  os << "    FallThrough:        1'b0,\n";
-  os << "    LatencyMode:        axi_pkg::CUT_ALL_AX,\n";
-  os << "    AxiIdWidthSlvPorts: " << upstreamId << ",\n";
-  os << "    AxiIdUsedSlvPorts:  " << upstreamId << ",\n";
-  os << "    UniqueIds:          1'b0,\n";
-  os << "    AxiAddrWidth:       " << addrWidth << ",\n";
-  os << "    AxiDataWidth:       " << upstream.getDataWidth() << ",\n";
-  os << "    NoAddrRules:        " << rules.size() << ",\n";
-  os << "    default:            '0\n";
+  for (const PulpParam &field : cfg)
+    os << "    " << llvm::left_justify((field.name + ":").str(), width) << " "
+       << field.value << ",\n";
+  os << "    " << llvm::left_justify("default:", width) << " '0\n";
   os << "  };\n";
   emitAddrMap(os, prefix, rules);
 
-  os << "  axi_xbar #(\n";
-  os << "    .Cfg           (Cfg),\n";
-  os << "    .ATOPs         (1'b1),\n";
-  os << "    .Connectivity  ('1),\n";
-  os << "    .slv_aw_chan_t (" << prefix << "slv_aw_chan_t),\n";
-  os << "    .mst_aw_chan_t (" << prefix << "mst_aw_chan_t),\n";
-  os << "    .w_chan_t      (" << prefix << "slv_w_chan_t),\n";
-  os << "    .slv_b_chan_t  (" << prefix << "slv_b_chan_t),\n";
-  os << "    .mst_b_chan_t  (" << prefix << "mst_b_chan_t),\n";
-  os << "    .slv_ar_chan_t (" << prefix << "slv_ar_chan_t),\n";
-  os << "    .mst_ar_chan_t (" << prefix << "mst_ar_chan_t),\n";
-  os << "    .slv_r_chan_t  (" << prefix << "slv_r_chan_t),\n";
-  os << "    .mst_r_chan_t  (" << prefix << "mst_r_chan_t),\n";
-  os << "    .slv_req_t     (" << prefix << "slv_req_t),\n";
-  os << "    .slv_resp_t    (" << prefix << "slv_resp_t),\n";
-  os << "    .mst_req_t     (" << prefix << "mst_req_t),\n";
-  os << "    .mst_resp_t    (" << prefix << "mst_resp_t),\n";
-  os << "    .rule_t        (rule_t)\n";
-  os << "  ) i_xbar (\n";
+  if (failed(emitPulpInstance(os, xbar, xbarConfig, "axi_xbar", "i_xbar",
+                              {{"Cfg", "Cfg"},
+                               {"ATOPs", "1'b1", /*derived=*/false},
+                               {"Connectivity", "'1", /*derived=*/false},
+                               {"slv_aw_chan_t", prefix + "slv_aw_chan_t"},
+                               {"mst_aw_chan_t", prefix + "mst_aw_chan_t"},
+                               {"w_chan_t", prefix + "slv_w_chan_t"},
+                               {"slv_b_chan_t", prefix + "slv_b_chan_t"},
+                               {"mst_b_chan_t", prefix + "mst_b_chan_t"},
+                               {"slv_ar_chan_t", prefix + "slv_ar_chan_t"},
+                               {"mst_ar_chan_t", prefix + "mst_ar_chan_t"},
+                               {"slv_r_chan_t", prefix + "slv_r_chan_t"},
+                               {"mst_r_chan_t", prefix + "mst_r_chan_t"},
+                               {"slv_req_t", prefix + "slv_req_t"},
+                               {"slv_resp_t", prefix + "slv_resp_t"},
+                               {"mst_req_t", prefix + "mst_req_t"},
+                               {"mst_resp_t", prefix + "mst_resp_t"},
+                               {"rule_t", "rule_t"}})))
+    return failure();
   os << "    .clk_i                 (clk_i),\n";
   os << "    .rst_ni                (rst_ni),\n";
   os << "    .test_i                (1'b0),\n";
@@ -518,23 +637,20 @@ static void emitSymmetricWrapper(llvm::raw_ostream &os, StringRef name,
 }
 
 /// The typedefs `emitSymmetricWrapper` names the channel and req/resp types
-/// after, as `axi_<kind>` parameter assignments for the IP instantiation.
-static std::string pulpChannelParams(StringRef prefix) {
-  std::string text;
-  llvm::raw_string_ostream os(text);
-  os << "    .aw_chan_t  (" << prefix << "aw_chan_t),\n";
-  os << "    .w_chan_t   (" << prefix << "w_chan_t),\n";
-  os << "    .b_chan_t   (" << prefix << "b_chan_t),\n";
-  os << "    .ar_chan_t  (" << prefix << "ar_chan_t),\n";
-  os << "    .r_chan_t   (" << prefix << "r_chan_t),\n";
-  os << "    .axi_req_t  (" << prefix << "req_t),\n";
-  os << "    .axi_resp_t (" << prefix << "resp_t)";
-  return text;
+/// after, as the parameters of the IP instantiation taking them.
+static SmallVector<PulpParam> pulpChannelParams(StringRef prefix) {
+  return {{"aw_chan_t", (prefix + "aw_chan_t").str()},
+          {"w_chan_t", (prefix + "w_chan_t").str()},
+          {"b_chan_t", (prefix + "b_chan_t").str()},
+          {"ar_chan_t", (prefix + "ar_chan_t").str()},
+          {"r_chan_t", (prefix + "r_chan_t").str()},
+          {"axi_req_t", (prefix + "req_t").str()},
+          {"axi_resp_t", (prefix + "resp_t").str()}};
 }
 
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_cut, with the
 /// ports `cut`'s external module lowers to.
-static std::string pulpCutSource(StringRef name, CutOp cut) {
+static FailureOr<std::string> pulpCutSource(StringRef name, CutOp cut) {
   std::string prefix = (name + "_").str();
   std::string text;
   llvm::raw_string_ostream os(text);
@@ -542,11 +658,11 @@ static std::string pulpCutSource(StringRef name, CutOp cut) {
                        "axi_cut",
                        {"  input  logic clk_i", "  input  logic rst_ni"});
 
-  // A cut registers both directions, so it never bypasses.
-  os << "  axi_cut #(\n";
-  os << "    .Bypass     (1'b0),\n";
-  os << pulpChannelParams(prefix) << "\n";
-  os << "  ) i_cut (\n";
+  // A cut registers both directions unless its config bypasses them.
+  SmallVector<PulpParam> params = {{"Bypass", "1'b0", /*derived=*/false}};
+  llvm::append_range(params, pulpChannelParams(prefix));
+  if (failed(emitPulpInstance(os, cut, "axi_cut", "i_cut", params)))
+    return failure();
   os << "    .clk_i      (clk_i),\n";
   os << "    .rst_ni     (rst_ni),\n";
   os << "    .slv_req_i  (slv_req),\n";
@@ -562,7 +678,7 @@ static std::string pulpCutSource(StringRef name, CutOp cut) {
 /// ports `cdc`'s external module lowers to. The upstream face is clocked by the
 /// source domain and the downstream face by the destination domain, both reset
 /// by the one reset the crossing may not cross.
-static std::string pulpCdcSource(StringRef name, CDCOp cdc) {
+static FailureOr<std::string> pulpCdcSource(StringRef name, CDCOp cdc) {
   std::string prefix = (name + "_").str();
   std::string text;
   llvm::raw_string_ostream os(text);
@@ -571,13 +687,13 @@ static std::string pulpCdcSource(StringRef name, CDCOp cdc) {
                        {"  input  logic src_clk_i", "  input  logic dst_clk_i",
                         "  input  logic rst_ni"});
 
-  // Depth and synchronizer stages are left at the axi_cdc defaults, since the
-  // op carries no knobs for them.
-  os << "  axi_cdc #(\n";
-  os << pulpChannelParams(prefix) << ",\n";
-  os << "    .LogDepth   (1),\n";
-  os << "    .SyncStages (2)\n";
-  os << "  ) i_cdc (\n";
+  // Depth and synchronizer stages are the axi_cdc defaults unless the config
+  // sets them.
+  SmallVector<PulpParam> params = pulpChannelParams(prefix);
+  params.push_back({"LogDepth", "1", /*derived=*/false});
+  params.push_back({"SyncStages", "2", /*derived=*/false});
+  if (failed(emitPulpInstance(os, cdc, "axi_cdc", "i_cdc", params)))
+    return failure();
   os << "    .src_clk_i  (src_clk_i),\n";
   os << "    .src_rst_ni (rst_ni),\n";
   os << "    .src_req_i  (slv_req),\n";
@@ -610,8 +726,8 @@ static LogicalResult checkPulpDWConverterSupported(DWConverterOp converter) {
 /// with the ports `converter`'s external module lowers to. The two faces differ
 /// in their data and strobe widths, so unlike a cut they need a channel and
 /// req/resp type each; the address, ID and user widths are shared.
-static std::string pulpDWConverterSource(StringRef name,
-                                         DWConverterOp converter) {
+static FailureOr<std::string> pulpDWConverterSource(StringRef name,
+                                                    DWConverterOp converter) {
   auto upstream = cast<PortType>(converter.getUpstream().getType());
   auto downstream = cast<PortType>(converter.getDownstream().getType());
   unsigned upstreamData = upstream.getDataWidth();
@@ -698,25 +814,27 @@ static std::string pulpDWConverterSource(StringRef name,
   // PULP keeps a tracker per read it is reassembling, on the upstream side, so
   // it needs one for every read the upstream port can have outstanding. A port
   // that never reads still needs one, since the trackers form an array.
-  os << "  axi_dw_converter #(\n";
-  os << "    .AxiMaxReads         ("
-     << std::max(upstream.getOutstandingReads(), 1u) << "),\n";
-  os << "    .AxiSlvPortDataWidth (" << upstreamData << "),\n";
-  os << "    .AxiMstPortDataWidth (" << downstreamData << "),\n";
-  os << "    .AxiAddrWidth        (" << upstream.getAddrWidth() << "),\n";
-  os << "    .AxiIdWidth          (" << idWidth << "),\n";
-  os << "    .aw_chan_t           (" << prefix << "aw_chan_t),\n";
-  os << "    .mst_w_chan_t        (" << prefix << "mst_w_chan_t),\n";
-  os << "    .slv_w_chan_t        (" << prefix << "slv_w_chan_t),\n";
-  os << "    .b_chan_t            (" << prefix << "b_chan_t),\n";
-  os << "    .ar_chan_t           (" << prefix << "ar_chan_t),\n";
-  os << "    .mst_r_chan_t        (" << prefix << "mst_r_chan_t),\n";
-  os << "    .slv_r_chan_t        (" << prefix << "slv_r_chan_t),\n";
-  os << "    .axi_mst_req_t       (" << prefix << "mst_req_t),\n";
-  os << "    .axi_mst_resp_t      (" << prefix << "mst_resp_t),\n";
-  os << "    .axi_slv_req_t       (" << prefix << "slv_req_t),\n";
-  os << "    .axi_slv_resp_t      (" << prefix << "slv_resp_t)\n";
-  os << "  ) i_dw_converter (\n";
+  if (failed(emitPulpInstance(
+          os, converter, "axi_dw_converter", "i_dw_converter",
+          {{"AxiMaxReads",
+            Twine(std::max(upstream.getOutstandingReads(), 1u)).str(),
+            /*derived=*/false},
+           {"AxiSlvPortDataWidth", Twine(upstreamData).str()},
+           {"AxiMstPortDataWidth", Twine(downstreamData).str()},
+           {"AxiAddrWidth", Twine(upstream.getAddrWidth()).str()},
+           {"AxiIdWidth", Twine(idWidth).str()},
+           {"aw_chan_t", prefix + "aw_chan_t"},
+           {"mst_w_chan_t", prefix + "mst_w_chan_t"},
+           {"slv_w_chan_t", prefix + "slv_w_chan_t"},
+           {"b_chan_t", prefix + "b_chan_t"},
+           {"ar_chan_t", prefix + "ar_chan_t"},
+           {"mst_r_chan_t", prefix + "mst_r_chan_t"},
+           {"slv_r_chan_t", prefix + "slv_r_chan_t"},
+           {"axi_mst_req_t", prefix + "mst_req_t"},
+           {"axi_mst_resp_t", prefix + "mst_resp_t"},
+           {"axi_slv_req_t", prefix + "slv_req_t"},
+           {"axi_slv_resp_t", prefix + "slv_resp_t"}})))
+    return failure();
   os << "    .clk_i      (clk_i),\n";
   os << "    .rst_ni     (rst_ni),\n";
   os << "    .slv_req_i  (slv_req),\n";
@@ -743,8 +861,8 @@ static LogicalResult checkPulpIWConverterSupported(IWConverterOp converter) {
 /// with the ports `converter`'s external module lowers to. PULP prepends zeroes
 /// to widen, and to narrow either remaps the IDs or, where they no longer fit,
 /// serialises them onto shared ones.
-static std::string pulpIWConverterSource(StringRef name,
-                                         IWConverterOp converter) {
+static FailureOr<std::string> pulpIWConverterSource(StringRef name,
+                                                    IWConverterOp converter) {
   auto upstream = cast<PortType>(converter.getUpstream().getType());
   auto downstream = cast<PortType>(converter.getDownstream().getType());
   std::string prefix = (name + "_").str();
@@ -758,26 +876,28 @@ static std::string pulpIWConverterSource(StringRef name,
   // outstanding count bounds the unique IDs in flight as well as the
   // transactions per ID. PULP sizes its tables from both, and needs at least
   // one of each.
-  unsigned slvTxns = std::max(maxOutstanding(converter.getUpstream()), 1u);
-  unsigned mstTxns = std::max(maxOutstanding(converter.getDownstream()), 1u);
+  std::string slvTxns =
+      Twine(std::max(maxOutstanding(converter.getUpstream()), 1u)).str();
+  std::string mstTxns =
+      Twine(std::max(maxOutstanding(converter.getDownstream()), 1u)).str();
 
-  os << "  axi_iw_converter #(\n";
-  os << "    .AxiSlvPortIdWidth      (" << upstream.getWriteIdWidth() << "),\n";
-  os << "    .AxiMstPortIdWidth      (" << downstream.getWriteIdWidth()
-     << "),\n";
-  os << "    .AxiSlvPortMaxUniqIds   (" << slvTxns << "),\n";
-  os << "    .AxiSlvPortMaxTxnsPerId (" << slvTxns << "),\n";
-  os << "    .AxiSlvPortMaxTxns      (" << slvTxns << "),\n";
-  os << "    .AxiMstPortMaxUniqIds   (" << mstTxns << "),\n";
-  os << "    .AxiMstPortMaxTxnsPerId (" << mstTxns << "),\n";
-  os << "    .AxiAddrWidth           (" << upstream.getAddrWidth() << "),\n";
-  os << "    .AxiDataWidth           (" << upstream.getDataWidth() << "),\n";
-  os << "    .AxiUserWidth           (" << pulpUserWidth(upstream) << "),\n";
-  os << "    .slv_req_t              (" << prefix << "slv_req_t),\n";
-  os << "    .slv_resp_t             (" << prefix << "slv_resp_t),\n";
-  os << "    .mst_req_t              (" << prefix << "mst_req_t),\n";
-  os << "    .mst_resp_t             (" << prefix << "mst_resp_t)\n";
-  os << "  ) i_iw_converter (\n";
+  if (failed(emitPulpInstance(
+          os, converter, "axi_iw_converter", "i_iw_converter",
+          {{"AxiSlvPortIdWidth", Twine(upstream.getWriteIdWidth()).str()},
+           {"AxiMstPortIdWidth", Twine(downstream.getWriteIdWidth()).str()},
+           {"AxiSlvPortMaxUniqIds", slvTxns, /*derived=*/false},
+           {"AxiSlvPortMaxTxnsPerId", slvTxns, /*derived=*/false},
+           {"AxiSlvPortMaxTxns", slvTxns, /*derived=*/false},
+           {"AxiMstPortMaxUniqIds", mstTxns, /*derived=*/false},
+           {"AxiMstPortMaxTxnsPerId", mstTxns, /*derived=*/false},
+           {"AxiAddrWidth", Twine(upstream.getAddrWidth()).str()},
+           {"AxiDataWidth", Twine(upstream.getDataWidth()).str()},
+           {"AxiUserWidth", Twine(pulpUserWidth(upstream)).str()},
+           {"slv_req_t", prefix + "slv_req_t"},
+           {"slv_resp_t", prefix + "slv_resp_t"},
+           {"mst_req_t", prefix + "mst_req_t"},
+           {"mst_resp_t", prefix + "mst_resp_t"}})))
+    return failure();
   os << "    .clk_i      (clk_i),\n";
   os << "    .rst_ni     (rst_ni),\n";
   os << "    .slv_req_i  (slv_req[0]),\n";
@@ -815,8 +935,8 @@ static LogicalResult checkPulpBurstSplitterSupported(BurstSplitterOp splitter) {
 
 /// A SystemVerilog wrapper named `name` instantiating PULP's
 /// axi_burst_splitter
-static std::string pulpBurstSplitterSource(StringRef name,
-                                           BurstSplitterOp splitter) {
+static FailureOr<std::string>
+pulpBurstSplitterSource(StringRef name, BurstSplitterOp splitter) {
   auto upstream = cast<PortType>(splitter.getUpstream().getType());
   // checkPulpBurstSplitterSupported has established one ID width.
   unsigned idWidth = upstream.getWriteIdWidth();
@@ -827,18 +947,21 @@ static std::string pulpBurstSplitterSource(StringRef name,
   emitSymmetricWrapper(os, name, upstream, "axi_burst_splitter",
                        {"  input  logic clk_i", "  input  logic rst_ni"});
 
-  os << "  axi_burst_splitter #(\n";
-  os << "    .MaxReadTxns  (" << std::max(upstream.getOutstandingReads(), 1u)
-     << "),\n";
-  os << "    .MaxWriteTxns (" << std::max(upstream.getOutstandingWrites(), 1u)
-     << "),\n";
-  os << "    .AddrWidth    (" << upstream.getAddrWidth() << "),\n";
-  os << "    .DataWidth    (" << upstream.getDataWidth() << "),\n";
-  os << "    .IdWidth      (" << idWidth << "),\n";
-  os << "    .UserWidth    (" << pulpUserWidth(upstream) << "),\n";
-  os << "    .axi_req_t    (" << prefix << "req_t),\n";
-  os << "    .axi_resp_t   (" << prefix << "resp_t)\n";
-  os << "  ) i_burst_splitter (\n";
+  if (failed(emitPulpInstance(
+          os, splitter, "axi_burst_splitter", "i_burst_splitter",
+          {{"MaxReadTxns",
+            Twine(std::max(upstream.getOutstandingReads(), 1u)).str(),
+            /*derived=*/false},
+           {"MaxWriteTxns",
+            Twine(std::max(upstream.getOutstandingWrites(), 1u)).str(),
+            /*derived=*/false},
+           {"AddrWidth", Twine(upstream.getAddrWidth()).str()},
+           {"DataWidth", Twine(upstream.getDataWidth()).str()},
+           {"IdWidth", Twine(idWidth).str()},
+           {"UserWidth", Twine(pulpUserWidth(upstream)).str()},
+           {"axi_req_t", prefix + "req_t"},
+           {"axi_resp_t", prefix + "resp_t"}})))
+    return failure();
   os << "    .clk_i      (clk_i),\n";
   os << "    .rst_ni     (rst_ni),\n";
   os << "    .slv_req_i  (slv_req),\n";
@@ -879,8 +1002,8 @@ checkPulpBurstUnwrapperSupported(BurstUnwrapperOp unwrapper) {
 }
 
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_burst_unwrap
-static std::string pulpBurstUnwrapperSource(StringRef name,
-                                            BurstUnwrapperOp unwrapper) {
+static FailureOr<std::string>
+pulpBurstUnwrapperSource(StringRef name, BurstUnwrapperOp unwrapper) {
   auto upstream = cast<PortType>(unwrapper.getUpstream().getType());
   // checkPulpBurstUnwrapperSupported has established one ID width.
   unsigned idWidth = upstream.getWriteIdWidth();
@@ -891,18 +1014,21 @@ static std::string pulpBurstUnwrapperSource(StringRef name,
   emitSymmetricWrapper(os, name, upstream, "axi_burst_unwrap",
                        {"  input  logic clk_i", "  input  logic rst_ni"});
 
-  os << "  axi_burst_unwrap #(\n";
-  os << "    .MaxReadTxns  (" << std::max(upstream.getOutstandingReads(), 1u)
-     << "),\n";
-  os << "    .MaxWriteTxns (" << std::max(upstream.getOutstandingWrites(), 1u)
-     << "),\n";
-  os << "    .AddrWidth    (" << upstream.getAddrWidth() << "),\n";
-  os << "    .DataWidth    (" << upstream.getDataWidth() << "),\n";
-  os << "    .IdWidth      (" << idWidth << "),\n";
-  os << "    .UserWidth    (" << pulpUserWidth(upstream) << "),\n";
-  os << "    .axi_req_t    (" << prefix << "req_t),\n";
-  os << "    .axi_resp_t   (" << prefix << "resp_t)\n";
-  os << "  ) i_burst_unwrap (\n";
+  if (failed(emitPulpInstance(
+          os, unwrapper, "axi_burst_unwrap", "i_burst_unwrap",
+          {{"MaxReadTxns",
+            Twine(std::max(upstream.getOutstandingReads(), 1u)).str(),
+            /*derived=*/false},
+           {"MaxWriteTxns",
+            Twine(std::max(upstream.getOutstandingWrites(), 1u)).str(),
+            /*derived=*/false},
+           {"AddrWidth", Twine(upstream.getAddrWidth()).str()},
+           {"DataWidth", Twine(upstream.getDataWidth()).str()},
+           {"IdWidth", Twine(idWidth).str()},
+           {"UserWidth", Twine(pulpUserWidth(upstream)).str()},
+           {"axi_req_t", prefix + "req_t"},
+           {"axi_resp_t", prefix + "resp_t"}})))
+    return failure();
   os << "    .clk_i      (clk_i),\n";
   os << "    .rst_ni     (rst_ni),\n";
   os << "    .slv_req_i  (slv_req),\n";
@@ -924,7 +1050,7 @@ static LogicalResult checkPulpDemuxSupported(DemuxOp demux) {
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_demux. PULP is
 /// told which downstream port to route a request to rather than deriving it, so
 /// the wrapper decodes the windows itself.
-static std::string pulpDemuxSource(StringRef name, DemuxOp demux) {
+static FailureOr<std::string> pulpDemuxSource(StringRef name, DemuxOp demux) {
   auto port = cast<PortType>(demux.getUpstream().getType());
   unsigned numDownstream = demux.getDownstream().size();
   unsigned addrWidth = port.getAddrWidth();
@@ -968,18 +1094,20 @@ static std::string pulpDemuxSource(StringRef name, DemuxOp demux) {
     os << "  );\n";
   }
 
-  // The spill registers are left at the axi_demux defaults, since the op
-  // carries no knobs for them.
-  os << "  axi_demux #(\n";
-  os << "    .AxiIdWidth  (" << idWidth << "),\n";
-  os << "    .AtopSupport (1'b1),\n";
-  os << pulpChannelParams(prefix) << ",\n";
-  os << "    .NoMstPorts  (" << numDownstream << "),\n";
-  os << "    .MaxTrans    ("
-     << std::max(maxOutstanding(demux.getUpstream()), 1u) << "),\n";
-  os << "    .AxiLookBits (" << idWidth << "),\n";
-  os << "    .UniqueIds   (1'b0)\n";
-  os << "  ) i_demux (\n";
+  // The spill registers are left at the axi_demux defaults unless the config
+  // sets them.
+  SmallVector<PulpParam> params = {{"AxiIdWidth", Twine(idWidth).str()},
+                                   {"AtopSupport", "1'b1", /*derived=*/false}};
+  llvm::append_range(params, pulpChannelParams(prefix));
+  params.push_back({"NoMstPorts", Twine(numDownstream).str()});
+  params.push_back(
+      {"MaxTrans",
+       Twine(std::max(maxOutstanding(demux.getUpstream()), 1u)).str(),
+       /*derived=*/false});
+  params.push_back({"AxiLookBits", Twine(idWidth).str(), /*derived=*/false});
+  params.push_back({"UniqueIds", "1'b0", /*derived=*/false});
+  if (failed(emitPulpInstance(os, demux, "axi_demux", "i_demux", params)))
+    return failure();
   os << "    .clk_i           (clk_i),\n";
   os << "    .rst_ni          (rst_ni),\n";
   os << "    .test_i          (1'b0),\n";
@@ -1012,7 +1140,7 @@ static LogicalResult checkPulpMuxSupported(MuxOp mux) {
 
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_mux, with the
 /// ports `mux`'s external module lowers to.
-static std::string pulpMuxSource(StringRef name, MuxOp mux) {
+static FailureOr<std::string> pulpMuxSource(StringRef name, MuxOp mux) {
   auto upstream = cast<PortType>(mux.getUpstream().front().getType());
   auto downstream = cast<PortType>(mux.getDownstream().getType());
   unsigned numUpstream = mux.getUpstream().size();
@@ -1023,29 +1151,31 @@ static std::string pulpMuxSource(StringRef name, MuxOp mux) {
   emitDualIdWrapper(os, name, "axi_mux", upstream, numUpstream, downstream,
                     /*numDownstream=*/1);
 
-  // The spill registers are left at the axi_mux defaults, since the op carries
-  // no knobs for them. PULP drives one downstream port, so it takes the single
-  // struct of the array the wrapper bridged to.
-  os << "  axi_mux #(\n";
-  os << "    .SlvAxiIDWidth (" << upstream.getWriteIdWidth() << "),\n";
-  os << "    .slv_aw_chan_t (" << prefix << "slv_aw_chan_t),\n";
-  os << "    .mst_aw_chan_t (" << prefix << "mst_aw_chan_t),\n";
-  os << "    .w_chan_t      (" << prefix << "slv_w_chan_t),\n";
-  os << "    .slv_b_chan_t  (" << prefix << "slv_b_chan_t),\n";
-  os << "    .mst_b_chan_t  (" << prefix << "mst_b_chan_t),\n";
-  os << "    .slv_ar_chan_t (" << prefix << "slv_ar_chan_t),\n";
-  os << "    .mst_ar_chan_t (" << prefix << "mst_ar_chan_t),\n";
-  os << "    .slv_r_chan_t  (" << prefix << "slv_r_chan_t),\n";
-  os << "    .mst_r_chan_t  (" << prefix << "mst_r_chan_t),\n";
-  os << "    .slv_req_t     (" << prefix << "slv_req_t),\n";
-  os << "    .slv_resp_t    (" << prefix << "slv_resp_t),\n";
-  os << "    .mst_req_t     (" << prefix << "mst_req_t),\n";
-  os << "    .mst_resp_t    (" << prefix << "mst_resp_t),\n";
-  os << "    .NoSlvPorts    (" << numUpstream << "),\n";
-  os << "    .MaxWTrans     ("
-     << std::max(maxOutstanding(mux.getUpstream()), 1u) << "),\n";
-  os << "    .FallThrough   (1'b0)\n";
-  os << "  ) i_mux (\n";
+  // The spill registers are left at the axi_mux defaults unless the config
+  // sets them. PULP drives one downstream port, so it takes the single struct
+  // of the array the wrapper bridged to.
+  if (failed(emitPulpInstance(
+          os, mux, "axi_mux", "i_mux",
+          {{"SlvAxiIDWidth", Twine(upstream.getWriteIdWidth()).str()},
+           {"slv_aw_chan_t", prefix + "slv_aw_chan_t"},
+           {"mst_aw_chan_t", prefix + "mst_aw_chan_t"},
+           {"w_chan_t", prefix + "slv_w_chan_t"},
+           {"slv_b_chan_t", prefix + "slv_b_chan_t"},
+           {"mst_b_chan_t", prefix + "mst_b_chan_t"},
+           {"slv_ar_chan_t", prefix + "slv_ar_chan_t"},
+           {"mst_ar_chan_t", prefix + "mst_ar_chan_t"},
+           {"slv_r_chan_t", prefix + "slv_r_chan_t"},
+           {"mst_r_chan_t", prefix + "mst_r_chan_t"},
+           {"slv_req_t", prefix + "slv_req_t"},
+           {"slv_resp_t", prefix + "slv_resp_t"},
+           {"mst_req_t", prefix + "mst_req_t"},
+           {"mst_resp_t", prefix + "mst_resp_t"},
+           {"NoSlvPorts", Twine(numUpstream).str()},
+           {"MaxWTrans",
+            Twine(std::max(maxOutstanding(mux.getUpstream()), 1u)).str(),
+            /*derived=*/false},
+           {"FallThrough", "1'b0", /*derived=*/false}})))
+    return failure();
   os << "    .clk_i       (clk_i),\n";
   os << "    .rst_ni      (rst_ni),\n";
   os << "    .test_i      (1'b0),\n";
@@ -1081,7 +1211,7 @@ static LogicalResult checkPulpToMemSupported(ToMemOp toMem) {
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_to_mem. The
 /// memory grants every request, so PULP's grant is tied high, and the atomics
 /// it derives are left unconnected.
-static std::string pulpToMemSource(StringRef name, ToMemOp toMem) {
+static FailureOr<std::string> pulpToMemSource(StringRef name, ToMemOp toMem) {
   auto port = cast<PortType>(toMem.getPort().getType());
   // checkPulpToMemSupported has established one ID width.
   unsigned idWidth = port.getWriteIdWidth();
@@ -1111,17 +1241,17 @@ static std::string pulpToMemSource(StringRef name, ToMemOp toMem) {
                  "slv_resp");
 
   // One bank as wide as the port, since the op drives a single memory. The
-  // response buffer is left at the axi_to_mem default, since the op carries no
-  // knob for the memory's latency.
-  os << "  axi_to_mem #(\n";
-  os << "    .axi_req_t  (" << prefix << "req_t),\n";
-  os << "    .axi_resp_t (" << prefix << "resp_t),\n";
-  os << "    .AddrWidth  (" << port.getAddrWidth() << "),\n";
-  os << "    .DataWidth  (" << port.getDataWidth() << "),\n";
-  os << "    .IdWidth    (" << idWidth << "),\n";
-  os << "    .NumBanks   (1),\n";
-  os << "    .BufDepth   (1)\n";
-  os << "  ) i_to_mem (\n";
+  // response buffer is left at the axi_to_mem default unless the config sets
+  // it.
+  if (failed(emitPulpInstance(os, toMem, "axi_to_mem", "i_to_mem",
+                              {{"axi_req_t", prefix + "req_t"},
+                               {"axi_resp_t", prefix + "resp_t"},
+                               {"AddrWidth", Twine(port.getAddrWidth()).str()},
+                               {"DataWidth", Twine(port.getDataWidth()).str()},
+                               {"IdWidth", Twine(idWidth).str()},
+                               {"NumBanks", "1"},
+                               {"BufDepth", "1", /*derived=*/false}})))
+    return failure();
   os << "    .clk_i        (clk_i),\n";
   os << "    .rst_ni       (rst_ni),\n";
   os << "    .busy_o       (),\n";
@@ -1156,12 +1286,12 @@ LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
       .Default(success());
 }
 
-void circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
-                                       hw::HWModuleExternOp shape,
-                                       Operation *op) {
+LogicalResult circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
+                                                hw::HWModuleExternOp shape,
+                                                Operation *op) {
   StringRef name = shape.getName();
-  std::optional<std::string> text =
-      TypeSwitch<Operation *, std::optional<std::string>>(op)
+  std::optional<FailureOr<std::string>> text =
+      TypeSwitch<Operation *, std::optional<FailureOr<std::string>>>(op)
           .Case<XbarOp>([&](XbarOp xbar) { return pulpXbarSource(name, xbar); })
           .Case<DemuxOp>(
               [&](DemuxOp demux) { return pulpDemuxSource(name, demux); })
@@ -1184,11 +1314,14 @@ void circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
               [&](ToMemOp toMem) { return pulpToMemSource(name, toMem); })
           .Default(std::nullopt);
   if (!text)
-    return;
+    return success();
+  if (failed(*text))
+    return failure();
 
   auto source = sv::SVVerbatimSourceOp::create(
-      b, b.getStringAttr(name + ".sv"), /*sym_visibility=*/{}, *text,
+      b, b.getStringAttr(name + ".sv"), /*sym_visibility=*/{}, **text,
       hw::OutputFileAttr::getFromFilename(b.getContext(), name + ".sv"),
       b.getArrayAttr({}), /*additional_files=*/nullptr, b.getStringAttr(name));
   shape->setAttr("source", FlatSymbolRefAttr::get(source));
+  return success();
 }

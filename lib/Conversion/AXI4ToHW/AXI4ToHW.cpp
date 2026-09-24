@@ -411,7 +411,9 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
       components.push_back(std::move(*component));
   });
 
-  DenseMap<std::pair<StringAttr, hw::ModuleType>, hw::HWModuleExternOp> shapes;
+  DenseMap<std::tuple<StringAttr, hw::ModuleType, DictionaryAttr>,
+           hw::HWModuleExternOp>
+      shapes;
   DenseMap<std::pair<Operation *, StringRef>, unsigned> instanceCounts;
   SymbolTable symbolTable(module);
   auto b =
@@ -423,10 +425,11 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
 
     SmallVector<hw::ModulePort> ports = componentPorts(component);
     // Two kinds of component can share a port list, so the name - which encodes
-    // the kind - is part of the shape.
+    // the kind - is part of the shape, as is the config of the PULP IP.
     auto name = b.getStringAttr(component.moduleName);
+    DictionaryAttr config = pulpMapping ? getPulpConfig(op) : DictionaryAttr();
     hw::HWModuleExternOp &shape =
-        shapes[{name, hw::ModuleType::get(module.getContext(), ports)}];
+        shapes[{name, hw::ModuleType::get(module.getContext(), ports), config}];
     if (!shape) {
       shape = hw::HWModuleExternOp::create(
           b, name, llvm::map_to_vector(ports, [](hw::ModulePort port) {
@@ -435,8 +438,8 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
       // Two shapes can want the same name, so let the symbol table unique it.
       symbolTable.insert(shape);
       componentModules.insert(shape);
-      if (pulpMapping)
-        attachPulpSource(b, shape, op);
+      if (pulpMapping && failed(attachPulpSource(b, shape, op)))
+        return failure();
     }
 
     SmallVector<Value> inputs = llvm::map_to_vector(
