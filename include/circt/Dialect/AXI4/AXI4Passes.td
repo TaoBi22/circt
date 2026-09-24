@@ -31,14 +31,23 @@ def VerifyAXI4Networks : Pass<"verify-axi4-networks", "mlir::ModuleOp"> {
 }
 
 def OptimizeAXI4Networks : Pass<"optimize-axi4-networks", "mlir::ModuleOp"> {
-  let summary = "Prune the unreachable parts of AXI4 networks";
+  let summary = "Optimize AXI4 networks";
   let description = [{
-    Removes the downstream ports of `axi4.xbar` and `axi4.demux` operations
-    that no upstream manager can address, along with the ops downstream of them.
+    Rewrites a network in ways that keep the data it carries, but not
+    necessarily the cycles or the ordering it carries them with, so they are not
+    canonicalizations.
 
-    Where such a port feeds something this pass will not erase - an interface
-    bridged out into HW logic, a memory interface driving live logic, or another
-    routing operation - it warns and leaves the branch alone.
+    - Removes the downstream ports of `axi4.xbar` and `axi4.demux` operations
+      that no upstream manager can address, along with the ops downstream of
+      them. Where such a port feeds something this pass will not erase - an
+      interface bridged out into HW logic, a memory interface driving live
+      logic, or another routing operation - it warns and leaves the branch
+      alone.
+    - Fuses each adaptor with the like adaptor driving it, if there is one,
+      through the cuts and crossings in between, which take the fused
+      adaptor's port. Narrowing ID widths merges the IDs in flight, so a fused
+      pair can leave transactions free to complete in an order the original
+      ordered.
   }];
 
   let dependentDialects = ["circt::axi4::AXI4Dialect"];
