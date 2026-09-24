@@ -48,6 +48,9 @@ def OptimizeAXI4Networks : Pass<"optimize-axi4-networks", "mlir::ModuleOp"> {
       adaptor's port. Narrowing ID widths merges the IDs in flight, so a fused
       pair can leave transactions free to complete in an order the original
       ordered.
+    - Fuses each `axi4.cdc` with the crossing driving it, if there is one, so
+      a connection crosses once into the domain it ends up in, rather than once
+      per crossing written.
   }];
 
   let dependentDialects = ["circt::axi4::AXI4Dialect"];

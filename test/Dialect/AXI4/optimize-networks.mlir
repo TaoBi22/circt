@@ -151,6 +151,46 @@ hw.module @FuseAcrossCdc(in %aclk : !seq.clock, in %bclk : !seq.clock,
     concurrent_writes 4 concurrent_reads 4 : !mgr_lo
 }
 
+// A chain of crossings crosses once, into the domain it ends up in
+// CHECK-LABEL: hw.module @FuseCrossingChain
+hw.module @FuseCrossingChain(in %aclk : !seq.clock, in %bclk : !seq.clock,
+                             in %cclk : !seq.clock, in %rst_ni : i1,
+                             in %upstream : !mgr_lo) {
+  // CHECK-NEXT: %[[CDC:.+]] = axi4.cdc from %aclk to %cclk, %rst_ni, %upstream
+  // CHECK-NEXT: axi4.abstract_subordinate %cclk, %rst_ni, %[[CDC]]
+  %ab = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream : !mgr_lo
+  %bc = axi4.cdc from %bclk to %cclk, %rst_ni, %ab : !mgr_lo
+  axi4.abstract_subordinate %cclk, %rst_ni, %bc
+    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+}
+
+// A chain ending where it started crosses nothing
+// CHECK-LABEL: hw.module @FuseCrossingRoundTrip
+hw.module @FuseCrossingRoundTrip(in %aclk : !seq.clock, in %bclk : !seq.clock,
+                                 in %rst_ni : i1, in %upstream : !mgr_lo) {
+  // CHECK-NEXT: axi4.abstract_subordinate %aclk, %rst_ni, %upstream
+  // CHECK-NOT: axi4.cdc
+  %ab = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream : !mgr_lo
+  %ba = axi4.cdc from %bclk to %aclk, %rst_ni, %ab : !mgr_lo
+  axi4.abstract_subordinate %aclk, %rst_ni, %ba
+    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+}
+
+// Fusing across the cut would carry it into the upstream domain
+// CHECK-LABEL: hw.module @CrossingsAcrossCut
+hw.module @CrossingsAcrossCut(in %aclk : !seq.clock, in %bclk : !seq.clock,
+                              in %cclk : !seq.clock, in %rst_ni : i1,
+                              in %upstream : !mgr_lo) {
+  // CHECK-NEXT: %[[AB:.+]] = axi4.cdc from %aclk to %bclk
+  // CHECK-NEXT: %[[CUT:.+]] = axi4.cut %bclk, %rst_ni, %[[AB]]
+  // CHECK-NEXT: %[[BC:.+]] = axi4.cdc from %bclk to %cclk, %rst_ni, %[[CUT]]
+  %ab = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream : !mgr_lo
+  %cut = axi4.cut %bclk, %rst_ni, %ab : !mgr_lo
+  %bc = axi4.cdc from %bclk to %cclk, %rst_ni, %cut : !mgr_lo
+  axi4.abstract_subordinate %cclk, %rst_ni, %bc
+    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+}
+
 // Logic outside the network is left alone, dead or not
 // CHECK-LABEL: hw.module @UnrelatedLogic
 hw.module @UnrelatedLogic(in %a : i8, out o : i8) {
