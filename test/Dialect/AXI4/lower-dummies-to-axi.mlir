@@ -1,4 +1,5 @@
 // RUN: circt-opt %s --lower-axi4-dummies-to-axi --split-input-file | FileCheck %s --implicit-check-not=axi4.dummies
+// RUN: circt-opt %s --lower-axi4-dummies-to-axi=user-width=4 --split-input-file | FileCheck %s --check-prefix=USER
 
 // A module with no dummies ops is left alone
 // CHECK-LABEL: hw.module @NoDummies(in %clk : !seq.clock, in %rst_ni : i1)
@@ -89,6 +90,11 @@ hw.module @OverlappingAccesses(in %clk : !seq.clock, in %rst_ni : i1) {
 // CHECK-SAME:    in %debug : !axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
 // CHECK-SAME:    out mem : !axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 8, outstanding_reads = 8>
 // CHECK-SAME:    out periph : !axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+// USER-LABEL: hw.module @Crossbar(
+// USER-SAME:    in %core : !axi4.port<{{[^>]*}} user_width = 4,
+// USER-SAME:    in %debug : !axi4.port<{{[^>]*}} user_width = 4,
+// USER-SAME:    out mem : !axi4.port<{{[^>]*}} user_width = 4,
+// USER-SAME:    out periph : !axi4.port<{{[^>]*}} user_width = 4,
 hw.module @Crossbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
@@ -207,6 +213,10 @@ hw.module @NarrowerSubordinateData(in %clk : !seq.clock, in %rst_ni : i1) {
 // A crossbar carries one data width, so a narrower manager is widened onto it
 // before it routes, and the subordinate's IDs are narrowed after
 // CHECK-LABEL: hw.module @NarrowerManagerData(
+// USER-LABEL: hw.module @NarrowerManagerData(
+// USER: axi4.data_width_converter {{.*}} -> !axi4.port<{{[^>]*}} user_width = 4,
+// USER: axi4.xbar {{.*}} -> !axi4.port<{{[^>]*}} user_width = 4,
+// USER: axi4.id_width_converter {{.*}} -> !axi4.port<{{[^>]*}} user_width = 4,
 hw.module @NarrowerManagerData(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
   // CHECK: %[[WIDENED:.+]] = axi4.data_width_converter %clk, %rst_ni, %manager : (!axi4.port<{{.*}} data_width = 32, {{.*}} burst_specs = <<incr, len = 16>>{{.*}}) -> !axi4.port<{{.*}} data_width = 64, {{.*}} burst_specs = <<incr, len = 8>>

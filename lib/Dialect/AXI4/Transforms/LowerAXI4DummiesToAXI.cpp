@@ -200,6 +200,7 @@ static uint32_t taggableOutstanding(uint32_t outstanding, uint32_t idWidth) {
 /// and `reads` reaching it, with ID widths wide enough to tag every request it
 /// can hold.
 static PortType getSubordinatePortType(DummiesExtSubordinateOp subordinate,
+                                       uint32_t userWidth,
                                        WindowSetAttr windows, uint32_t writes,
                                        uint32_t reads) {
   uint32_t writeIdWidth =
@@ -207,7 +208,7 @@ static PortType getSubordinatePortType(DummiesExtSubordinateOp subordinate,
   uint32_t readIdWidth = llvm::Log2_64_Ceil(subordinate.getOutstandingReads());
   return PortType::get(subordinate.getContext(), subordinate.getAddrWidth(),
                        subordinate.getDataWidth(), writeIdWidth, readIdWidth,
-                       /*user_width=*/0, windows,
+                       userWidth, windows,
                        taggableOutstanding(writes, writeIdWidth),
                        taggableOutstanding(reads, readIdWidth));
 }
@@ -293,7 +294,8 @@ namespace {
 /// propagating them down from managers
 
 struct NetworkLowering {
-  NetworkLowering(hw::HWModuleOp module) : module(module) {
+  NetworkLowering(hw::HWModuleOp module, uint32_t userWidth)
+      : module(module), userWidth(userWidth) {
     for (const hw::PortInfo &port : module.getPortList())
       names.newName(port.name.getValue());
   }
@@ -315,6 +317,7 @@ private:
   void emit();
 
   hw::HWModuleOp module;
+  uint32_t userWidth;
   Namespace names;
 
   SmallVector<DummiesExtManagerOp> managers;
@@ -471,12 +474,12 @@ LogicalResult NetworkLowering::inferManagerTypes() {
     // outstanding.
     uint32_t writeIdWidth = llvm::Log2_64_Ceil(manager.getOutstandingWrites());
     uint32_t readIdWidth = llvm::Log2_64_Ceil(manager.getOutstandingReads());
-    types.insert({connections.front(),
-                  PortType::get(module.getContext(), manager.getAddrWidth(),
-                                manager.getDataWidth(), writeIdWidth,
-                                readIdWidth, /*user_width=*/0, *windows,
-                                manager.getOutstandingWrites(),
-                                manager.getOutstandingReads())});
+    types.insert(
+        {connections.front(),
+         PortType::get(module.getContext(), manager.getAddrWidth(),
+                       manager.getDataWidth(), writeIdWidth, readIdWidth,
+                       userWidth, *windows, manager.getOutstandingWrites(),
+                       manager.getOutstandingReads())});
 
     // A subordinate the manager reaches without a crossbar presents a port of
     // its own: its own data width, and its own ID widths, log2 of the requests
@@ -493,7 +496,7 @@ LogicalResult NetworkLowering::inferManagerTypes() {
                          subordinate.getDataWidth());
       if (failed(served))
         return failure();
-      PortType port = getSubordinatePortType(subordinate, *served,
+      PortType port = getSubordinatePortType(subordinate, userWidth, *served,
                                              manager.getOutstandingWrites(),
                                              manager.getOutstandingReads());
       if (needsConverter(port, manager.getDataWidth(), writeIdWidth,
@@ -574,7 +577,8 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
                          subordinate.getDataWidth());
       if (failed(served))
         return failure();
-      port = getSubordinatePortType(subordinate, *served, writes, reads);
+      port = getSubordinatePortType(subordinate, userWidth, *served, writes,
+                                    reads);
     }
 
     // The crossbar tags requests with more ID bits than its managers use, so
@@ -587,7 +591,7 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
     types.insert({connection,
                   PortType::get(module.getContext(), xbar.getAddrWidth(),
                                 xbar.getDataWidth(), writeIdWidth, readIdWidth,
-                                /*user_width=*/0, *windows, writes, reads)});
+                                userWidth, *windows, writes, reads)});
   }
 
   ordered.push_back(xbar);
@@ -740,6 +744,7 @@ namespace {
 struct LowerAXI4DummiesToAXIPass
     : public circt::axi4::impl::LowerAXI4DummiesToAXIBase<
           LowerAXI4DummiesToAXIPass> {
+  using LowerAXI4DummiesToAXIBase::LowerAXI4DummiesToAXIBase;
   void runOnOperation() override;
 };
 } // namespace
@@ -754,7 +759,7 @@ void LowerAXI4DummiesToAXIPass::runOnOperation() {
   });
 
   for (auto hwModule : module.getOps<hw::HWModuleOp>()) {
-    NetworkLowering lowering(hwModule);
+    NetworkLowering lowering(hwModule, userWidth);
     if (!lowering.collect())
       continue;
     if (failed(lowering.lower(instantiated)))
