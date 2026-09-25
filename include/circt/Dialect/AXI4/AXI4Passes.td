@@ -69,6 +69,11 @@ def LowerAXI4DummiesToAXI : Pass<"lower-axi4-dummies-to-axi", "mlir::ModuleOp"> 
     in, so that module must not be instantiated.
 
     Every port in the network carries the user width given by `user-width`.
+
+    A crossbar whose upstream ports do not all reach every downstream port is
+    given a `PULP_CONFIG_Connectivity`, connecting each upstream port only to
+    the downstream ports its managers access through it, unless it already
+    has one.
   }];
 
   let options = [

@@ -16,6 +16,7 @@
 #include "circt/Dialect/HW/HWOps.h"
 #include "circt/Support/Namespace.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -260,6 +261,19 @@ static uint32_t dataWidthOf(Operation *op) {
   return cast<DummiesExtSubordinateOp>(op).getDataWidth();
 }
 
+/// A connectivity matrix as a matrix of booleans, one row per upstream port.
+static ArrayAttr getConnectivityAttr(MLIRContext *context,
+                                     ArrayRef<llvm::BitVector> rows) {
+  SmallVector<Attribute> matrix;
+  for (const llvm::BitVector &row : rows) {
+    SmallVector<Attribute> bits;
+    for (unsigned bit = 0; bit != row.size(); ++bit)
+      bits.push_back(BoolAttr::get(context, row[bit]));
+    matrix.push_back(ArrayAttr::get(context, bits));
+  }
+  return ArrayAttr::get(context, matrix);
+}
+
 /// Whether a type belongs to the dummies subdialect.
 static bool isDummiesType(Type type) {
   return isa<DummiesPortType, DummiesManagerAccessType,
@@ -313,6 +327,7 @@ private:
   LogicalResult inferManagerTypes();
   LogicalResult inferXbarTypes(DummiesXbarOp xbar);
   LogicalResult inferTypes();
+  LogicalResult inferConnectivity();
   void drive(OpOperand *connection, Value port);
   void emit();
 
@@ -338,6 +353,8 @@ private:
   DenseMap<OpOperand *, PortType> adapted;
   /// The crossbars in the order their downstream types were inferred.
   SmallVector<DummiesXbarOp> ordered;
+  /// Which downstream ports each of a crossbar's upstream ports reaches.
+  DenseMap<Operation *, SmallVector<llvm::BitVector>> connectivity;
   /// The `!axi4.port` value feeding each connection.
   DenseMap<OpOperand *, Value> lowered;
 };
@@ -626,6 +643,38 @@ LogicalResult NetworkLowering::inferTypes() {
   return success();
 }
 
+/// Connect each crossbar's upstream port to the downstream ports on the way to
+/// the subordinates accessed through it.
+LogicalResult NetworkLowering::inferConnectivity() {
+  for (DummiesXbarOp xbar : xbars)
+    connectivity[xbar].assign(
+        xbar.getUpstream().size(),
+        llvm::BitVector(outgoingConnections(xbar.getDownstream()).size()));
+
+  for (DummiesAccessesOp access : accesses) {
+    Operation *subordinate = access.getSubordinate().getDefiningOp();
+    auto manager = access.getManager().getDefiningOp<DummiesExtManagerOp>();
+    OpOperand *connection = outgoingConnections(manager.getPort()).front();
+    while (auto xbar = dyn_cast<DummiesXbarOp>(connection->getOwner())) {
+      unsigned upstream = connection->getOperandNumber() -
+                          xbar.getUpstream().getBeginOperandIndex();
+      for (auto [index, below] :
+           llvm::enumerate(outgoingConnections(xbar.getDownstream()))) {
+        FailureOr<SmallVector<DummiesExtSubordinateOp>> reached =
+            getReachableSubordinates(below);
+        if (failed(reached))
+          return failure();
+        if (llvm::is_contained(*reached, subordinate)) {
+          connectivity[xbar][upstream].set(index);
+          connection = below;
+          break;
+        }
+      }
+    }
+  }
+  return success();
+}
+
 /// Record the value a connection carries, converting the widths of what its
 /// producer drives to what its consumer needs.
 void NetworkLowering::drive(OpOperand *connection, Value port) {
@@ -681,6 +730,18 @@ void NetworkLowering::emit() {
                                    xbar.getClock(), xbar.getReset(), upstream);
     for (NamedAttribute attr : getPulpConfig(xbar))
       axi4Xbar->setAttr(attr.getName(), attr.getValue());
+
+    // PULP connects every pair by default, so only a partial matrix is set.
+    // Config already on the crossbar wins.
+    auto connectivityName =
+        builder.getStringAttr(Twine(kPulpConfigPrefix) + "Connectivity");
+    ArrayRef<llvm::BitVector> rows = connectivity[xbar];
+    if (!axi4Xbar->hasAttr(connectivityName) &&
+        !llvm::all_of(rows,
+                      [](const llvm::BitVector &row) { return row.all(); }))
+      axi4Xbar->setAttr(connectivityName,
+                        getConnectivityAttr(builder.getContext(), rows));
+
     for (auto [connection, result] :
          llvm::zip(downstream, axi4Xbar.getDownstream()))
       drive(connection, result);
@@ -719,7 +780,7 @@ LogicalResult NetworkLowering::lower(const DenseSet<StringAttr> &instantiated) {
   for (DummiesAccessesOp access : accesses)
     declared[access.getManager().getDefiningOp()].push_back(access);
 
-  if (failed(inferTypes()))
+  if (failed(inferTypes()) || failed(inferConnectivity()))
     return failure();
 
   // A subordinate reached without a crossbar shares one port type with the

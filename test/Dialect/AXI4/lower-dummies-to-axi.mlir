@@ -84,7 +84,8 @@ hw.module @OverlappingAccesses(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // Two managers reaching two subordinates through a crossbar. Each manager's
 // windows are those of the subordinates it declares accesses to, and the
-// crossbar widens the IDs to tag which manager a request came from.
+// crossbar widens the IDs to tag which manager a request came from. Only core
+// accesses periph, so debug is only connected to mem.
 // CHECK-LABEL: hw.module @Crossbar(
 // CHECK-SAME:    in %core : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 // CHECK-SAME:    in %debug : !axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
@@ -98,7 +99,7 @@ hw.module @OverlappingAccesses(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @Crossbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  // CHECK: %[[XBAR:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %core, %debug
+  // CHECK: %[[XBAR:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %core, %debug {PULP_CONFIG_Connectivity = {{\[}}[true, true], [false, true]]}
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64
   %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
   %periph_access = axi4.dummies.ext_subordinate "periph" %clk, %rst_ni, %xbar windows <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
@@ -124,6 +125,44 @@ hw.module @ChainedCrossbars(in %clk : !seq.clock, in %rst_ni : i1) {
   %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %bottom windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
   // CHECK: hw.output %[[BOTTOM]]
+}
+
+// -----
+
+// A crossbar reached through another is connected by the accesses made through
+// it, not by the windows of the port reaching it, which cover rom too
+// CHECK-LABEL: hw.module @ChainedConnectivity(
+hw.module @ChainedConnectivity(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %dma, %dma_access = axi4.dummies.ext_manager "dma" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[TOP:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %core, %debug {PULP_CONFIG_Connectivity = {{\[}}[true, true], [true, false]]} : ({{.*}}) -> (!axi4.port<{{[^>]*}} windows = <<base = 0x2000, {{.*}}>, !axi4.port<{{[^>]*}} windows = <<base = 0x0, last = 0x1fff,
+  %top = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64
+  // CHECK: axi4.xbar %clk, %rst_ni mgrs %[[TOP]]#1, %{{.+}} {PULP_CONFIG_Connectivity = {{\[}}[false, true], [true, false]]} : ({{.*}}) -> (!axi4.port<{{[^>]*}} windows = <<base = 0x1000, {{.*}}>, !axi4.port<{{[^>]*}} windows = <<base = 0x0, last = 0xfff,
+  %bottom = axi4.dummies.xbar %clk, %rst_ni mgrs %top, %dma addr_width = 32, data_width = 64
+  %periph_access = axi4.dummies.ext_subordinate "periph" %clk, %rst_ni, %top windows <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %bottom windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  %rom_access = axi4.dummies.ext_subordinate "rom" %clk, %rst_ni, %bottom windows <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %core_access -> %periph_access with <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %debug_access -> %periph_access with <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %dma_access -> %rom_access with <base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+// A crossbar's own Connectivity config is kept rather than derived
+// CHECK-LABEL: hw.module @ConnectivityConfig(
+hw.module @ConnectivityConfig(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: axi4.xbar %clk, %rst_ni mgrs %core, %debug {PULP_CONFIG_Connectivity = "'1"}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64 {PULP_CONFIG_Connectivity = "'1"}
+  %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  %periph_access = axi4.dummies.ext_subordinate "periph" %clk, %rst_ni, %xbar windows <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %core_access -> %periph_access with <base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>
+  axi4.dummies.accesses %debug_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
 }
 
 // -----
