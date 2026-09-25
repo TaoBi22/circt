@@ -78,3 +78,24 @@ hw.module @Cuts(in %clk : !seq.clock, in %rst_ni : i1) {
   %c = axi4.cut %clk, %rst_ni, %b {PULP_CONFIG_Bypass = true} : !port
   hw.instance "sub" @Subordinate(axi: %c: !port) -> ()
 }
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+!hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+
+hw.module.extern @Manager(out axi : !mgr)
+hw.module.extern @Low(in %axi : !lo)
+hw.module.extern @High(in %axi : !hi)
+
+// A matrix of booleans is a packed bit array, row 0 and column 0 lowest
+// CHECK:      sv.verbatim.source @axi_xbar_2u2d_a32_d64_i4_o5.sv
+// CHECK-SAME:   .Connectivity  ({2'b10, 2'b11}),\0A
+hw.module @Connectivity(in %clk : !seq.clock, in %rst_ni : i1) {
+  %m0 = hw.instance "mgr0" @Manager() -> (axi: !mgr)
+  %m1 = hw.instance "mgr1" @Manager() -> (axi: !mgr)
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %m0, %m1 {PULP_CONFIG_Connectivity = [[true, true], [false, true]]} : (!mgr, !mgr) -> (!lo, !hi)
+  hw.instance "lo" @Low(axi: %lo: !lo) -> ()
+  hw.instance "hi" @High(axi: %hi: !hi) -> ()
+}

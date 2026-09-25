@@ -306,7 +306,7 @@ hw.module @ConfigDerivedCfg(in %clk : !seq.clock, in %rst_ni : i1, in %port : !p
 !port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 
 hw.module @ConfigValue(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
-  // expected-error @below {{'axi4.cut' op has 'PULP_CONFIG_Bypass', which must be an integer or a string to set a PULP parameter}}
+  // expected-error @below {{'axi4.cut' op has 'PULP_CONFIG_Bypass', which must be an integer, a string or a matrix of booleans to set a PULP parameter}}
   %cut = axi4.cut %clk, %rst_ni, %port {PULP_CONFIG_Bypass = [true]} : !port
   hw.output %cut : !port
 }
@@ -319,4 +319,14 @@ hw.module @ConfigNoName(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port,
   // expected-error @below {{'axi4.cut' op has a 'PULP_CONFIG_' attribute with no parameter name after the prefix}}
   %cut = axi4.cut %clk, %rst_ni, %port {PULP_CONFIG_ = 1 : i32} : !port
   hw.output %cut : !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @ConnectivityShape(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
+  // expected-error @below {{'axi4.xbar' op has 'PULP_CONFIG_Connectivity', which must have a row for each of its 1 upstream ports with a column for each of its 1 downstream ports}}
+  %s = axi4.xbar %clk, %rst_ni mgrs %port {PULP_CONFIG_Connectivity = [[true, false]]} : (!port) -> (!port)
+  hw.output %s : !port
 }

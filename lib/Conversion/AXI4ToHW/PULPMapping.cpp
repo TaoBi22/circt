@@ -285,10 +285,35 @@ static StringRef pulpConfigName(NamedAttribute attr) {
   return attr.getName().strref().drop_front(kPulpConfigPrefix.size());
 }
 
+/// `rows` as a packed bit array indexed `[row][column]`: a concatenation of the
+/// rows, highest index first. None if `rows` is not a non-empty array of
+/// equally long, non-empty arrays of booleans.
+static std::optional<std::string> formatBitMatrix(ArrayAttr rows) {
+  if (rows.empty())
+    return std::nullopt;
+  size_t width = 0;
+  SmallVector<std::string> formatted;
+  for (Attribute attr : llvm::reverse(rows)) {
+    auto row = dyn_cast<ArrayAttr>(attr);
+    if (!row || row.empty() || (width && row.size() != width))
+      return std::nullopt;
+    width = row.size();
+    std::string bits = (Twine(width) + "'b").str();
+    for (Attribute bit : llvm::reverse(row)) {
+      auto value = dyn_cast<BoolAttr>(bit);
+      if (!value)
+        return std::nullopt;
+      bits += value.getValue() ? '1' : '0';
+    }
+    formatted.push_back(std::move(bits));
+  }
+  return ("{" + llvm::join(formatted, ", ") + "}");
+}
+
 /// Apply `config`, a list of `op`'s `PULP_CONFIG_` attributes, to `params`.
 /// Each one overrides the parameter it names, or is added if there is none. An
-/// integer is emitted in decimal, or as a bit if it is an `i1`, and a string
-/// verbatim.
+/// integer is emitted in decimal, or as a bit if it is an `i1`, a string
+/// verbatim, and a matrix of booleans as a packed bit array.
 static LogicalResult applyPulpConfig(Operation *op,
                                      ArrayRef<NamedAttribute> config,
                                      SmallVectorImpl<PulpParam> &params) {
@@ -307,11 +332,15 @@ static LogicalResult applyPulpConfig(Operation *op,
                   ? (integer.getValue().isOne() ? "1'b1" : "1'b0")
                   : llvm::toString(integer.getValue(), 10,
                                    !integer.getType().isUnsignedInteger());
+    else if (auto rows = dyn_cast<ArrayAttr>(attr.getValue());
+             std::optional<std::string> matrix =
+                 rows ? formatBitMatrix(rows) : std::nullopt)
+      value = std::move(*matrix);
     else
       return op->emitOpError()
              << "has '" << attr.getName().strref()
-             << "', which must be an integer or a string to set a PULP "
-                "parameter";
+             << "', which must be an integer, a string or a matrix of "
+                "booleans to set a PULP parameter";
 
     auto *param = llvm::find_if(
         params, [&](const PulpParam &param) { return param.name == name; });
@@ -481,6 +510,20 @@ static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar) {
   SmallVector<NamedAttribute> cfgConfig, xbarConfig;
   for (NamedAttribute attr : getPulpConfig(xbar))
     (isCfgField(pulpConfigName(attr)) ? cfgConfig : xbarConfig).push_back(attr);
+
+  // Connectivity is indexed [upstream][downstream].
+  if (auto rows = xbar->getAttrOfType<ArrayAttr>(
+          (Twine(kPulpConfigPrefix) + "Connectivity").str()))
+    if (rows.size() != numUpstream || llvm::any_of(rows, [&](Attribute row) {
+          auto columns = dyn_cast<ArrayAttr>(row);
+          return columns && columns.size() != numDownstream;
+        }))
+      return xbar.emitOpError()
+             << "has 'PULP_CONFIG_Connectivity', which must have a row for "
+                "each of its "
+             << numUpstream << " upstream ports with a column for each of its "
+             << numDownstream << " downstream ports";
+
   if (failed(applyPulpConfig(xbar, cfgConfig, cfg)))
     return failure();
 

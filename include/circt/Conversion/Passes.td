@@ -59,8 +59,9 @@ def AXI4ToHW : Pass<"lower-axi4-to-hw", "mlir::ModuleOp"> {
     Crossbars become instances of generic external modules, optionally wrapping
     a concrete implementation from the PULP Platform AXI library. A
     `PULP_CONFIG_<Name>` attribute on a component sets parameter `<Name>` of
-    the PULP IP it wraps: an integer in decimal, an `i1` as a bit, and a string
-    verbatim. On `axi4.xbar`, a name that is a field of PULP's
+    the PULP IP it wraps: an integer in decimal, an `i1` as a bit, a string
+    verbatim, and an array of boolean arrays as a packed bit array indexed
+    `[row][column]`. On `axi4.xbar`, a name that is a field of PULP's
     `axi_pkg::xbar_cfg_t` struct is set in the `Cfg` struct passed to
     `axi_xbar`, rather than as a parameter of its own. Parameters derived from
     the ports cannot be set.
