@@ -179,6 +179,18 @@ hw.module @UnreachableDeadXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
 }
 
+// A dropped port's column goes from the crossbar's PULP connectivity
+// CHECK-LABEL: hw.module @UnreachableDeadConnectivity
+hw.module @UnreachableDeadConnectivity(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: axi4.xbar {{.*}} {PULP_CONFIG_Connectivity = {{\[}}[true, false], [false, true]]}
+  %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
+  %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
+  %lo, %gap, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi {PULP_CONFIG_Connectivity = [[true, true, false], [false, false, true]]}
+    : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_gap, !sub_hi)
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
+}
+
 // We don't want to drop ports necessary for full coverage of upstream ports
 // CHECK-LABEL: hw.module @ReachableDeadXbarPort
 hw.module @ReachableDeadXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {

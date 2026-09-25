@@ -23,6 +23,20 @@ hw.module @UnreachableSubordinate(in %clk : !seq.clock, in %rst_ni : i1) {
   axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes 4 concurrent_reads 4 : !sub_gap
 }
 
+// A removed port's column goes from the crossbar's PULP connectivity
+// CHECK-LABEL: hw.module @UnreachableConnectivity
+hw.module @UnreachableConnectivity(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: axi4.xbar {{.*}} {PULP_CONFIG_Connectivity = {{\[}}[true, false], [false, true]]}
+  %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
+  %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
+  // expected-remark @below {{removed downstream port #1, which no upstream manager addresses}}
+  %lo, %gap, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi {PULP_CONFIG_Connectivity = [[true, true, false], [false, false, true]]}
+    : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_gap, !sub_hi)
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes 4 concurrent_reads 4 : !sub_gap
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
+}
+
 // The adaptors downstream of it go too
 // CHECK-LABEL: hw.module @UnreachableBehindAdaptors
 hw.module @UnreachableBehindAdaptors(in %clk : !seq.clock, in %rst_ni : i1) {

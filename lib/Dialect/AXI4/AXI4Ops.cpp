@@ -137,6 +137,33 @@ void axi4::mergePulpConfig(Operation *op, ArrayRef<NamedAttribute> config,
   });
 }
 
+NamedAttrList
+axi4::getAttrsWithoutDownstream(Operation *op,
+                                const llvm::SmallBitVector &dropped) {
+  NamedAttrList attrs(op->getAttrs());
+  auto name = StringAttr::get(op->getContext(),
+                              Twine(kPulpConfigPrefix) + "Connectivity");
+
+  // A matrix of any other shape is left for the lowering to reject.
+  auto rows = op->getAttrOfType<ArrayAttr>(name);
+  if (!rows || llvm::any_of(rows, [&](Attribute row) {
+        auto columns = dyn_cast<ArrayAttr>(row);
+        return !columns || columns.size() != dropped.size();
+      }))
+    return attrs;
+
+  SmallVector<Attribute> kept;
+  for (Attribute row : rows) {
+    SmallVector<Attribute> columns;
+    for (auto [index, column] : llvm::enumerate(cast<ArrayAttr>(row)))
+      if (!dropped[index])
+        columns.push_back(column);
+    kept.push_back(ArrayAttr::get(op->getContext(), columns));
+  }
+  attrs.set(name, ArrayAttr::get(op->getContext(), kept));
+  return attrs;
+}
+
 /// The downstream port and window covering `address`, or a null window if no
 /// downstream port covers it.
 static std::pair<size_t, WindowAttr> findDownstreamWindow(ValueRange downstream,

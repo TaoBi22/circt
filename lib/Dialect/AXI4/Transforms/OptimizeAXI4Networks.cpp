@@ -75,7 +75,7 @@ static void dropDownstream(Op op, const llvm::SmallBitVector &drop) {
   }
 
   auto rebuilt = Op::create(builder, op.getLoc(), types, op->getOperands(),
-                            op->getAttrs());
+                            getAttrsWithoutDownstream(op, drop));
   for (auto [before, after] : llvm::zip_equal(kept, rebuilt.getDownstream()))
     before.replaceAllUsesWith(after);
   op->erase();

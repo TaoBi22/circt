@@ -81,18 +81,21 @@ static LogicalResult dropDeadDownstream(Op op, ValueRange upstream,
                                         PatternRewriter &rewriter) {
   SmallVector<Type> types;
   SmallVector<Value> kept;
-  for (Value downstream : op.getDownstream()) {
+  llvm::SmallBitVector dropped(op.getDownstream().size());
+  for (auto [index, downstream] : llvm::enumerate(op.getDownstream())) {
     auto port = cast<PortType>(downstream.getType());
-    if (downstream.use_empty() && !isReachable(port, upstream))
+    if (downstream.use_empty() && !isReachable(port, upstream)) {
+      dropped.set(index);
       continue;
+    }
     types.push_back(port);
     kept.push_back(downstream);
   }
-  if (kept.size() == op.getDownstream().size())
+  if (dropped.none())
     return rewriter.notifyMatchFailure(op, "every downstream port is live");
 
   auto rebuilt = Op::create(rewriter, op.getLoc(), types, op->getOperands(),
-                            op->getAttrs());
+                            getAttrsWithoutDownstream(op, dropped));
   for (auto [before, after] : llvm::zip_equal(kept, rebuilt.getDownstream()))
     rewriter.replaceAllUsesWith(before, after);
   rewriter.eraseOp(op);

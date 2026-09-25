@@ -11,6 +11,7 @@
 
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
+#include "llvm/ADT/SmallBitVector.h"
 
 #include "circt/Dialect/AXI4/AXI4Dialect.h"
 #include "circt/Dialect/AXI4/AXI4Types.h"
@@ -56,6 +57,12 @@ pulpConfigToMerge(mlir::Operation *op, mlir::Operation *prev);
 void mergePulpConfig(mlir::Operation *op,
                      llvm::ArrayRef<mlir::NamedAttribute> config,
                      mlir::PatternRewriter &rewriter);
+
+/// The attributes of `op` once the downstream ports marked in `dropped` are
+/// removed, which drops their columns from a PULP `Connectivity` matrix.
+mlir::NamedAttrList
+getAttrsWithoutDownstream(mlir::Operation *op,
+                          const llvm::SmallBitVector &dropped);
 
 } // namespace axi4
 } // namespace circt
