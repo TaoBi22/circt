@@ -52,7 +52,7 @@
 
 // CHECK-SAME:   axi_demux #(\0A
 // CHECK-SAME:     .AxiIdWidth  (4),\0A
-// CHECK-SAME:     .AtopSupport (1'b1),\0A
+// CHECK-SAME:     .AtopSupport (1'b0),\0A
 // CHECK-SAME:     .aw_chan_t  (axi_demux_2d_a32_d64_i4_aw_chan_t),\0A
 // CHECK-SAME:     .NoMstPorts  (2),\0A
 // CHECK-SAME:     .MaxTrans    (4),\0A

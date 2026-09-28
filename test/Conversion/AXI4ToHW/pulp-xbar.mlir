@@ -46,6 +46,9 @@ hw.module.extern @High(in %axi : !sub_hi)
 // CHECK-SAME:   localparam rule_t [2-1:0] AddrMap = '{\0A
 // CHECK-SAME:     '{idx: 0, start_addr: 32'h0, end_addr: 32'h800},\0A
 // CHECK-SAME:     '{idx: 1, start_addr: 32'h800, end_addr: 32'h1000}\0A
+
+// Nothing carries atomics, so the crossbar is built without support for them
+// CHECK-SAME:     .ATOPs         (1'b0),\0A
 // CHECK-SAME:     .rule_t        (rule_t)\0A
 
 // CHECK-SAME:  output_file = #hw.output_file<"axi_xbar_2u2d_a32_d64_i4_o5.sv">

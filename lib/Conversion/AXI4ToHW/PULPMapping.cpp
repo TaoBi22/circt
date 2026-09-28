@@ -541,7 +541,7 @@ static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar) {
 
   if (failed(emitPulpInstance(os, xbar, xbarConfig, "axi_xbar", "i_xbar",
                               {{"Cfg", "Cfg"},
-                               {"ATOPs", "1'b1", /*derived=*/false},
+                               {"ATOPs", "1'b0", /*derived=*/false},
                                {"Connectivity", "'1", /*derived=*/false},
                                {"slv_aw_chan_t", prefix + "slv_aw_chan_t"},
                                {"mst_aw_chan_t", prefix + "mst_aw_chan_t"},
@@ -1132,7 +1132,7 @@ static FailureOr<std::string> pulpDemuxSource(StringRef name, DemuxOp demux) {
   // The spill registers are left at the axi_demux defaults unless the config
   // sets them.
   SmallVector<PulpParam> params = {{"AxiIdWidth", Twine(idWidth).str()},
-                                   {"AtopSupport", "1'b1", /*derived=*/false}};
+                                   {"AtopSupport", "1'b0", /*derived=*/false}};
   llvm::append_range(params, pulpChannelParams(prefix));
   params.push_back({"NoMstPorts", Twine(numDownstream).str()});
   params.push_back(
