@@ -36,6 +36,10 @@ inline constexpr ChannelInfo kChannels[] = {
     {axi4::AXI4Channel::AR, llvm::StringLiteral("ar"), true},
     {axi4::AXI4Channel::R, llvm::StringLiteral("r"), false}};
 
+/// The width of the `atop` field PULP's AW channel carries and the dialect does
+/// not model.
+inline constexpr unsigned kAtopWidth = 6;
+
 /// The width of PULP's `user_t`. A port with no user field still gets a bit,
 /// since a zero-width typedef is not legal SystemVerilog.
 inline unsigned pulpUserWidth(axi4::PortType port) {
@@ -46,10 +50,10 @@ inline unsigned pulpUserWidth(axi4::PortType port) {
 mlir::LogicalResult checkPulpSupported(mlir::Operation *op);
 
 /// Attach a PULP wrapper implementing `op` to `shape`, the external module it
-/// is lowered to.
+/// is lowered to. With `atops`, every face of the wrapper carries `atop`.
 mlir::LogicalResult attachPulpSource(mlir::ImplicitLocOpBuilder &b,
                                      hw::HWModuleExternOp shape,
-                                     mlir::Operation *op);
+                                     mlir::Operation *op, bool atops);
 
 } // namespace AXI4ToHW
 } // namespace circt

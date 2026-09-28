@@ -330,3 +330,13 @@ hw.module @ConnectivityShape(in %clk : !seq.clock, in %rst_ni : i1, in %port : !
   %s = axi4.xbar %clk, %rst_ni mgrs %port {PULP_CONFIG_Connectivity = [[true, false]]} : (!port) -> (!port)
   hw.output %s : !port
 }
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @AtopsDisabled(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port {pulp.atops}, out out : !port {pulp.atops}) {
+  // expected-error @below {{'axi4.xbar' op has 'PULP_CONFIG_ATOPs', which must be true because it carries atomics from a port marked 'pulp.atops'}}
+  %s = axi4.xbar %clk, %rst_ni mgrs %port {PULP_CONFIG_ATOPs = false} : (!port) -> (!port)
+  hw.output %s : !port
+}

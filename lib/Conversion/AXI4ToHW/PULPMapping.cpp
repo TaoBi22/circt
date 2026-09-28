@@ -157,9 +157,11 @@ emitPayloadStruct(llvm::raw_ostream &os, StringRef prefix, StringRef role,
 }
 
 /// Append the declarations of the ports one face of a wrapper carries,
-/// mirroring the signals the external module explodes into.
+/// mirroring the signals the external module explodes into. With `atops`, the
+/// face carries `atop` alongside its AW channel.
 static void emitFacePorts(SmallVectorImpl<std::string> &ports, StringRef prefix,
-                          StringRef role, unsigned index, bool isManager) {
+                          StringRef role, unsigned index, bool isManager,
+                          bool atops) {
   for (const ChannelInfo &info : kChannels) {
     bool drives = isManager == info.isRequest;
     StringRef forward = drives ? "output" : "input ";
@@ -169,15 +171,19 @@ static void emitFacePorts(SmallVectorImpl<std::string> &ports, StringRef prefix,
     ports.push_back(("  " + forward + " " + type + " " + base).str());
     ports.push_back(("  " + forward + " logic " + base + "valid").str());
     ports.push_back(("  " + reverse + " logic " + base + "ready").str());
+    if (atops && info.channel == AXI4Channel::AW)
+      ports.push_back(
+          ("  " + forward + " axi_pkg::atop_t " + base + "_atop").str());
   }
 }
 
 /// Emit the assignments bridging one face's ports to the PULP `req` and `resp`
-/// structs it drives. PULP's atop is tied off, and if PULP has a user field
-/// that the port does not, the bridge drives it with zeroes.
+/// structs it drives. PULP's atop is tied off unless the face carries it with
+/// `atops`, and if PULP has a user field that the port does not, the bridge
+/// drives it with zeroes.
 static void emitFaceBridge(llvm::raw_ostream &os, PortType port, StringRef role,
                            unsigned index, bool isManager, StringRef req,
-                           StringRef resp) {
+                           StringRef resp, bool atops) {
   auto payloadAssign = [&](const Twine &lhs, const Twine &rhs,
                            const ChannelInfo &info, bool toPulp) {
     SmallVector<std::string> fields;
@@ -193,7 +199,7 @@ static void emitFaceBridge(llvm::raw_ostream &os, PortType port, StringRef role,
     }
     if (toPulp) {
       if (info.channel == AXI4Channel::AW)
-        fields.push_back("atop: '0");
+        fields.push_back(atops ? ("atop: " + rhs + "_atop").str() : "atop: '0");
       // PULP's user_t is a bit wide even when the port carries no user.
       if (port.getUserWidth() == 0)
         fields.push_back("user: '0");
@@ -209,6 +215,8 @@ static void emitFaceBridge(llvm::raw_ostream &os, PortType port, StringRef role,
     StringRef ready = info.isRequest ? resp : req;
     if (isManager == info.isRequest) {
       payloadAssign(wire, payload + "." + info.name, info, /*toPulp=*/false);
+      if (atops && info.channel == AXI4Channel::AW)
+        os << "  assign " << wire << "_atop = " << payload << ".aw.atop;\n";
       os << "  assign " << wire << "valid = " << payload << "." << info.name
          << "_valid;\n";
       os << "  assign " << ready << "." << info.name << "_ready = " << wire
@@ -358,6 +366,22 @@ static LogicalResult applyPulpConfig(Operation *op,
   return success();
 }
 
+/// Report config for `param`, which enables PULP's support for atomics, that
+/// disables it where atomics reach `op` from a port marked as carrying them.
+static LogicalResult checkAtopConfig(Operation *op, StringRef param,
+                                     bool atops) {
+  std::string name = (Twine(kPulpConfigPrefix) + param).str();
+  Attribute attr = op->getAttr(name);
+  if (!atops || !attr)
+    return success();
+  if (auto value = dyn_cast<BoolAttr>(attr); value && value.getValue())
+    return success();
+  return op->emitOpError() << "has '" << name
+                           << "', which must be true because it carries "
+                              "atomics from a port marked '"
+                           << kPulpAtopsAttr << "'";
+}
+
 /// Emit the start of an instance of PULP's `ip`, named `instance`: the
 /// parameter list, with `config` applied, up to the opening of the port list.
 static LogicalResult emitPulpInstance(llvm::raw_ostream &os, Operation *op,
@@ -392,7 +416,7 @@ static LogicalResult emitPulpInstance(llvm::raw_ostream &os, Operation *op,
 static void emitDualIdWrapper(llvm::raw_ostream &os, StringRef name,
                               StringRef ip, PortType upstream,
                               unsigned numUpstream, PortType downstream,
-                              unsigned numDownstream) {
+                              unsigned numDownstream, bool atops) {
   unsigned addrWidth = upstream.getAddrWidth();
   unsigned dataWidth = upstream.getDataWidth();
   // checkPulp* methods already verified ID widths
@@ -440,9 +464,9 @@ static void emitDualIdWrapper(llvm::raw_ostream &os, StringRef name,
   SmallVector<std::string> ports{"  input  logic clk_i",
                                  "  input  logic rst_ni"};
   for (unsigned i = 0; i != numUpstream; ++i)
-    emitFacePorts(ports, prefix, "mgr", i, /*isManager=*/false);
+    emitFacePorts(ports, prefix, "mgr", i, /*isManager=*/false, atops);
   for (unsigned j = 0; j != numDownstream; ++j)
-    emitFacePorts(ports, prefix, "sub", j, /*isManager=*/true);
+    emitFacePorts(ports, prefix, "sub", j, /*isManager=*/true, atops);
   os << "module " << name << " (\n" << llvm::join(ports, ",\n") << "\n);\n";
 
   os << "  " << prefix << "slv_req_t  [" << numUpstream << "-1:0] slv_req;\n";
@@ -455,16 +479,17 @@ static void emitDualIdWrapper(llvm::raw_ostream &os, StringRef name,
   for (unsigned i = 0; i != numUpstream; ++i)
     emitFaceBridge(os, upstream, "mgr", i, /*isManager=*/false,
                    ("slv_req[" + Twine(i) + "]").str(),
-                   ("slv_resp[" + Twine(i) + "]").str());
+                   ("slv_resp[" + Twine(i) + "]").str(), atops);
   for (unsigned j = 0; j != numDownstream; ++j)
     emitFaceBridge(os, downstream, "sub", j, /*isManager=*/true,
                    ("mst_req[" + Twine(j) + "]").str(),
-                   ("mst_resp[" + Twine(j) + "]").str());
+                   ("mst_resp[" + Twine(j) + "]").str(), atops);
 }
 
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_xbar, with the
 /// ports `xbar`'s external module lowers to.
-static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar) {
+static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar,
+                                             bool atops) {
   auto upstream = cast<PortType>(xbar.getUpstream().front().getType());
   auto downstream = cast<PortType>(xbar.getDownstream().front().getType());
   unsigned numUpstream = xbar.getUpstream().size();
@@ -477,7 +502,7 @@ static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar) {
   std::string text;
   llvm::raw_string_ostream os(text);
   emitDualIdWrapper(os, name, "axi_xbar", upstream, numUpstream, downstream,
-                    numDownstream);
+                    numDownstream, atops);
 
   SmallVector<std::string> rules =
       pulpAddrMapRules(xbar.getDownstream(), addrWidth);
@@ -524,7 +549,8 @@ static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar) {
              << numUpstream << " upstream ports with a column for each of its "
              << numDownstream << " downstream ports";
 
-  if (failed(applyPulpConfig(xbar, cfgConfig, cfg)))
+  if (failed(applyPulpConfig(xbar, cfgConfig, cfg)) ||
+      failed(checkAtopConfig(xbar, "ATOPs", atops)))
     return failure();
 
   // `default: '0` covers the Cfg fields later PULP versions added.
@@ -541,7 +567,8 @@ static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar) {
 
   if (failed(emitPulpInstance(os, xbar, xbarConfig, "axi_xbar", "i_xbar",
                               {{"Cfg", "Cfg"},
-                               {"ATOPs", "1'b0", /*derived=*/false},
+                               {"ATOPs", atops ? "1'b1" : "1'b0",
+                                /*derived=*/false},
                                {"Connectivity", "'1", /*derived=*/false},
                                {"slv_aw_chan_t", prefix + "slv_aw_chan_t"},
                                {"mst_aw_chan_t", prefix + "mst_aw_chan_t"},
@@ -641,7 +668,7 @@ static void emitWrapperTypedefs(llvm::raw_ostream &os, StringRef name,
 /// to instantiate `ip` and close it.
 static void emitSymmetricWrapper(llvm::raw_ostream &os, StringRef name,
                                  PortType port, StringRef ip,
-                                 ArrayRef<StringRef> domainPorts,
+                                 ArrayRef<StringRef> domainPorts, bool atops,
                                  unsigned numDownstream = 1) {
   std::string prefix = (name + "_").str();
   emitWrapperTypedefs(os, name, port, ip, {"mgr", "sub"});
@@ -650,9 +677,9 @@ static void emitSymmetricWrapper(llvm::raw_ostream &os, StringRef name,
   // its downstream subordinate.
   SmallVector<std::string> ports = llvm::map_to_vector(
       domainPorts, [](StringRef port) { return port.str(); });
-  emitFacePorts(ports, prefix, "mgr", 0, /*isManager=*/false);
+  emitFacePorts(ports, prefix, "mgr", 0, /*isManager=*/false, atops);
   for (unsigned j = 0; j != numDownstream; ++j)
-    emitFacePorts(ports, prefix, "sub", j, /*isManager=*/true);
+    emitFacePorts(ports, prefix, "sub", j, /*isManager=*/true, atops);
   os << "module " << name << " (\n" << llvm::join(ports, ",\n") << "\n);\n";
 
   std::string dimension =
@@ -662,12 +689,12 @@ static void emitSymmetricWrapper(llvm::raw_ostream &os, StringRef name,
   os << "  " << prefix << "req_t  " << dimension << "mst_req;\n";
   os << "  " << prefix << "resp_t " << dimension << "mst_resp;\n";
 
-  emitFaceBridge(os, port, "mgr", 0, /*isManager=*/false, "slv_req",
-                 "slv_resp");
+  emitFaceBridge(os, port, "mgr", 0, /*isManager=*/false, "slv_req", "slv_resp",
+                 atops);
   for (unsigned j = 0; j != numDownstream; ++j) {
     std::string index = numDownstream == 1 ? "" : ("[" + Twine(j) + "]").str();
     emitFaceBridge(os, port, "sub", j, /*isManager=*/true, "mst_req" + index,
-                   "mst_resp" + index);
+                   "mst_resp" + index, atops);
   }
 }
 
@@ -685,13 +712,14 @@ static SmallVector<PulpParam> pulpChannelParams(StringRef prefix) {
 
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_cut, with the
 /// ports `cut`'s external module lowers to.
-static FailureOr<std::string> pulpCutSource(StringRef name, CutOp cut) {
+static FailureOr<std::string> pulpCutSource(StringRef name, CutOp cut,
+                                            bool atops) {
   std::string prefix = (name + "_").str();
   std::string text;
   llvm::raw_string_ostream os(text);
-  emitSymmetricWrapper(os, name, cast<PortType>(cut.getUpstream().getType()),
-                       "axi_cut",
-                       {"  input  logic clk_i", "  input  logic rst_ni"});
+  emitSymmetricWrapper(
+      os, name, cast<PortType>(cut.getUpstream().getType()), "axi_cut",
+      {"  input  logic clk_i", "  input  logic rst_ni"}, atops);
 
   // A cut registers both directions unless its config bypasses them.
   SmallVector<PulpParam> params = {{"Bypass", "1'b0", /*derived=*/false}};
@@ -713,14 +741,16 @@ static FailureOr<std::string> pulpCutSource(StringRef name, CutOp cut) {
 /// ports `cdc`'s external module lowers to. The upstream face is clocked by the
 /// source domain and the downstream face by the destination domain, both reset
 /// by the one reset the crossing may not cross.
-static FailureOr<std::string> pulpCdcSource(StringRef name, CDCOp cdc) {
+static FailureOr<std::string> pulpCdcSource(StringRef name, CDCOp cdc,
+                                            bool atops) {
   std::string prefix = (name + "_").str();
   std::string text;
   llvm::raw_string_ostream os(text);
   emitSymmetricWrapper(os, name, cast<PortType>(cdc.getUpstream().getType()),
                        "axi_cdc",
                        {"  input  logic src_clk_i", "  input  logic dst_clk_i",
-                        "  input  logic rst_ni"});
+                        "  input  logic rst_ni"},
+                       atops);
 
   // Depth and synchronizer stages are the axi_cdc defaults unless the config
   // sets them.
@@ -761,8 +791,8 @@ static LogicalResult checkPulpDWConverterSupported(DWConverterOp converter) {
 /// with the ports `converter`'s external module lowers to. The two faces differ
 /// in their data and strobe widths, so unlike a cut they need a channel and
 /// req/resp type each; the address, ID and user widths are shared.
-static FailureOr<std::string> pulpDWConverterSource(StringRef name,
-                                                    DWConverterOp converter) {
+static FailureOr<std::string>
+pulpDWConverterSource(StringRef name, DWConverterOp converter, bool atops) {
   auto upstream = cast<PortType>(converter.getUpstream().getType());
   auto downstream = cast<PortType>(converter.getDownstream().getType());
   unsigned upstreamData = upstream.getDataWidth();
@@ -832,8 +862,8 @@ static FailureOr<std::string> pulpDWConverterSource(StringRef name,
   // to its downstream subordinate.
   SmallVector<std::string> ports{"  input  logic clk_i",
                                  "  input  logic rst_ni"};
-  emitFacePorts(ports, prefix, "mgr", 0, /*isManager=*/false);
-  emitFacePorts(ports, prefix, "sub", 0, /*isManager=*/true);
+  emitFacePorts(ports, prefix, "mgr", 0, /*isManager=*/false, atops);
+  emitFacePorts(ports, prefix, "sub", 0, /*isManager=*/true, atops);
   os << "module " << name << " (\n" << llvm::join(ports, ",\n") << "\n);\n";
 
   os << "  " << prefix << "slv_req_t  slv_req;\n";
@@ -842,9 +872,9 @@ static FailureOr<std::string> pulpDWConverterSource(StringRef name,
   os << "  " << prefix << "mst_resp_t mst_resp;\n";
 
   emitFaceBridge(os, upstream, "mgr", 0, /*isManager=*/false, "slv_req",
-                 "slv_resp");
+                 "slv_resp", atops);
   emitFaceBridge(os, downstream, "sub", 0, /*isManager=*/true, "mst_req",
-                 "mst_resp");
+                 "mst_resp", atops);
 
   // PULP keeps a tracker per read it is reassembling, on the upstream side, so
   // it needs one for every read the upstream port can have outstanding. A port
@@ -896,8 +926,8 @@ static LogicalResult checkPulpIWConverterSupported(IWConverterOp converter) {
 /// with the ports `converter`'s external module lowers to. PULP prepends zeroes
 /// to widen, and to narrow either remaps the IDs or, where they no longer fit,
 /// serialises them onto shared ones.
-static FailureOr<std::string> pulpIWConverterSource(StringRef name,
-                                                    IWConverterOp converter) {
+static FailureOr<std::string>
+pulpIWConverterSource(StringRef name, IWConverterOp converter, bool atops) {
   auto upstream = cast<PortType>(converter.getUpstream().getType());
   auto downstream = cast<PortType>(converter.getDownstream().getType());
   std::string prefix = (name + "_").str();
@@ -905,7 +935,7 @@ static FailureOr<std::string> pulpIWConverterSource(StringRef name,
   std::string text;
   llvm::raw_string_ostream os(text);
   emitDualIdWrapper(os, name, "axi_iw_converter", upstream, /*numUpstream=*/1,
-                    downstream, /*numDownstream=*/1);
+                    downstream, /*numDownstream=*/1, atops);
 
   // A port keeps at most 2**its ID width transactions outstanding, so its
   // outstanding count bounds the unique IDs in flight as well as the
@@ -971,7 +1001,7 @@ static LogicalResult checkPulpBurstSplitterSupported(BurstSplitterOp splitter) {
 /// A SystemVerilog wrapper named `name` instantiating PULP's
 /// axi_burst_splitter
 static FailureOr<std::string>
-pulpBurstSplitterSource(StringRef name, BurstSplitterOp splitter) {
+pulpBurstSplitterSource(StringRef name, BurstSplitterOp splitter, bool atops) {
   auto upstream = cast<PortType>(splitter.getUpstream().getType());
   // checkPulpBurstSplitterSupported has established one ID width.
   unsigned idWidth = upstream.getWriteIdWidth();
@@ -980,7 +1010,8 @@ pulpBurstSplitterSource(StringRef name, BurstSplitterOp splitter) {
   std::string text;
   llvm::raw_string_ostream os(text);
   emitSymmetricWrapper(os, name, upstream, "axi_burst_splitter",
-                       {"  input  logic clk_i", "  input  logic rst_ni"});
+                       {"  input  logic clk_i", "  input  logic rst_ni"},
+                       atops);
 
   if (failed(emitPulpInstance(
           os, splitter, "axi_burst_splitter", "i_burst_splitter",
@@ -1038,7 +1069,8 @@ checkPulpBurstUnwrapperSupported(BurstUnwrapperOp unwrapper) {
 
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_burst_unwrap
 static FailureOr<std::string>
-pulpBurstUnwrapperSource(StringRef name, BurstUnwrapperOp unwrapper) {
+pulpBurstUnwrapperSource(StringRef name, BurstUnwrapperOp unwrapper,
+                         bool atops) {
   auto upstream = cast<PortType>(unwrapper.getUpstream().getType());
   // checkPulpBurstUnwrapperSupported has established one ID width.
   unsigned idWidth = upstream.getWriteIdWidth();
@@ -1047,7 +1079,8 @@ pulpBurstUnwrapperSource(StringRef name, BurstUnwrapperOp unwrapper) {
   std::string text;
   llvm::raw_string_ostream os(text);
   emitSymmetricWrapper(os, name, upstream, "axi_burst_unwrap",
-                       {"  input  logic clk_i", "  input  logic rst_ni"});
+                       {"  input  logic clk_i", "  input  logic rst_ni"},
+                       atops);
 
   if (failed(emitPulpInstance(
           os, unwrapper, "axi_burst_unwrap", "i_burst_unwrap",
@@ -1085,7 +1118,8 @@ static LogicalResult checkPulpDemuxSupported(DemuxOp demux) {
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_demux. PULP is
 /// told which downstream port to route a request to rather than deriving it, so
 /// the wrapper decodes the windows itself.
-static FailureOr<std::string> pulpDemuxSource(StringRef name, DemuxOp demux) {
+static FailureOr<std::string> pulpDemuxSource(StringRef name, DemuxOp demux,
+                                              bool atops) {
   auto port = cast<PortType>(demux.getUpstream().getType());
   unsigned numDownstream = demux.getDownstream().size();
   unsigned addrWidth = port.getAddrWidth();
@@ -1096,7 +1130,7 @@ static FailureOr<std::string> pulpDemuxSource(StringRef name, DemuxOp demux) {
   std::string text;
   llvm::raw_string_ostream os(text);
   emitSymmetricWrapper(os, name, port, "axi_demux",
-                       {"  input  logic clk_i", "  input  logic rst_ni"},
+                       {"  input  logic clk_i", "  input  logic rst_ni"}, atops,
                        numDownstream);
 
   SmallVector<std::string> rules =
@@ -1132,7 +1166,8 @@ static FailureOr<std::string> pulpDemuxSource(StringRef name, DemuxOp demux) {
   // The spill registers are left at the axi_demux defaults unless the config
   // sets them.
   SmallVector<PulpParam> params = {{"AxiIdWidth", Twine(idWidth).str()},
-                                   {"AtopSupport", "1'b0", /*derived=*/false}};
+                                   {"AtopSupport", atops ? "1'b1" : "1'b0",
+                                    /*derived=*/false}};
   llvm::append_range(params, pulpChannelParams(prefix));
   params.push_back({"NoMstPorts", Twine(numDownstream).str()});
   params.push_back(
@@ -1141,7 +1176,8 @@ static FailureOr<std::string> pulpDemuxSource(StringRef name, DemuxOp demux) {
        /*derived=*/false});
   params.push_back({"AxiLookBits", Twine(idWidth).str(), /*derived=*/false});
   params.push_back({"UniqueIds", "1'b0", /*derived=*/false});
-  if (failed(emitPulpInstance(os, demux, "axi_demux", "i_demux", params)))
+  if (failed(checkAtopConfig(demux, "AtopSupport", atops)) ||
+      failed(emitPulpInstance(os, demux, "axi_demux", "i_demux", params)))
     return failure();
   os << "    .clk_i           (clk_i),\n";
   os << "    .rst_ni          (rst_ni),\n";
@@ -1175,7 +1211,8 @@ static LogicalResult checkPulpMuxSupported(MuxOp mux) {
 
 /// A SystemVerilog wrapper named `name` instantiating PULP's axi_mux, with the
 /// ports `mux`'s external module lowers to.
-static FailureOr<std::string> pulpMuxSource(StringRef name, MuxOp mux) {
+static FailureOr<std::string> pulpMuxSource(StringRef name, MuxOp mux,
+                                            bool atops) {
   auto upstream = cast<PortType>(mux.getUpstream().front().getType());
   auto downstream = cast<PortType>(mux.getDownstream().getType());
   unsigned numUpstream = mux.getUpstream().size();
@@ -1184,7 +1221,7 @@ static FailureOr<std::string> pulpMuxSource(StringRef name, MuxOp mux) {
   std::string text;
   llvm::raw_string_ostream os(text);
   emitDualIdWrapper(os, name, "axi_mux", upstream, numUpstream, downstream,
-                    /*numDownstream=*/1);
+                    /*numDownstream=*/1, atops);
 
   // The spill registers are left at the axi_mux defaults unless the config
   // sets them. PULP drives one downstream port, so it takes the single struct
@@ -1267,13 +1304,13 @@ static FailureOr<std::string> pulpToMemSource(StringRef name, ToMemOp toMem) {
                                  "  output " + prefix + "data_t mem_wdata_o",
                                  "  output " + prefix + "strb_t mem_strb_o",
                                  "  output logic mem_we_o"};
-  emitFacePorts(ports, prefix, "mgr", 0, /*isManager=*/false);
+  emitFacePorts(ports, prefix, "mgr", 0, /*isManager=*/false, /*atops=*/false);
   os << "module " << name << " (\n" << llvm::join(ports, ",\n") << "\n);\n";
 
   os << "  " << prefix << "req_t  slv_req;\n";
   os << "  " << prefix << "resp_t slv_resp;\n";
-  emitFaceBridge(os, port, "mgr", 0, /*isManager=*/false, "slv_req",
-                 "slv_resp");
+  emitFaceBridge(os, port, "mgr", 0, /*isManager=*/false, "slv_req", "slv_resp",
+                 /*atops=*/false);
 
   // One bank as wide as the port, since the op drives a single memory. The
   // response buffer is left at the axi_to_mem default unless the config sets
@@ -1323,27 +1360,32 @@ LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
 
 LogicalResult circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
                                                 hw::HWModuleExternOp shape,
-                                                Operation *op) {
+                                                Operation *op, bool atops) {
   StringRef name = shape.getName();
   std::optional<FailureOr<std::string>> text =
       TypeSwitch<Operation *, std::optional<FailureOr<std::string>>>(op)
-          .Case<XbarOp>([&](XbarOp xbar) { return pulpXbarSource(name, xbar); })
-          .Case<DemuxOp>(
-              [&](DemuxOp demux) { return pulpDemuxSource(name, demux); })
-          .Case<MuxOp>([&](MuxOp mux) { return pulpMuxSource(name, mux); })
-          .Case<CutOp>([&](CutOp cut) { return pulpCutSource(name, cut); })
-          .Case<CDCOp>([&](CDCOp cdc) { return pulpCdcSource(name, cdc); })
+          .Case<XbarOp>(
+              [&](XbarOp xbar) { return pulpXbarSource(name, xbar, atops); })
+          .Case<DemuxOp>([&](DemuxOp demux) {
+            return pulpDemuxSource(name, demux, atops);
+          })
+          .Case<MuxOp>(
+              [&](MuxOp mux) { return pulpMuxSource(name, mux, atops); })
+          .Case<CutOp>(
+              [&](CutOp cut) { return pulpCutSource(name, cut, atops); })
+          .Case<CDCOp>(
+              [&](CDCOp cdc) { return pulpCdcSource(name, cdc, atops); })
           .Case<DWConverterOp>([&](DWConverterOp converter) {
-            return pulpDWConverterSource(name, converter);
+            return pulpDWConverterSource(name, converter, atops);
           })
           .Case<IWConverterOp>([&](IWConverterOp converter) {
-            return pulpIWConverterSource(name, converter);
+            return pulpIWConverterSource(name, converter, atops);
           })
           .Case<BurstSplitterOp>([&](BurstSplitterOp splitter) {
-            return pulpBurstSplitterSource(name, splitter);
+            return pulpBurstSplitterSource(name, splitter, atops);
           })
           .Case<BurstUnwrapperOp>([&](BurstUnwrapperOp unwrapper) {
-            return pulpBurstUnwrapperSource(name, unwrapper);
+            return pulpBurstUnwrapperSource(name, unwrapper, atops);
           })
           .Case<ToMemOp>(
               [&](ToMemOp toMem) { return pulpToMemSource(name, toMem); })

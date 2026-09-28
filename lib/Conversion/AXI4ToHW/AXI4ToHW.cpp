@@ -84,10 +84,6 @@ static SmallVector<Type> portTypes(ArrayRef<hw::PortInfo> ports) {
 // Request and response structs
 //===----------------------------------------------------------------------===//
 
-/// The width of the `atop` field PULP's AW channel carries and the dialect does
-/// not model.
-static constexpr unsigned kAtopWidth = 6;
-
 namespace {
 /// A field of PULP's `axi_req_t` or `axi_resp_t`: its name, the index its
 /// signal takes in AXI4 order, and the channel whose payload it carries, if it
@@ -401,6 +397,102 @@ static SmallVector<hw::ModulePort> componentPorts(const Component &component) {
   return ports;
 }
 
+//===----------------------------------------------------------------------===//
+// Atomics
+//===----------------------------------------------------------------------===//
+
+/// Whether `port` is marked as carrying PULP's atomic operations.
+static bool carriesAtops(const hw::PortInfo &port) {
+  return port.attrs && port.attrs.get(kPulpAtopsAttr);
+}
+
+/// Whether a crossbar's PULP connectivity connects `upstream` to `downstream`.
+static bool isConnected(XbarOp xbar, unsigned upstream, unsigned downstream) {
+  auto rows = xbar->getAttrOfType<ArrayAttr>(
+      (Twine(kPulpConfigPrefix) + "Connectivity").str());
+  if (!rows || upstream >= rows.size())
+    return true;
+  auto row = dyn_cast<ArrayAttr>(rows[upstream]);
+  if (!row || downstream >= row.size())
+    return true;
+  auto bit = dyn_cast<BoolAttr>(row[downstream]);
+  return !bit || bit.getValue();
+}
+
+/// The ports `op` forwards a transaction arriving through `use` to, when it is
+/// addressed within `windows`.
+static SmallVector<Value> forwardedPorts(Operation *op, OpOperand &use,
+                                         WindowSetAttr windows) {
+  auto reaches = [&](Value port) {
+    return cast<PortType>(port.getType()).getWindows().overlaps(windows);
+  };
+  SmallVector<Value> forwarded;
+  if (auto xbar = dyn_cast<XbarOp>(op)) {
+    unsigned upstream =
+        use.getOperandNumber() - xbar.getUpstream().getBeginOperandIndex();
+    for (auto [index, port] : llvm::enumerate(xbar.getDownstream()))
+      if (isConnected(xbar, upstream, index) && reaches(port))
+        forwarded.push_back(port);
+    return forwarded;
+  }
+  if (auto demux = dyn_cast<DemuxOp>(op)) {
+    llvm::append_range(forwarded,
+                       llvm::make_filter_range(demux.getDownstream(), reaches));
+    return forwarded;
+  }
+  for (Value result : op->getResults())
+    if (isa<PortType>(result.getType()))
+      forwarded.push_back(result);
+  return forwarded;
+}
+
+/// The components on a path from a port marked as carrying atomics, which have
+/// to carry `atop` along it. A manager's transactions keep their addresses, so
+/// each path follows the ports within its manager's windows.
+static DenseSet<Operation *> findAtopComponents(ModuleOp module) {
+  SmallVector<std::pair<Value, WindowSetAttr>> worklist;
+  auto addManager = [&](Value port) {
+    worklist.push_back({port, cast<PortType>(port.getType()).getWindows()});
+  };
+
+  SymbolTable symbols(module);
+  for (auto hwModule : module.getOps<hw::HWModuleOp>()) {
+    hw::ModulePortInfo ports(hwModule.getPortList());
+    for (BlockArgument arg : hwModule.getBodyBlock()->getArguments())
+      if (isa<PortType>(arg.getType()) &&
+          carriesAtops(ports.atInput(arg.getArgNumber())))
+        addManager(arg);
+    hwModule.walk([&](hw::InstanceOp instance) {
+      auto target = symbols.lookup<hw::HWModuleLike>(
+          instance.getReferencedModuleNameAttr());
+      if (!target)
+        return;
+      hw::ModulePortInfo targetPorts(target.getPortList());
+      for (OpResult result : instance.getResults())
+        if (isa<PortType>(result.getType()) &&
+            carriesAtops(targetPorts.atOutput(result.getResultNumber())))
+          addManager(result);
+    });
+  }
+
+  DenseSet<Operation *> components;
+  DenseSet<std::pair<Value, WindowSetAttr>> visited;
+  while (!worklist.empty()) {
+    auto [port, windows] = worklist.pop_back_val();
+    if (!visited.insert({port, windows}).second)
+      continue;
+    for (OpOperand &use : port.getUses()) {
+      Operation *user = use.getOwner();
+      if (!getComponent(user) || isa<ToMemOp>(user))
+        continue;
+      components.insert(user);
+      for (Value next : forwardedPorts(user, use, windows))
+        worklist.push_back({next, windows});
+    }
+  }
+  return components;
+}
+
 /// Replace every component with an instance of an external module of its shape,
 /// shared by components of the same kind whose ports match.
 static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
@@ -410,6 +502,9 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
     if (std::optional<Component> component = getComponent(op))
       components.push_back(std::move(*component));
   });
+  DenseSet<Operation *> atopComponents;
+  if (pulpMapping)
+    atopComponents = findAtopComponents(module);
 
   DenseMap<std::tuple<StringAttr, hw::ModuleType, DictionaryAttr>,
            hw::HWModuleExternOp>
@@ -425,20 +520,27 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
 
     SmallVector<hw::ModulePort> ports = componentPorts(component);
     // Two kinds of component can share a port list, so the name - which encodes
-    // the kind - is part of the shape, as is the config of the PULP IP.
-    auto name = b.getStringAttr(component.moduleName);
+    // the kind, and whether it carries atomics - is part of the shape, as is
+    // the config of the PULP IP.
+    bool atops = atopComponents.contains(op);
+    auto name = b.getStringAttr(component.moduleName + (atops ? "_atop" : ""));
     DictionaryAttr config = pulpMapping ? getPulpConfig(op) : DictionaryAttr();
     hw::HWModuleExternOp &shape =
         shapes[{name, hw::ModuleType::get(module.getContext(), ports), config}];
     if (!shape) {
+      auto marked =
+          b.getDictionaryAttr(b.getNamedAttr(kPulpAtopsAttr, b.getUnitAttr()));
       shape = hw::HWModuleExternOp::create(
-          b, name, llvm::map_to_vector(ports, [](hw::ModulePort port) {
-            return hw::PortInfo{port};
+          b, name, llvm::map_to_vector(ports, [&](hw::ModulePort port) {
+            hw::PortInfo info{port};
+            if (atops && isa<PortType>(port.type))
+              info.attrs = marked;
+            return info;
           }));
       // Two shapes can want the same name, so let the symbol table unique it.
       symbolTable.insert(shape);
       componentModules.insert(shape);
-      if (pulpMapping && failed(attachPulpSource(b, shape, op)))
+      if (pulpMapping && failed(attachPulpSource(b, shape, op, atops)))
         return failure();
     }
 
@@ -513,6 +615,59 @@ void FillerDomain::eraseUnused() {
   }
 }
 
+namespace {
+/// The `atop` signals travelling alongside the bridges of ports marked as
+/// carrying atomics, which the bridge ops have no operands for. Each is
+/// connected from the bridge producing a port to the one consuming it when the
+/// two are annihilated.
+class AtopWires {
+public:
+  /// Record the `atop` driven alongside the port `toPort` produces.
+  void drive(ImplicitLocOpBuilder &b, Operation *toPort, Value atop);
+  /// The `atop` taken alongside the port `fromPort` consumes, tied to zero
+  /// until whatever produces the port drives it.
+  Value take(ImplicitLocOpBuilder &b, Operation *fromPort);
+  /// Connect the `atop` between a producing and a consuming bridge.
+  void connect(Operation *toPort, Operation *fromPort);
+  /// Erase the records of the `atop`s nothing took.
+  void eraseUntaken();
+
+private:
+  /// Held as the operand of a cast, which follows the value if it is replaced
+  /// as a backedge.
+  DenseMap<Operation *, UnrealizedConversionCastOp> driven;
+  DenseMap<Operation *, Value> taken;
+};
+} // namespace
+
+void AtopWires::drive(ImplicitLocOpBuilder &b, Operation *toPort, Value atop) {
+  driven[toPort] =
+      UnrealizedConversionCastOp::create(b, TypeRange{atop.getType()}, atop);
+}
+
+Value AtopWires::take(ImplicitLocOpBuilder &b, Operation *fromPort) {
+  Value zero = hw::ConstantOp::create(b, APInt::getZero(kAtopWidth));
+  taken[fromPort] = zero;
+  return zero;
+}
+
+void AtopWires::connect(Operation *toPort, Operation *fromPort) {
+  auto holder = driven.lookup(toPort);
+  Value zero = taken.lookup(fromPort);
+  if (!holder || !zero)
+    return;
+  zero.replaceAllUsesWith(holder.getOperand(0));
+  zero.getDefiningOp()->erase();
+  holder.erase();
+  driven.erase(toPort);
+}
+
+void AtopWires::eraseUntaken() {
+  for (UnrealizedConversionCastOp holder : llvm::make_second_range(driven))
+    holder.erase();
+  driven.clear();
+}
+
 /// Report two conversion ops connected by a port but in different domains.
 static LogicalResult emitDomainCrossing(Operation *op, Operation *other,
                                         StringRef domain) {
@@ -525,7 +680,8 @@ static LogicalResult emitDomainCrossing(Operation *op, Operation *other,
 
 /// Wire through and erase every back-to-back bridge (port<->structs op) pair -
 /// errors if there's a domain crossing.
-static LogicalResult annihilateBridges(ModuleOp module, FillerDomain &filler) {
+static LogicalResult annihilateBridges(ModuleOp module, FillerDomain &filler,
+                                       AtopWires &atops) {
   SmallVector<ChannelStructsToPortOp> toPortOps;
   module.walk([&](ChannelStructsToPortOp op) { toPortOps.push_back(op); });
 
@@ -556,9 +712,11 @@ static LogicalResult annihilateBridges(ModuleOp module, FillerDomain &filler) {
                          fromPort.getOperands().drop_front(3)))
       result.replaceAllUsesWith(operand);
 
+    atops.connect(toPort, fromPort);
     fromPort.erase();
     toPort.erase();
   }
+  atops.eraseUntaken();
   return success();
 }
 
@@ -581,8 +739,8 @@ namespace {
 class AXI4PortConversion : public hw::PortConversion {
 public:
   AXI4PortConversion(hw::PortConverterImpl &converter, hw::PortInfo origPort,
-                     FillerDomain &filler)
-      : PortConversion(converter, origPort), filler(filler),
+                     FillerDomain &filler, AtopWires *atops)
+      : PortConversion(converter, origPort), filler(filler), atops(atops),
         portType(cast<PortType>(origPort.type)) {}
 
 protected:
@@ -611,10 +769,13 @@ private:
   SmallVector<Value> instanceDriven(ArrayRef<Backedge> newResults);
 
   FillerDomain &filler;
+  /// Where the `atop` alongside the port is wired, if the port carries one
+  AtopWires *atops;
   PortType portType;
   /// The generated ports, split by this module's own direction, in AXI signal
   /// order
   SmallVector<hw::PortInfo> inputPorts, outputPorts;
+  hw::PortInfo atopPort;
 };
 
 /// Lowers an `!axi4.port` module port to a request and a response struct in the
@@ -651,8 +812,9 @@ private:
 class AXI4PortConversionBuilder : public hw::PortConversionBuilder {
 public:
   AXI4PortConversionBuilder(hw::PortConverterImpl &converter,
-                            FillerDomain &filler, bool structPorts)
-      : PortConversionBuilder(converter), filler(filler),
+                            FillerDomain &filler, AtopWires *atops,
+                            bool structPorts)
+      : PortConversionBuilder(converter), filler(filler), atops(atops),
         structPorts(structPorts) {}
 
   FailureOr<std::unique_ptr<hw::PortConversion>>
@@ -661,13 +823,16 @@ public:
       if (structPorts)
         return {std::make_unique<AXI4StructPortConversion>(converter, port,
                                                            filler)};
-      return {std::make_unique<AXI4PortConversion>(converter, port, filler)};
+      return {std::make_unique<AXI4PortConversion>(
+          converter, port, filler, carriesAtops(port) ? atops : nullptr)};
     }
     return PortConversionBuilder::build(port);
   }
 
 private:
   FillerDomain &filler;
+  /// Where `atop` is wired, if the PULP mapping carries it
+  AtopWires *atops;
   bool structPorts;
 };
 } // namespace
@@ -708,6 +873,10 @@ void AXI4PortConversion::buildInputSignals() {
   // This hook is called when an !axi.port is an input to a module, so we're in
   // a subordinate
   SmallVector<Value> inputs = createInputPorts();
+  Type atopType = IntegerType::get(portType.getContext(), kAtopWidth);
+  Value atop =
+      atops ? converter.createNewInput(origPort, "_aw_atop", atopType, atopPort)
+            : Value();
 
   // A module with no body (e.g. extern) can't do anything with values, so just
   // add the ports
@@ -728,6 +897,8 @@ void AXI4PortConversion::buildInputSignals() {
   auto toPort = ChannelStructsToPortOp::create(b, resultTypes, operands);
   body->getArgument(origPort.argNum).replaceAllUsesWith(toPort.getPort());
   createOutputPorts(toPort.getResults().drop_front());
+  if (atops)
+    atops->drive(b, toPort, atop);
 }
 
 /// Build the corresponding ports for an !axi4.port output
@@ -735,11 +906,14 @@ void AXI4PortConversion::buildOutputSignals() {
   // This hook is called when an !axi.port is an output of a module, so we're in
   // a manager
   SmallVector<Value> inputs = createInputPorts();
+  Type atopType = IntegerType::get(portType.getContext(), kAtopWidth);
 
   // A module with no body (e.g. extern) can't do anything with values, so just
   // add the ports
   if (!body) {
     createOutputPorts({});
+    if (atops)
+      converter.createNewOutput(origPort, "_aw_atop", atopType, {}, atopPort);
     return;
   }
 
@@ -756,6 +930,9 @@ void AXI4PortConversion::buildOutputSignals() {
       PortToChannelStructsOp::create(b, signalTypes(portType, isManager()),
                                      operands, concurrency(b, portType));
   createOutputPorts(fromPort.getResults());
+  if (atops)
+    converter.createNewOutput(origPort, "_aw_atop", atopType,
+                              atops->take(b, fromPort), atopPort);
 }
 
 // Map to the newly created ports on the instances of the modified subordinate
@@ -777,6 +954,8 @@ void AXI4PortConversion::mapInputSignals(OpBuilder &b, Operation *inst,
 
   for (auto [port, value] : llvm::zip_equal(inputPorts, fromPort.getResults()))
     newOperands[port.argNum] = value;
+  if (atops)
+    newOperands[atopPort.argNum] = atops->take(builder, fromPort);
 }
 
 // Map to the newly created ports on the instances of the modified manager
@@ -801,6 +980,8 @@ void AXI4PortConversion::mapOutputSignals(OpBuilder &b, Operation *inst,
   for (auto [port, value] :
        llvm::zip_equal(inputPorts, toPort.getResults().drop_front()))
     newOperands[port.argNum] = value;
+  if (atops)
+    atops->drive(builder, toPort, newResults[atopPort.argNum]);
 }
 
 SmallVector<Type> AXI4StructPortConversion::portAndResponseTypes() {
@@ -986,19 +1167,21 @@ void AXI4ToHWPass::runOnOperation() {
     return signalPassFailure();
 
   FillerDomain filler;
+  AtopWires atops;
   hw::InstanceGraph &instanceGraph = getAnalysis<hw::InstanceGraph>();
   for (auto mod : module.getOps<hw::HWMutableModuleLike>()) {
     // The component externs are internal to the lowering, so they keep their
     // signals however the boundary is expressed.
     bool structPorts =
         reqRespPorts && !componentModules.contains(mod.getOperation());
-    if (failed(hw::PortConverter<AXI4PortConversionBuilder>(instanceGraph, mod,
-                                                            filler, structPorts)
+    if (failed(hw::PortConverter<AXI4PortConversionBuilder>(
+                   instanceGraph, mod, filler, pulpMapping ? &atops : nullptr,
+                   structPorts)
                    .run()))
       return signalPassFailure();
   }
 
-  if (failed(annihilateBridges(module, filler)))
+  if (failed(annihilateBridges(module, filler, atops)))
     return signalPassFailure();
   filler.eraseUnused();
 

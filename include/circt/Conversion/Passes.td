@@ -66,6 +66,16 @@ def AXI4ToHW : Pass<"lower-axi4-to-hw", "mlir::ModuleOp"> {
     `axi_xbar`, rather than as a parameter of its own. Parameters derived from
     the ports cannot be set.
 
+    PULP's AW channel also carries `atop`, the atomic operations it backports
+    from AXI5, which the AXI4 dialect does not model. A module port marked
+    `pulp.atops` carries them, as an `_aw_atop` signal alongside its AW
+    channel. Every component on a path from a marked manager port carries
+    `atop` along it and has PULP's support for atomics enabled, which config
+    cannot disable. Every other component has it disabled unless config
+    enables it.
+    Passes before this one still see an atomic as a plain write, and so do not
+    account for the read response it also produces.
+
     Abstract endpoints are currently unsupported for lowering.
   }];
 

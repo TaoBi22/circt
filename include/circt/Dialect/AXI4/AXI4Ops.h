@@ -45,6 +45,10 @@ bool isReachable(PortType downstream, mlir::ValueRange upstream);
 /// is mapped onto.
 inline constexpr llvm::StringLiteral kPulpConfigPrefix("PULP_CONFIG_");
 
+/// The attribute marking an `!axi4.port` module port as carrying PULP's atomic
+/// operations.
+inline constexpr llvm::StringLiteral kPulpAtopsAttr("pulp.atops");
+
 /// The attributes of `op` configuring the PULP IP it is mapped onto.
 mlir::DictionaryAttr getPulpConfig(mlir::Operation *op);
 
