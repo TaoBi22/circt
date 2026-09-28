@@ -72,7 +72,9 @@ def AXI4ToHW : Pass<"lower-axi4-to-hw", "mlir::ModuleOp"> {
     channel. Every component on a path from a marked manager port carries
     `atop` along it and has PULP's support for atomics enabled, which config
     cannot disable. Every other component has it disabled unless config
-    enables it.
+    enables it. A path that would lose `atop` is an error: one reaching a
+    port not marked `pulp.atops`, or crossing a component whose PULP IP cannot
+    carry atomics.
     Passes before this one still see an atomic as a plain write, and so do not
     account for the read response it also produces.
 

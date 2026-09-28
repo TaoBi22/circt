@@ -446,13 +446,45 @@ static SmallVector<Value> forwardedPorts(Operation *op, OpOperand &use,
   return forwarded;
 }
 
+/// A description of the port `use` carries out of the network, and whether it
+/// is marked as accepting atomics.
+static std::pair<std::string, bool> describeExit(OpOperand &use,
+                                                 SymbolTable &symbols) {
+  Operation *user = use.getOwner();
+  if (auto output = dyn_cast<hw::OutputOp>(user)) {
+    auto hwModule = cast<hw::HWModuleLike>(output->getParentOp());
+    hw::PortInfo port = hw::ModulePortInfo(hwModule.getPortList())
+                            .atOutput(use.getOperandNumber());
+    return {("output port '" + port.getName() + "'").str(), carriesAtops(port)};
+  }
+  if (auto instance = dyn_cast<hw::InstanceOp>(user)) {
+    auto target = symbols.lookup<hw::HWModuleLike>(
+        instance.getReferencedModuleNameAttr());
+    hw::PortInfo port = hw::ModulePortInfo(target.getPortList())
+                            .atInput(use.getOperandNumber());
+    return {("port '" + port.getName() + "' of instance '" +
+             instance.getInstanceName() + "'")
+                .str(),
+            carriesAtops(port)};
+  }
+  return {("'" + user->getName().getStringRef() + "'").str(), false};
+}
+
 /// The components on a path from a port marked as carrying atomics, which have
-/// to carry `atop` along it. A manager's transactions keep their addresses, so
-/// each path follows the ports within its manager's windows.
-static DenseSet<Operation *> findAtopComponents(ModuleOp module) {
-  SmallVector<std::pair<Value, WindowSetAttr>> worklist;
+/// to carry `atop` along it, or failure if a path cannot carry it. A manager's
+/// transactions keep their addresses, so each path follows the ports within its
+/// manager's windows.
+static FailureOr<DenseSet<Operation *>> findAtopComponents(ModuleOp module) {
+  struct Path {
+    Value port;
+    WindowSetAttr windows;
+    /// The marked port the atomics are issued from
+    Value manager;
+  };
+  SmallVector<Path> worklist;
   auto addManager = [&](Value port) {
-    worklist.push_back({port, cast<PortType>(port.getType()).getWindows()});
+    worklist.push_back(
+        {port, cast<PortType>(port.getType()).getWindows(), port});
   };
 
   SymbolTable symbols(module);
@@ -478,16 +510,44 @@ static DenseSet<Operation *> findAtopComponents(ModuleOp module) {
   DenseSet<Operation *> components;
   DenseSet<std::pair<Value, WindowSetAttr>> visited;
   while (!worklist.empty()) {
-    auto [port, windows] = worklist.pop_back_val();
-    if (!visited.insert({port, windows}).second)
+    Path path = worklist.pop_back_val();
+    if (!visited.insert({path.port, path.windows}).second)
       continue;
-    for (OpOperand &use : port.getUses()) {
+    auto reject = [&](InFlightDiagnostic diag) {
+      diag.attachNote(path.manager.getLoc())
+          << "atomics issued from the port marked '" << kPulpAtopsAttr
+          << "' here";
+      return failure();
+    };
+
+    for (OpOperand &use : path.port.getUses()) {
       Operation *user = use.getOwner();
-      if (!getComponent(user) || isa<ToMemOp>(user))
+      if (isa<BurstSplitterOp>(user))
+        return reject(user->emitOpError()
+                      << "cannot carry atomics, which PULP's "
+                         "axi_burst_splitter answers with an error");
+      if (isa<BurstUnwrapperOp>(user))
+        return reject(user->emitOpError()
+                      << "cannot carry atomics, which PULP's axi_burst_unwrap "
+                         "answers with an error");
+      if (isa<ToMemOp>(user))
+        return reject(user->emitOpError()
+                      << "cannot accept atomics, because it has no result to "
+                         "carry the atop PULP's axi_to_mem passes on to the "
+                         "memory");
+
+      if (!getComponent(user)) {
+        auto [exit, accepts] = describeExit(use, symbols);
+        if (!accepts)
+          return reject(mlir::emitError(user->getLoc())
+                        << "atomics reach " << exit << ", which is not marked '"
+                        << kPulpAtopsAttr << "' to accept them");
         continue;
+      }
+
       components.insert(user);
-      for (Value next : forwardedPorts(user, use, windows))
-        worklist.push_back({next, windows});
+      for (Value next : forwardedPorts(user, use, path.windows))
+        worklist.push_back({next, path.windows, path.manager});
     }
   }
   return components;
@@ -503,8 +563,12 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
       components.push_back(std::move(*component));
   });
   DenseSet<Operation *> atopComponents;
-  if (pulpMapping)
-    atopComponents = findAtopComponents(module);
+  if (pulpMapping) {
+    FailureOr<DenseSet<Operation *>> found = findAtopComponents(module);
+    if (failed(found))
+      return failure();
+    atopComponents = std::move(*found);
+  }
 
   DenseMap<std::tuple<StringAttr, hw::ModuleType, DictionaryAttr>,
            hw::HWModuleExternOp>

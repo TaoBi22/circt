@@ -340,3 +340,60 @@ hw.module @AtopsDisabled(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port
   %s = axi4.xbar %clk, %rst_ni mgrs %port {PULP_CONFIG_ATOPs = false} : (!port) -> (!port)
   hw.output %s : !port
 }
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// expected-note @below {{atomics issued from the port marked 'pulp.atops' here}}
+hw.module @AtopsToUnmarkedOutput(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port {pulp.atops}, out out : !port) {
+  %cut = axi4.cut %clk, %rst_ni, %port : !port
+  // expected-error @below {{atomics reach output port 'out', which is not marked 'pulp.atops' to accept them}}
+  hw.output %cut : !port
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mem = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!periph = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// expected-warning @below {{lowering AXI4 port 'axi' changes the ports of this module; its implementation must match the new port list}}
+hw.module.extern @Core(out axi : !mgr {pulp.atops})
+// expected-warning @below {{lowering AXI4 port 'axi' changes the ports of this module; its implementation must match the new port list}}
+hw.module.extern @Mem(in %axi : !mem {pulp.atops})
+// expected-warning @below {{lowering AXI4 port 'axi' changes the ports of this module; its implementation must match the new port list}}
+hw.module.extern @Periph(in %axi : !periph)
+
+// The core addresses the peripheral as well as the memory, so its atomics can
+// reach both
+hw.module @AtopsToUnmarkedInstance(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-note @below {{atomics issued from the port marked 'pulp.atops' here}}
+  %c = hw.instance "core" @Core() -> (axi: !mgr)
+  %mem, %periph = axi4.demux %clk, %rst_ni, %c : (!mgr) -> (!mem, !periph)
+  hw.instance "mem" @Mem(axi: %mem: !mem) -> ()
+  // expected-error @below {{atomics reach port 'axi' of instance 'periph', which is not marked 'pulp.atops' to accept them}}
+  hw.instance "periph" @Periph(axi: %periph: !periph) -> ()
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!split = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// expected-note @below {{atomics issued from the port marked 'pulp.atops' here}}
+hw.module @AtopsThroughSplitter(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port {pulp.atops}, out out : !split {pulp.atops}) {
+  // expected-error @below {{'axi4.burst_splitter' op cannot carry atomics, which PULP's axi_burst_splitter answers with an error}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %port : (!port) -> !split
+  hw.output %split : !split
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// expected-note @below {{atomics issued from the port marked 'pulp.atops' here}}
+hw.module @AtopsToMem(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port {pulp.atops}, in %rvalid : i1, in %rdata : i64) {
+  // expected-error @below {{'axi4.to_mem' op cannot accept atomics, because it has no result to carry the atop PULP's axi_to_mem passes on to the memory}}
+  %valid, %addr, %wdata, %strb, %we = axi4.to_mem %clk, %rst_ni, %port read %rvalid, %rdata : !port
+}
