@@ -163,9 +163,9 @@ static llvm::StringMap<Value> explodeFields(ImplicitLocOpBuilder &b,
 }
 
 /// Repack `payload` into PULP's layout, zeroing the fields PULP carries that
-/// the dialect does not.
+/// the dialect does not - except for `atop`, if given.
 static Value toPulpPayload(ImplicitLocOpBuilder &b, PortType port,
-                           AXI4Channel channel, Value payload) {
+                           AXI4Channel channel, Value payload, Value atop) {
   hw::StructType type = pulpPayloadType(port, channel);
   if (type == payload.getType())
     return payload;
@@ -173,8 +173,10 @@ static Value toPulpPayload(ImplicitLocOpBuilder &b, PortType port,
   auto values = llvm::map_to_vector(
       type.getElements(), [&](const hw::StructType::FieldInfo &field) -> Value {
         StringRef name = field.name.getValue();
-        // `atop` has no signal behind it, and neither has `user` on a port
-        // carrying none.
+        if (name == "atop" && atop)
+          return atop;
+        // `atop` has no signal behind it otherwise, and neither has `user` on
+        // a port carrying none.
         if (name == "atop" || (name == "user" && port.getUserWidth() == 0))
           return hw::ConstantOp::create(
               b, APInt::getZero(hw::getBitWidth(field.type)));
@@ -216,16 +218,25 @@ static SmallVector<Value> explodeStruct(ImplicitLocOpBuilder &b, PortType port,
   return signals;
 }
 
-/// The struct of `layout` carrying `signals`, which arrive in AXI4 order.
+/// The struct of `layout` carrying `signals`, which arrive in AXI4 order, and
+/// `atop` if given.
 static Value packStruct(ImplicitLocOpBuilder &b, PortType port,
-                        ArrayRef<StructField> layout, ValueRange signals) {
+                        ArrayRef<StructField> layout, ValueRange signals,
+                        Value atop = {}) {
   auto fields =
       llvm::map_to_vector(layout, [&](const StructField &field) -> Value {
         Value signal = signals[field.index];
-        return field.payload ? toPulpPayload(b, port, *field.payload, signal)
-                             : signal;
+        return field.payload
+                   ? toPulpPayload(b, port, *field.payload, signal, atop)
+                   : signal;
       });
   return hw::StructCreateOp::create(b, structType(port, layout), fields);
+}
+
+/// The `atop` a request struct carries.
+static Value extractAtop(ImplicitLocOpBuilder &b, Value request) {
+  return hw::StructExtractOp::create(
+      b, hw::StructExtractOp::create(b, request, "aw"), "atop");
 }
 
 //===----------------------------------------------------------------------===//
@@ -848,8 +859,9 @@ private:
 class AXI4StructPortConversion : public hw::PortConversion {
 public:
   AXI4StructPortConversion(hw::PortConverterImpl &converter,
-                           hw::PortInfo origPort, FillerDomain &filler)
-      : PortConversion(converter, origPort), filler(filler),
+                           hw::PortInfo origPort, FillerDomain &filler,
+                           AtopWires *atops)
+      : PortConversion(converter, origPort), filler(filler), atops(atops),
         portType(cast<PortType>(origPort.type)) {}
 
 protected:
@@ -868,6 +880,8 @@ private:
   SmallVector<Type> portAndResponseTypes();
 
   FillerDomain &filler;
+  /// Where the `atop` the request carries is wired, if the port carries one
+  AtopWires *atops;
   PortType portType;
   /// The generated request and response ports
   hw::PortInfo reqPort, respPort;
@@ -884,11 +898,12 @@ public:
   FailureOr<std::unique_ptr<hw::PortConversion>>
   build(hw::PortInfo port) override {
     if (isa<PortType>(port.type)) {
+      AtopWires *portAtops = carriesAtops(port) ? atops : nullptr;
       if (structPorts)
         return {std::make_unique<AXI4StructPortConversion>(converter, port,
-                                                           filler)};
-      return {std::make_unique<AXI4PortConversion>(
-          converter, port, filler, carriesAtops(port) ? atops : nullptr)};
+                                                           filler, portAtops)};
+      return {std::make_unique<AXI4PortConversion>(converter, port, filler,
+                                                   portAtops)};
     }
     return PortConversionBuilder::build(port);
   }
@@ -1084,6 +1099,8 @@ void AXI4StructPortConversion::buildInputSignals() {
   body->getArgument(origPort.argNum).replaceAllUsesWith(toPort.getPort());
   driveResponse(packStruct(b, portType, kResponseFields,
                            toPort.getResults().drop_front()));
+  if (atops)
+    atops->drive(b, toPort, extractAtop(b, request));
 }
 
 /// Build the request and response ports for an !axi4.port output
@@ -1115,7 +1132,8 @@ void AXI4StructPortConversion::buildOutputSignals() {
   auto fromPort = PortToChannelStructsOp::create(
       b, signalTypes(portType, /*managerDriven=*/true), operands,
       concurrency(b, portType));
-  driveRequest(packStruct(b, portType, kRequestFields, fromPort.getResults()));
+  driveRequest(packStruct(b, portType, kRequestFields, fromPort.getResults(),
+                          atops ? atops->take(b, fromPort) : Value()));
 }
 
 // Map to the newly created ports on the instances of the modified subordinate
@@ -1135,7 +1153,8 @@ void AXI4StructPortConversion::mapInputSignals(
       builder, signalTypes(portType, /*managerDriven=*/true), operands,
       concurrency(builder, portType));
   newOperands[reqPort.argNum] =
-      packStruct(builder, portType, kRequestFields, fromPort.getResults());
+      packStruct(builder, portType, kRequestFields, fromPort.getResults(),
+                 atops ? atops->take(builder, fromPort) : Value());
 }
 
 // Map to the newly created ports on the instances of the modified manager
@@ -1156,6 +1175,9 @@ void AXI4StructPortConversion::mapOutputSignals(
   instValue.replaceAllUsesWith(toPort.getPort());
   newOperands[respPort.argNum] = packStruct(builder, portType, kResponseFields,
                                             toPort.getResults().drop_front());
+  if (atops)
+    atops->drive(builder, toPort,
+                 extractAtop(builder, newResults[reqPort.argNum]));
 }
 
 //===----------------------------------------------------------------------===//

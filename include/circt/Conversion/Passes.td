@@ -69,12 +69,12 @@ def AXI4ToHW : Pass<"lower-axi4-to-hw", "mlir::ModuleOp"> {
     PULP's AW channel also carries `atop`, the atomic operations it backports
     from AXI5, which the AXI4 dialect does not model. A module port marked
     `pulp.atops` carries them, as an `_aw_atop` signal alongside its AW
-    channel. Every component on a path from a marked manager port carries
-    `atop` along it and has PULP's support for atomics enabled, which config
-    cannot disable. Every other component has it disabled unless config
-    enables it. A path that would lose `atop` is an error: one reaching a
-    port not marked `pulp.atops`, or crossing a component whose PULP IP cannot
-    carry atomics.
+    channel, or with `req-resp-ports` in the `atop` of its request's AW.
+    Every component on a path from a marked manager port carries `atop` along
+    it and has PULP's support for atomics enabled, which config cannot
+    disable. Every other component has it disabled unless config enables it.
+    A path that would lose `atop` is an error: one reaching a port not marked
+    `pulp.atops`, or crossing a component whose PULP IP cannot carry atomics.
     Passes before this one still see an atomic as a plain write, and so do not
     account for the read response it also produces.
 

@@ -1,4 +1,5 @@
 // RUN: circt-opt %s --lower-axi4-to-hw=pulp-mapping=true --split-input-file | FileCheck %s
+// RUN: circt-opt %s --lower-axi4-to-hw="pulp-mapping=true req-resp-ports=true" --split-input-file | FileCheck %s --check-prefix=STRUCT
 
 !mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
 !mem = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
@@ -46,6 +47,13 @@ hw.module.extern @Periph(in %axi : !periph)
 // CHECK:         hw.instance "periph" @Periph(
 // CHECK-NOT:       atop
 // CHECK-SAME:    )
+// With request structs, atop is read from and written to their AW channel
+// STRUCT-LABEL: hw.module @Mixed(
+// STRUCT-DAG:     %[[CORE_AW:.+]] = hw.struct_extract %core.axi_req["aw"]
+// STRUCT-DAG:     %[[CORE_ATOP:.+]] = hw.struct_extract %[[CORE_AW]]["atop"]
+// STRUCT-DAG:     hw.struct_create ({{.*}}, %xbar0.sub0_aw_atop, %false{{.*}})
+// STRUCT-DAG:     hw.struct_create ({{.*}}, %c0_i6{{.*}}, %false{{.*}})
+// STRUCT-DAG:     hw.instance "xbar0" {{.*}}mgr0_aw_atop: %[[CORE_ATOP]]: i6
 hw.module @Mixed(in %clk : !seq.clock, in %rst_ni : i1) {
   %c = hw.instance "core" @Core() -> (axi: !mgr)
   %d = hw.instance "dma" @Dma() -> (axi: !mgr)
@@ -67,6 +75,11 @@ hw.module @Mixed(in %clk : !seq.clock, in %rst_ni : i1) {
 // CHECK-SAME:      mgr0_aw_atop: %core_aw_atop: i6
 // CHECK:         hw.output
 // CHECK-SAME:      %cut0.sub0_aw_atop
+// STRUCT-LABEL: hw.module @Boundary(
+// STRUCT-DAG:     %[[AW:.+]] = hw.struct_extract %core_req["aw"]
+// STRUCT-DAG:     %[[ATOP:.+]] = hw.struct_extract %[[AW]]["atop"]
+// STRUCT-DAG:     hw.struct_create ({{.*}}, %cut0.sub0_aw_atop, %false{{.*}})
+// STRUCT-DAG:     hw.instance "cut0" {{.*}}mgr0_aw_atop: %[[ATOP]]: i6
 hw.module @Boundary(in %clk : !seq.clock, in %rst_ni : i1, in %core : !port {pulp.atops}, out mem : !port {pulp.atops}) {
   %cut = axi4.cut %clk, %rst_ni, %core : !port
   hw.output %cut : !port
