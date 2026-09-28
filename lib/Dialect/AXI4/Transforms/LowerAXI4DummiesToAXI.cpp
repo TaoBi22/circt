@@ -274,6 +274,31 @@ static ArrayAttr getConnectivityAttr(MLIRContext *context,
   return ArrayAttr::get(context, matrix);
 }
 
+/// The PULP atop markers `endpoint` carries, as the attributes of the port it
+/// becomes.
+static DictionaryAttr getAtopMarkers(Operation *endpoint) {
+  SmallVector<NamedAttribute> markers;
+  for (StringRef name : {kPulpAtopsAttr, kPulpAtopFilterAttr})
+    if (Attribute attr = endpoint->getAttr(name))
+      markers.push_back(
+          NamedAttribute(StringAttr::get(endpoint->getContext(), name), attr));
+  return DictionaryAttr::get(endpoint->getContext(), markers);
+}
+
+/// Give port `index` of `module` the attributes `attrs`. The module's other
+/// ports get empty ones if they had none, which the HW interface's
+/// `setPortAttrs` leaves null.
+static void setPortAttrs(hw::HWModuleOp module, size_t index,
+                         DictionaryAttr attrs) {
+  SmallVector<Attribute> all(module.getAllPortAttrs());
+  all.resize(module.getNumPorts());
+  for (Attribute &attr : all)
+    if (!attr)
+      attr = DictionaryAttr::get(module.getContext());
+  all[index] = attrs;
+  module.setAllPortAttrs(all);
+}
+
 /// Whether a type belongs to the dummies subdialect.
 static bool isDummiesType(Type type) {
   return isa<DummiesPortType, DummiesManagerAccessType,
@@ -712,6 +737,10 @@ void NetworkLowering::emit() {
     auto [name, arg] =
         module.appendInput(names.newName(manager.getName().value_or("manager")),
                            types[connection]);
+    if (DictionaryAttr markers = getAtopMarkers(manager); !markers.empty())
+      setPortAttrs(module,
+                   module.getPortIdForInputId(module.getNumInputPorts() - 1),
+                   markers);
     drive(connection, arg);
   }
 
@@ -752,6 +781,10 @@ void NetworkLowering::emit() {
     module.appendOutput(
         names.newName(subordinate.getName().value_or("subordinate")),
         lowered[connection]);
+    if (DictionaryAttr markers = getAtopMarkers(subordinate); !markers.empty())
+      setPortAttrs(module,
+                   module.getPortIdForOutputId(module.getNumOutputPorts() - 1),
+                   markers);
   }
 
   for (DummiesAccessesOp access : accesses)
@@ -776,6 +809,13 @@ LogicalResult NetworkLowering::lower(const DenseSet<StringAttr> &instantiated) {
   for (DummiesXbarOp xbar : xbars)
     if (xbar.getDownstream().use_empty())
       return xbar.emitOpError("must reach at least one subordinate");
+
+  for (DummiesExtManagerOp manager : managers)
+    if (manager->hasAttr(kPulpAtopFilterAttr))
+      return manager.emitOpError()
+             << "is marked '" << kPulpAtopFilterAttr
+             << "', but only a subordinate can have atomics filtered out in "
+                "front of it";
 
   for (DummiesAccessesOp access : accesses)
     declared[access.getManager().getDefiningOp()].push_back(access);

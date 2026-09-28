@@ -69,6 +69,8 @@ def LowerAXI4DummiesToAXI : Pass<"lower-axi4-dummies-to-axi", "mlir::ModuleOp"> 
     in, so that module must not be instantiated.
 
     Every port in the network carries the user width given by `user-width`.
+    The PULP atop markers `pulp.atops` and `pulp.atop_filter` on an external
+    endpoint are put on the port it becomes.
 
     A crossbar whose upstream ports do not all reach every downstream port is
     given a `PULP_CONFIG_Connectivity`, connecting each upstream port only to
