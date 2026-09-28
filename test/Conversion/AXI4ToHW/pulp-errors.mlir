@@ -348,7 +348,7 @@ hw.module @AtopsDisabled(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port
 // expected-note @below {{atomics issued from the port marked 'pulp.atops' here}}
 hw.module @AtopsToUnmarkedOutput(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port {pulp.atops}, out out : !port) {
   %cut = axi4.cut %clk, %rst_ni, %port : !port
-  // expected-error @below {{atomics reach output port 'out', which is not marked 'pulp.atops' to accept them}}
+  // expected-error @below {{atomics reach output port 'out', which is marked neither 'pulp.atops' to accept them nor 'pulp.atop_filter' to filter them out}}
   hw.output %cut : !port
 }
 
@@ -372,7 +372,7 @@ hw.module @AtopsToUnmarkedInstance(in %clk : !seq.clock, in %rst_ni : i1) {
   %c = hw.instance "core" @Core() -> (axi: !mgr)
   %mem, %periph = axi4.demux %clk, %rst_ni, %c : (!mgr) -> (!mem, !periph)
   hw.instance "mem" @Mem(axi: %mem: !mem) -> ()
-  // expected-error @below {{atomics reach port 'axi' of instance 'periph', which is not marked 'pulp.atops' to accept them}}
+  // expected-error @below {{atomics reach port 'axi' of instance 'periph', which is marked neither 'pulp.atops' to accept them nor 'pulp.atop_filter' to filter them out}}
   hw.instance "periph" @Periph(axi: %periph: !periph) -> ()
 }
 
@@ -397,3 +397,31 @@ hw.module @AtopsToMem(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port {p
   // expected-error @below {{'axi4.to_mem' op cannot accept atomics, because it has no result to carry the atop PULP's axi_to_mem passes on to the memory}}
   %valid, %addr, %wdata, %strb, %we = axi4.to_mem %clk, %rst_ni, %port read %rvalid, %rdata : !port
 }
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// expected-note @below {{atomics issued from the port marked 'pulp.atops' here}}
+hw.module @FilterWithoutDomain(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port {pulp.atops}, out out : !port {pulp.atop_filter}) {
+  // expected-error @below {{atomics reach output port 'out', which is marked 'pulp.atop_filter', but no component drives it to take a clock and reset for the filter from}}
+  hw.output %port : !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @FilterSplitIds(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port {pulp.atops}, out out : !port {pulp.atop_filter}) {
+  %cut = axi4.cut %clk, %rst_ni, %port : !port
+  // expected-error @below {{cannot filter the atomics reaching this port out with a PULP axi_atop_filter, which uses a single ID width, because its write ID width (4) and read ID width (3) differ}}
+  hw.output %cut : !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// expected-warning @below {{lowering AXI4 port 'axi' changes the ports of this module; its implementation must match the new port list}}
+// expected-error @below {{port 'axi' is marked both 'pulp.atops' and 'pulp.atop_filter'}}
+hw.module.extern @BothMarkers(in %axi : !port {pulp.atops, pulp.atop_filter})

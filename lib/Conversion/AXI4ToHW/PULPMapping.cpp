@@ -1343,6 +1343,63 @@ static FailureOr<std::string> pulpToMemSource(StringRef name, ToMemOp toMem) {
   return text;
 }
 
+LogicalResult circt::AXI4ToHW::checkPulpAtopFilterSupported(Location loc,
+                                                            PortType port) {
+  if (port.getWriteIdWidth() == port.getReadIdWidth())
+    return success();
+  return mlir::emitError(loc)
+         << "cannot filter the atomics reaching this port out with a PULP "
+            "axi_atop_filter, which uses a single ID width, because its write "
+            "ID width ("
+         << port.getWriteIdWidth() << ") and read ID width ("
+         << port.getReadIdWidth() << ") differ";
+}
+
+/// A SystemVerilog wrapper named `name` instantiating PULP's axi_atop_filter,
+/// which answers the atomics arriving on its upstream face itself rather than
+/// passing them on to its downstream one.
+static FailureOr<std::string>
+pulpAtopFilterSource(StringRef name, Operation *shape, PortType port) {
+  std::string prefix = (name + "_").str();
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  emitWrapperTypedefs(os, name, port, "axi_atop_filter", {"mgr", "sub"});
+
+  SmallVector<std::string> ports{"  input  logic clk_i",
+                                 "  input  logic rst_ni"};
+  emitFacePorts(ports, prefix, "mgr", 0, /*isManager=*/false, /*atops=*/true);
+  emitFacePorts(ports, prefix, "sub", 0, /*isManager=*/true, /*atops=*/false);
+  os << "module " << name << " (\n" << llvm::join(ports, ",\n") << "\n);\n";
+
+  os << "  " << prefix << "req_t  slv_req;\n";
+  os << "  " << prefix << "resp_t slv_resp;\n";
+  os << "  " << prefix << "req_t  mst_req;\n";
+  os << "  " << prefix << "resp_t mst_resp;\n";
+  emitFaceBridge(os, port, "mgr", 0, /*isManager=*/false, "slv_req", "slv_resp",
+                 /*atops=*/true);
+  emitFaceBridge(os, port, "sub", 0, /*isManager=*/true, "mst_req", "mst_resp",
+                 /*atops=*/false);
+
+  // checkPulpAtopFilterSupported has established one ID width.
+  if (failed(emitPulpInstance(
+          os, shape, /*config=*/{}, "axi_atop_filter", "i_atop_filter",
+          {{"AxiIdWidth", Twine(port.getWriteIdWidth()).str()},
+           {"AxiMaxWriteTxns",
+            Twine(std::max(port.getOutstandingWrites(), 1u)).str()},
+           {"axi_req_t", prefix + "req_t"},
+           {"axi_resp_t", prefix + "resp_t"}})))
+    return failure();
+  os << "    .clk_i      (clk_i),\n";
+  os << "    .rst_ni     (rst_ni),\n";
+  os << "    .slv_req_i  (slv_req),\n";
+  os << "    .slv_resp_o (slv_resp),\n";
+  os << "    .mst_req_o  (mst_req),\n";
+  os << "    .mst_resp_i (mst_resp)\n";
+  os << "  );\n";
+  os << "endmodule\n";
+  return text;
+}
+
 LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
   if (failed(checkPulpIdsPresent(op)))
     return failure();
@@ -1356,6 +1413,18 @@ LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
       .Case<BurstUnwrapperOp>(checkPulpBurstUnwrapperSupported)
       .Case<ToMemOp>(checkPulpToMemSupported)
       .Default(success());
+}
+
+/// Attach `text`, the source of a wrapper, to `shape`, the external module it
+/// implements.
+static void attachSource(ImplicitLocOpBuilder &b, hw::HWModuleExternOp shape,
+                         StringRef text) {
+  StringRef name = shape.getName();
+  auto source = sv::SVVerbatimSourceOp::create(
+      b, b.getStringAttr(name + ".sv"), /*sym_visibility=*/{}, text,
+      hw::OutputFileAttr::getFromFilename(b.getContext(), name + ".sv"),
+      b.getArrayAttr({}), /*additional_files=*/nullptr, b.getStringAttr(name));
+  shape->setAttr("source", FlatSymbolRefAttr::get(source));
 }
 
 LogicalResult circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
@@ -1394,11 +1463,16 @@ LogicalResult circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
     return success();
   if (failed(*text))
     return failure();
+  attachSource(b, shape, **text);
+  return success();
+}
 
-  auto source = sv::SVVerbatimSourceOp::create(
-      b, b.getStringAttr(name + ".sv"), /*sym_visibility=*/{}, **text,
-      hw::OutputFileAttr::getFromFilename(b.getContext(), name + ".sv"),
-      b.getArrayAttr({}), /*additional_files=*/nullptr, b.getStringAttr(name));
-  shape->setAttr("source", FlatSymbolRefAttr::get(source));
+LogicalResult circt::AXI4ToHW::attachPulpAtopFilterSource(
+    ImplicitLocOpBuilder &b, hw::HWModuleExternOp shape, PortType port) {
+  FailureOr<std::string> text =
+      pulpAtopFilterSource(shape.getName(), shape, port);
+  if (failed(text))
+    return failure();
+  attachSource(b, shape, *text);
   return success();
 }

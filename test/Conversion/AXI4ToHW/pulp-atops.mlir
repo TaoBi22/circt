@@ -120,3 +120,46 @@ hw.module @EnablingConfig(in %clk : !seq.clock, in %rst_ni : i1, in %core : !por
   %demuxed = axi4.demux %clk, %rst_ni, %core {PULP_CONFIG_AtopSupport = true} : (!port) -> (!port)
   hw.output %demuxed : !port
 }
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mem = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!periph = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// A port marked to filter atomics out gets PULP's axi_atop_filter in front of
+// it, taking atop upstream and not passing it on
+// CHECK-LABEL: hw.module.extern @axi_atop_filter_a32_d64_i4(
+// CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
+// CHECK-SAME:    in %mgr0_aw_atop : i6,
+// CHECK-NOT:     sub0_aw_atop
+// CHECK-SAME:  )
+// CHECK:      sv.verbatim.source @axi_atop_filter_a32_d64_i4.sv
+// CHECK-SAME:   region: mgr0_aw.region, atop: mgr0_aw_atop, user: '0};\0A
+// CHECK-SAME:   axi_atop_filter #(\0A
+// CHECK-SAME:     .AxiIdWidth      (4),\0A
+// CHECK-SAME:     .AxiMaxWriteTxns (4),\0A
+// CHECK-SAME:   ) i_atop_filter (\0A
+
+// It runs in the domain of the component driving the port
+// CHECK-LABEL: hw.module @Filter(
+// CHECK-SAME:    out periph_aw :
+// CHECK-NOT:     periph_aw_atop
+// CHECK:         %atop_filter0.mgr0_awready, {{.*}} = hw.instance "atop_filter0" @axi_atop_filter_a32_d64_i4(clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1, {{.*}}mgr0_aw_atop: %demux0.sub1_aw_atop: i6
+hw.module @Filter(in %clk : !seq.clock, in %rst_ni : i1, in %core : !mgr {pulp.atops}, out mem : !mem {pulp.atops}, out periph : !periph {pulp.atop_filter}) {
+  %mem, %periph = axi4.demux %clk, %rst_ni, %core : (!mgr) -> (!mem, !periph)
+  hw.output %mem, %periph : !mem, !periph
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+// A port marked to filter atomics out that none reach needs no filter
+// CHECK-LABEL: hw.module @Unfiltered(
+// CHECK-NOT:     atop_filter
+// CHECK:         hw.output
+hw.module @Unfiltered(in %clk : !seq.clock, in %rst_ni : i1, in %core : !port, out mem : !port {pulp.atop_filter}) {
+  %cut = axi4.cut %clk, %rst_ni, %core : !port
+  hw.output %cut : !port
+}

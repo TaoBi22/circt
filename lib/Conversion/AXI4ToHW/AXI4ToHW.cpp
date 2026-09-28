@@ -23,6 +23,7 @@
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 namespace circt {
@@ -457,16 +458,38 @@ static SmallVector<Value> forwardedPorts(Operation *op, OpOperand &use,
   return forwarded;
 }
 
-/// A description of the port `use` carries out of the network, and whether it
-/// is marked as accepting atomics.
-static std::pair<std::string, bool> describeExit(OpOperand &use,
-                                                 SymbolTable &symbols) {
+namespace {
+/// What a port out of the network does with the atomics reaching it.
+enum class AtopExit { Accept, Filter, Reject };
+
+/// The paths from the ports marked as carrying atomics.
+struct AtopPaths {
+  /// The components they cross, which carry `atop` along them
+  DenseSet<Operation *> components;
+  /// The ports out of the network they reach that filter atomics out
+  llvm::SetVector<OpOperand *> filtered;
+};
+} // namespace
+
+/// What the port a use carries out of the network does with atomics.
+static AtopExit getAtopExit(const hw::PortInfo &port) {
+  if (carriesAtops(port))
+    return AtopExit::Accept;
+  if (port.attrs && port.attrs.get(kPulpAtopFilterAttr))
+    return AtopExit::Filter;
+  return AtopExit::Reject;
+}
+
+/// A description of the port `use` carries out of the network, and what it
+/// does with atomics.
+static std::pair<std::string, AtopExit> describeExit(OpOperand &use,
+                                                     SymbolTable &symbols) {
   Operation *user = use.getOwner();
   if (auto output = dyn_cast<hw::OutputOp>(user)) {
     auto hwModule = cast<hw::HWModuleLike>(output->getParentOp());
     hw::PortInfo port = hw::ModulePortInfo(hwModule.getPortList())
                             .atOutput(use.getOperandNumber());
-    return {("output port '" + port.getName() + "'").str(), carriesAtops(port)};
+    return {("output port '" + port.getName() + "'").str(), getAtopExit(port)};
   }
   if (auto instance = dyn_cast<hw::InstanceOp>(user)) {
     auto target = symbols.lookup<hw::HWModuleLike>(
@@ -476,16 +499,15 @@ static std::pair<std::string, bool> describeExit(OpOperand &use,
     return {("port '" + port.getName() + "' of instance '" +
              instance.getInstanceName() + "'")
                 .str(),
-            carriesAtops(port)};
+            getAtopExit(port)};
   }
-  return {("'" + user->getName().getStringRef() + "'").str(), false};
+  return {("'" + user->getName().getStringRef() + "'").str(), AtopExit::Reject};
 }
 
-/// The components on a path from a port marked as carrying atomics, which have
-/// to carry `atop` along it, or failure if a path cannot carry it. A manager's
-/// transactions keep their addresses, so each path follows the ports within its
-/// manager's windows.
-static FailureOr<DenseSet<Operation *>> findAtopComponents(ModuleOp module) {
+/// The paths from the ports marked as carrying atomics, or failure if one
+/// cannot carry them. A manager's transactions keep their addresses, so each
+/// path follows the ports within its manager's windows.
+static FailureOr<AtopPaths> findAtopPaths(ModuleOp module) {
   struct Path {
     Value port;
     WindowSetAttr windows;
@@ -497,6 +519,13 @@ static FailureOr<DenseSet<Operation *>> findAtopComponents(ModuleOp module) {
     worklist.push_back(
         {port, cast<PortType>(port.getType()).getWindows(), port});
   };
+
+  for (auto mod : module.getOps<hw::HWModuleLike>())
+    for (const hw::PortInfo &port : mod.getPortList())
+      if (carriesAtops(port) && port.attrs.get(kPulpAtopFilterAttr))
+        return mlir::emitError(port.loc ? Location(port.loc) : mod.getLoc())
+               << "port '" << port.getName() << "' is marked both '"
+               << kPulpAtopsAttr << "' and '" << kPulpAtopFilterAttr << "'";
 
   SymbolTable symbols(module);
   for (auto hwModule : module.getOps<hw::HWModuleOp>()) {
@@ -518,7 +547,7 @@ static FailureOr<DenseSet<Operation *>> findAtopComponents(ModuleOp module) {
     });
   }
 
-  DenseSet<Operation *> components;
+  AtopPaths paths;
   DenseSet<std::pair<Value, WindowSetAttr>> visited;
   while (!worklist.empty()) {
     Path path = worklist.pop_back_val();
@@ -547,25 +576,39 @@ static FailureOr<DenseSet<Operation *>> findAtopComponents(ModuleOp module) {
                          "carry the atop PULP's axi_to_mem passes on to the "
                          "memory");
 
-      if (!getComponent(user)) {
-        auto [exit, accepts] = describeExit(use, symbols);
-        if (!accepts)
-          return reject(mlir::emitError(user->getLoc())
-                        << "atomics reach " << exit << ", which is not marked '"
-                        << kPulpAtopsAttr << "' to accept them");
+      if (getComponent(user)) {
+        paths.components.insert(user);
+        for (Value next : forwardedPorts(user, use, path.windows))
+          worklist.push_back({next, path.windows, path.manager});
         continue;
       }
 
-      components.insert(user);
-      for (Value next : forwardedPorts(user, use, path.windows))
-        worklist.push_back({next, path.windows, path.manager});
+      auto [exit, kind] = describeExit(use, symbols);
+      if (kind == AtopExit::Reject)
+        return reject(mlir::emitError(user->getLoc())
+                      << "atomics reach " << exit << ", which is marked "
+                      << "neither '" << kPulpAtopsAttr << "' to accept them "
+                      << "nor '" << kPulpAtopFilterAttr
+                      << "' to filter them out");
+      // A filter runs in the domain of the component driving it.
+      if (kind == AtopExit::Filter) {
+        Operation *producer = path.port.getDefiningOp();
+        if (!producer || !getComponent(producer))
+          return reject(mlir::emitError(user->getLoc())
+                        << "atomics reach " << exit << ", which is marked '"
+                        << kPulpAtopFilterAttr
+                        << "', but no component drives it to take a clock and "
+                           "reset for the filter from");
+        paths.filtered.insert(&use);
+      }
     }
   }
-  return components;
+  return paths;
 }
 
 /// Replace every component with an instance of an external module of its shape,
-/// shared by components of the same kind whose ports match.
+/// shared by components of the same kind whose ports match. Filter the atomics
+/// out in front of the ports marked to filter them.
 static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
                                      DenseSet<Operation *> &componentModules) {
   SmallVector<Component> components;
@@ -573,12 +616,12 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
     if (std::optional<Component> component = getComponent(op))
       components.push_back(std::move(*component));
   });
-  DenseSet<Operation *> atopComponents;
+  AtopPaths atopPaths;
   if (pulpMapping) {
-    FailureOr<DenseSet<Operation *>> found = findAtopComponents(module);
+    FailureOr<AtopPaths> found = findAtopPaths(module);
     if (failed(found))
       return failure();
-    atopComponents = std::move(*found);
+    atopPaths = std::move(*found);
   }
 
   DenseMap<std::tuple<StringAttr, hw::ModuleType, DictionaryAttr>,
@@ -588,36 +631,99 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
   SymbolTable symbolTable(module);
   auto b =
       ImplicitLocOpBuilder::atBlockBegin(module.getLoc(), module.getBody());
+  auto marked =
+      b.getDictionaryAttr(b.getNamedAttr(kPulpAtopsAttr, b.getUnitAttr()));
+
+  // The external module of a shape, created on first use with the ports
+  // `carriesAtop` picks marked as carrying atomics.
+  auto getShape =
+      [&](StringAttr name, ArrayRef<hw::ModulePort> ports,
+          DictionaryAttr config,
+          llvm::function_ref<bool(const hw::ModulePort &)> carriesAtop,
+          llvm::function_ref<LogicalResult(hw::HWModuleExternOp)> attach)
+      -> FailureOr<hw::HWModuleExternOp> {
+    hw::HWModuleExternOp &shape =
+        shapes[{name, hw::ModuleType::get(module.getContext(), ports), config}];
+    if (shape)
+      return shape;
+    shape = hw::HWModuleExternOp::create(
+        b, name, llvm::map_to_vector(ports, [&](hw::ModulePort port) {
+          hw::PortInfo info{port};
+          if (carriesAtop(port))
+            info.attrs = marked;
+          return info;
+        }));
+    // Two shapes can want the same name, so let the symbol table unique it.
+    symbolTable.insert(shape);
+    componentModules.insert(shape);
+    if (failed(attach(shape)))
+      return failure();
+    return shape;
+  };
+
+  for (OpOperand *use : atopPaths.filtered) {
+    Value port = use->get();
+    auto type = cast<PortType>(port.getType());
+    if (failed(checkPulpAtopFilterSupported(use->getOwner()->getLoc(), type)))
+      return failure();
+
+    Value clock, reset;
+    for (auto [name, value] : getComponent(port.getDefiningOp())->inputs) {
+      if (name == "clk_i" || name == "dst_clk_i")
+        clock = value;
+      else if (name == "rst_ni")
+        reset = value;
+    }
+    MLIRContext *context = module.getContext();
+    SmallVector<hw::ModulePort> ports = {
+        {b.getStringAttr("clk_i"), clock.getType(),
+         hw::ModulePort::Direction::Input},
+        {b.getStringAttr("rst_ni"), reset.getType(),
+         hw::ModulePort::Direction::Input},
+        {b.getStringAttr("mgr0"), type, hw::ModulePort::Direction::Input},
+        {b.getStringAttr("sub0"), type, hw::ModulePort::Direction::Output}};
+    FailureOr<hw::HWModuleExternOp> shape = getShape(
+        StringAttr::get(context, "axi_atop_filter_" + portShape(type)), ports,
+        DictionaryAttr::get(context),
+        [](const hw::ModulePort &port) { return port.name == "mgr0"; },
+        [&](hw::HWModuleExternOp shape) {
+          return attachPulpAtopFilterSource(b, shape, type);
+        });
+    if (failed(shape))
+      return failure();
+
+    Operation *user = use->getOwner();
+    ImplicitLocOpBuilder opBuilder(user->getLoc(), user);
+    unsigned &count = instanceCounts[{user->getParentOp(), "atop_filter"}];
+    auto instance = hw::InstanceOp::create(
+        opBuilder, *shape,
+        opBuilder.getStringAttr("atop_filter" + Twine(count++)),
+        ArrayRef<Value>{clock, reset, port});
+    use->set(instance.getResult(0));
+  }
+
   for (const Component &component : components) {
     Operation *op = component.op;
     if (pulpMapping && failed(checkPulpSupported(op)))
       return failure();
 
-    SmallVector<hw::ModulePort> ports = componentPorts(component);
     // Two kinds of component can share a port list, so the name - which encodes
     // the kind, and whether it carries atomics - is part of the shape, as is
     // the config of the PULP IP.
-    bool atops = atopComponents.contains(op);
-    auto name = b.getStringAttr(component.moduleName + (atops ? "_atop" : ""));
-    DictionaryAttr config = pulpMapping ? getPulpConfig(op) : DictionaryAttr();
-    hw::HWModuleExternOp &shape =
-        shapes[{name, hw::ModuleType::get(module.getContext(), ports), config}];
-    if (!shape) {
-      auto marked =
-          b.getDictionaryAttr(b.getNamedAttr(kPulpAtopsAttr, b.getUnitAttr()));
-      shape = hw::HWModuleExternOp::create(
-          b, name, llvm::map_to_vector(ports, [&](hw::ModulePort port) {
-            hw::PortInfo info{port};
-            if (atops && isa<PortType>(port.type))
-              info.attrs = marked;
-            return info;
-          }));
-      // Two shapes can want the same name, so let the symbol table unique it.
-      symbolTable.insert(shape);
-      componentModules.insert(shape);
-      if (pulpMapping && failed(attachPulpSource(b, shape, op, atops)))
-        return failure();
-    }
+    bool atops = atopPaths.components.contains(op);
+    FailureOr<hw::HWModuleExternOp> shape = getShape(
+        b.getStringAttr(component.moduleName + (atops ? "_atop" : "")),
+        componentPorts(component),
+        pulpMapping ? getPulpConfig(op) : DictionaryAttr(),
+        [&](const hw::ModulePort &port) {
+          return atops && isa<PortType>(port.type);
+        },
+        [&](hw::HWModuleExternOp shape) {
+          return pulpMapping ? attachPulpSource(b, shape, op, atops)
+                             : success();
+        });
+    if (failed(shape))
+      return failure();
 
     SmallVector<Value> inputs = llvm::map_to_vector(
         component.inputs,
@@ -627,7 +733,7 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
     unsigned &count =
         instanceCounts[{op->getParentOp(), component.instanceName}];
     auto instance = hw::InstanceOp::create(
-        opBuilder, shape,
+        opBuilder, *shape,
         opBuilder.getStringAttr(component.instanceName + Twine(count++)),
         inputs);
     op->replaceAllUsesWith(instance.getResults());
