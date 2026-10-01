@@ -174,3 +174,35 @@ hw.module @FilteredManager(in %clk : !seq.clock, in %rst_ni : i1) {
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
 }
+
+// -----
+
+hw.module @ManagerClockDomain(in %clk : !seq.clock, in %other_clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.ext_manager' op is in a different clock domain to the 'axi4.dummies.xbar' connected to it}}
+  %mgr, %mgr_access = axi4.dummies.ext_manager %other_clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-note @below {{connected operation here}}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+hw.module @SubordinateResetDomain(in %clk : !seq.clock, in %rst_ni : i1, in %other_rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-note @below {{connected operation here}}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64
+  // expected-error @below {{'axi4.dummies.ext_subordinate' op is in a different reset domain to the 'axi4.dummies.xbar' connected to it}}
+  %sub_access = axi4.dummies.ext_subordinate %clk, %other_rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+hw.module @DirectClockDomain(in %clk : !seq.clock, in %other_clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.ext_manager' op is in a different clock domain to the 'axi4.dummies.ext_subordinate' connected to it}}
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-note @below {{connected operation here}}
+  %sub_access = axi4.dummies.ext_subordinate %other_clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}

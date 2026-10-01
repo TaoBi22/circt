@@ -246,12 +246,30 @@ static bool needsConverter(PortType port, uint32_t dataWidth,
          port.getReadIdWidth() != readIdWidth;
 }
 
-/// The clock and reset the op consuming a connection runs on.
+/// The clock and reset a dummies op runs on.
 static std::pair<Value, Value> domainOf(Operation *op) {
-  if (auto xbar = dyn_cast<DummiesXbarOp>(op))
-    return {xbar.getClock(), xbar.getReset()};
-  auto subordinate = cast<DummiesExtSubordinateOp>(op);
-  return {subordinate.getClock(), subordinate.getReset()};
+  return TypeSwitch<Operation *, std::pair<Value, Value>>(op)
+      .Case<DummiesExtManagerOp, DummiesExtSubordinateOp, DummiesXbarOp>(
+          [](auto op) { return std::make_pair(op.getClock(), op.getReset()); });
+}
+
+/// Check an endpoint runs in the domain of the op it connects to. It becomes a
+/// module port, which carries no clock or reset of its own.
+static LogicalResult checkDomain(Operation *endpoint, Operation *other) {
+  auto [clock, reset] = domainOf(endpoint);
+  auto [otherClock, otherReset] = domainOf(other);
+  StringRef domain;
+  if (clock != otherClock)
+    domain = "clock";
+  else if (reset != otherReset)
+    domain = "reset";
+  else
+    return success();
+  auto diag = endpoint->emitOpError()
+              << "is in a different " << domain << " domain to the '"
+              << other->getName().getStringRef() << "' connected to it";
+  diag.attachNote(other->getLoc()) << "connected operation here";
+  return diag;
 }
 
 /// The data width the op consuming a connection presents.
@@ -816,6 +834,15 @@ LogicalResult NetworkLowering::lower(const DenseSet<StringAttr> &instantiated) {
              << "is marked '" << kPulpAtopFilterAttr
              << "', but only a subordinate can have atomics filtered out in "
                 "front of it";
+
+  for (DummiesExtManagerOp manager : managers)
+    for (OpOperand *connection : outgoingConnections(manager.getPort()))
+      if (failed(checkDomain(manager, connection->getOwner())))
+        return failure();
+  for (DummiesExtSubordinateOp subordinate : subordinates)
+    if (failed(checkDomain(subordinate,
+                           subordinate.getUpstream().getDefiningOp())))
+      return failure();
 
   for (DummiesAccessesOp access : accesses)
     declared[access.getManager().getDefiningOp()].push_back(access);
