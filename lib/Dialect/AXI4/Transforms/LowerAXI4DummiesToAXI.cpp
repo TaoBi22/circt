@@ -648,6 +648,13 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
         needsConverter(port, xbar.getDataWidth(), writeIdWidth, readIdWidth))
       adapted.insert({connection, port});
 
+    // The address widths below are only checked once their crossbars are
+    // lowered, so the windows they present can be too wide for this one.
+    auto emitError = [&]() { return xbar.emitOpError(); };
+    if (failed(verifyWindowsFit(emitError, "", xbar.getAddrWidth(),
+                                windows->getWindows())))
+      return failure();
+
     types.insert({connection,
                   PortType::get(module.getContext(), xbar.getAddrWidth(),
                                 xbar.getDataWidth(), writeIdWidth, readIdWidth,

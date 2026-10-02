@@ -153,6 +153,30 @@ hw.module @Cycle(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
+hw.module @WideWindowBelowNarrowXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.xbar' op window #axi4.window<base = 0x100000000, last = 0x100000fff, burst_specs = <<incr, len = 16>>> does not fit in an 'addr_width' of 32}}
+  %outer = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64
+  %inner = axi4.dummies.xbar %clk, %rst_ni mgrs %outer addr_width = 64, data_width = 64
+  %high_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %inner windows <<base = 0x100000000, last = 0x100000fff, burst_specs = <<incr, len = 16>>>> addr_width = 64, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %low_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %outer windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %mgr_access -> %low_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+hw.module @WideSubordinateBelowNestedXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.xbar' op window #axi4.window<base = 0x100000000, last = 0x100000fff, burst_specs = <<incr, len = 16>>> does not fit in an 'addr_width' of 32}}
+  %outer = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64
+  %inner = axi4.dummies.xbar %clk, %rst_ni mgrs %outer addr_width = 32, data_width = 64
+  %high_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %inner windows <<base = 0x100000000, last = 0x100000fff, burst_specs = <<incr, len = 16>>>> addr_width = 64, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %low_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %outer windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %mgr_access -> %low_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
 // A crossbar carries every manager that can address a subordinate, so the
 // subordinate is measured against their total
 hw.module @BottleneckBelowXbar(in %clk : !seq.clock, in %rst_ni : i1) {

@@ -45,6 +45,12 @@ verifyPortWidths(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
                  const llvm::Twine &prefix, uint32_t addrWidth,
                  uint32_t dataWidth);
 
+/// Verify window addresses fit within address width
+mlir::LogicalResult
+verifyWindowsFit(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+                 const llvm::Twine &prefix, uint32_t addrWidth,
+                 llvm::ArrayRef<WindowAttr> windows);
+
 } // namespace axi4
 } // namespace circt
 

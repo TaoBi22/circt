@@ -35,21 +35,29 @@ axi4::verifyPortWidths(function_ref<InFlightDiagnostic()> emitError,
   return success();
 }
 
+LogicalResult
+axi4::verifyWindowsFit(function_ref<InFlightDiagnostic()> emitError,
+                       const Twine &prefix, uint32_t addrWidth,
+                       ArrayRef<WindowAttr> windows) {
+  if (addrWidth >= 64)
+    return success();
+  for (WindowAttr window : windows)
+    if (window.getLast() >> addrWidth)
+      return emitError() << prefix << "window " << window
+                         << " does not fit in an 'addr_width' of " << addrWidth;
+  return success();
+}
+
 LogicalResult PortType::verify(function_ref<InFlightDiagnostic()> emitError,
                                uint32_t addr_width, uint32_t data_width,
                                uint32_t write_id_width, uint32_t read_id_width,
                                uint32_t user_width, WindowSetAttr windows,
                                uint32_t outstanding_writes,
                                uint32_t outstanding_reads) {
-  if (failed(verifyPortWidths(emitError, "port ", addr_width, data_width)))
+  if (failed(verifyPortWidths(emitError, "port ", addr_width, data_width)) ||
+      failed(verifyWindowsFit(emitError, "port ", addr_width,
+                              windows.getWindows())))
     return failure();
-  // Verify window addresses fit within address width
-  if (addr_width < 64)
-    for (WindowAttr window : windows.getWindows())
-      if (window.getLast() >> addr_width)
-        return emitError() << "port window " << window
-                           << " does not fit in an 'addr_width' of "
-                           << addr_width;
   if (write_id_width > 32)
     return emitError() << "port 'write_id_width' must be at most 32, got "
                        << write_id_width;

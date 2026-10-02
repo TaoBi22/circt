@@ -578,6 +578,8 @@ def DummiesAccessesOp : AXI4DummiesOp<"accesses"> {
 
   let assemblyFormat =
       "$manager `->` $subordinate `with` $window attr-dict";
+
+  let hasVerifier = 1;
 }
 
 #endif // CIRCT_DIALECT_AXI4_AXI4OPS_TD

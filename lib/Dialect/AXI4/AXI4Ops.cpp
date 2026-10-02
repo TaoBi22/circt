@@ -616,8 +616,13 @@ LogicalResult DummiesExtManagerOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult DummiesExtSubordinateOp::verify() {
-  return verifyDummiesEndpoint(*this, getAddrWidth(), getDataWidth(),
-                               getOutstandingWrites(), getOutstandingReads());
+  if (failed(verifyDummiesEndpoint(*this, getAddrWidth(), getDataWidth(),
+                                   getOutstandingWrites(),
+                                   getOutstandingReads())))
+    return failure();
+  auto emitError = [&]() { return emitOpError(); };
+  return verifyWindowsFit(emitError, "", getAddrWidth(),
+                          getWindows().getWindows());
 }
 
 //===----------------------------------------------------------------------===//
@@ -630,6 +635,18 @@ LogicalResult DummiesXbarOp::verify() {
 
   auto emitError = [&]() { return emitOpError(); };
   return verifyPortWidths(emitError, "", getAddrWidth(), getDataWidth());
+}
+
+//===----------------------------------------------------------------------===//
+// DummiesAccessesOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DummiesAccessesOp::verify() {
+  auto manager = getManager().getDefiningOp<DummiesExtManagerOp>();
+  if (!manager)
+    return success();
+  auto emitError = [&]() { return emitOpError(); };
+  return verifyWindowsFit(emitError, "", manager.getAddrWidth(), getWindow());
 }
 
 //===----------------------------------------------------------------------===//

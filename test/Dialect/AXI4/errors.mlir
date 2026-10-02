@@ -798,6 +798,23 @@ hw.module @NoDummiesSubordinateReads(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
+hw.module @WideDummiesSubordinateWindow(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.ext_subordinate' op window #axi4.window<base = 0x100000000, last = 0x100000fff, burst_specs = <<incr, len = 16>>> does not fit in an 'addr_width' of 32}}
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x100000000, last = 0x100000fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+}
+
+// -----
+
+hw.module @WideDummiesAccess(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.accesses' op window #axi4.window<base = 0x0, last = 0x100000fff, burst_specs = <<incr, len = 16>>> does not fit in an 'addr_width' of 32}}
+  axi4.dummies.accesses %access -> %sub_access with <base = 0x0, last = 0x100000fff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
 hw.module @FannedOutDummiesManager(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.dummies.ext_manager' op port result must have at most one use; route through an xbar to fan out to multiple endpoints}}
   %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
