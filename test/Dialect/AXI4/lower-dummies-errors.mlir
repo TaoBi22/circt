@@ -230,3 +230,38 @@ hw.module @DirectClockDomain(in %clk : !seq.clock, in %other_clk : !seq.clock, i
   %sub_access = axi4.dummies.ext_subordinate %other_clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
 }
+
+// -----
+
+hw.module @DanglingCut(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.cut' op must reach a subordinate}}
+  %cut = axi4.dummies.cut %clk, %rst_ni, %mgr
+}
+
+// -----
+
+hw.module @CutCycle(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.cut' op is part of a cycle in the dummies network}}
+  %a = axi4.dummies.cut %clk, %rst_ni, %b
+  %b = axi4.dummies.cut %clk, %rst_ni, %a
+}
+
+// -----
+
+hw.module @CutThroughXbarCycle(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.xbar' op is part of a cycle in the dummies network}}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %cut addr_width = 32, data_width = 64
+  %cut = axi4.dummies.cut %clk, %rst_ni, %xbar
+}
+
+// -----
+
+hw.module @ManagerCutClockDomain(in %clk : !seq.clock, in %other_clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.ext_manager' op is in a different clock domain to the 'axi4.dummies.cut' connected to it}}
+  %mgr, %mgr_access = axi4.dummies.ext_manager %other_clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-note @below {{connected operation here}}
+  %cut = axi4.dummies.cut %clk, %rst_ni, %mgr
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %cut windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}

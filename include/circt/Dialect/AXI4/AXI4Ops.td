@@ -554,6 +554,24 @@ def DummiesXbarOp : AXI4DummiesOp<"xbar"> {
   let hasVerifier = 1;
 }
 
+def DummiesCutOp : AXI4DummiesOp<"cut", [PortResultsAtMostOneUse]> {
+  let summary = "An AXI4 register cut";
+  let description = [{
+    Breaks the combinational paths through a connection.
+
+    Example:
+    ```mlir
+    %downstream = axi4.dummies.cut %clk, %rst_ni, %upstream
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset,
+                       DummiesPortType:$upstream);
+  let results = (outs DummiesPortType:$downstream);
+
+  let assemblyFormat = "$clock `,` $reset `,` $upstream attr-dict";
+}
+
 def DummiesAccessesOp : AXI4DummiesOp<"accesses"> {
   let summary = "Declares that a manager accesses a window of a subordinate";
   let description = [{

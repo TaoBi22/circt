@@ -249,7 +249,8 @@ static bool needsConverter(PortType port, uint32_t dataWidth,
 /// The clock and reset a dummies op runs on.
 static std::pair<Value, Value> domainOf(Operation *op) {
   return TypeSwitch<Operation *, std::pair<Value, Value>>(op)
-      .Case<DummiesExtManagerOp, DummiesExtSubordinateOp, DummiesXbarOp>(
+      .Case<DummiesExtManagerOp, DummiesExtSubordinateOp, DummiesXbarOp,
+            DummiesCutOp>(
           [](auto op) { return std::make_pair(op.getClock(), op.getReset()); });
 }
 
@@ -332,12 +333,28 @@ static SmallVector<OpOperand *> incomingConnections(Operation *op) {
   return connections;
 }
 
+/// The use a connection ends at, past any cuts on it.
+static OpOperand *throughCuts(OpOperand *connection) {
+  while (auto cut = dyn_cast<DummiesCutOp>(connection->getOwner()))
+    connection = &*cut.getDownstream().use_begin();
+  return connection;
+}
+
 /// The connections a dummies value feeds, one per use.
 static SmallVector<OpOperand *> outgoingConnections(Value port) {
   SmallVector<OpOperand *> connections;
   for (OpOperand &use : port.getUses())
-    connections.push_back(&use);
+    connections.push_back(throughCuts(&use));
   return connections;
+}
+
+/// Whether a cut is fed only through other cuts, around a cycle.
+static bool isOnCutCycle(DummiesCutOp cut) {
+  SmallPtrSet<Operation *, 8> seen;
+  for (; cut; cut = cut.getUpstream().getDefiningOp<DummiesCutOp>())
+    if (!seen.insert(cut).second)
+      return true;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -346,9 +363,9 @@ static SmallVector<OpOperand *> outgoingConnections(Value port) {
 
 namespace {
 /// Lowers the dummies network a module describes. Each connection - a use of a
-/// dummies port - becomes one `!axi4.port` value. Windows are calculated by
-/// propagating them up from subordinates, and widths are calculated by
-/// propagating them down from managers
+/// dummies port, followed through any cuts - carries one `!axi4.port` type.
+/// Windows are calculated by propagating them up from subordinates, and widths
+/// are calculated by propagating them down from managers
 
 struct NetworkLowering {
   NetworkLowering(hw::HWModuleOp module, uint32_t userWidth)
@@ -382,6 +399,7 @@ private:
   SmallVector<DummiesExtSubordinateOp> subordinates;
   SmallVector<DummiesAccessesOp> accesses;
   SmallVector<DummiesXbarOp> xbars;
+  SmallVector<DummiesCutOp> cuts;
 
   /// The accesses each manager declares.
   DenseMap<Operation *, SmallVector<DummiesAccessesOp>> declared;
@@ -410,9 +428,11 @@ bool NetworkLowering::collect() {
         .Case<DummiesExtSubordinateOp>(
             [&](auto op) { subordinates.push_back(op); })
         .Case<DummiesAccessesOp>([&](auto op) { accesses.push_back(op); })
-        .Case<DummiesXbarOp>([&](auto op) { xbars.push_back(op); });
+        .Case<DummiesXbarOp>([&](auto op) { xbars.push_back(op); })
+        .Case<DummiesCutOp>([&](auto op) { cuts.push_back(op); });
   });
-  return !managers.empty() || !subordinates.empty() || !xbars.empty();
+  return !managers.empty() || !subordinates.empty() || !xbars.empty() ||
+         !cuts.empty();
 }
 
 /// A network must be described in one module, so every dummies value in it
@@ -725,9 +745,22 @@ LogicalResult NetworkLowering::inferConnectivity() {
   return success();
 }
 
-/// Record the value a connection carries, converting the widths of what its
-/// producer drives to what its consumer needs.
+/// Record the value a connection carries, through the cuts on it, converting
+/// the widths of what its producer drives to what its consumer needs.
 void NetworkLowering::drive(OpOperand *connection, Value port) {
+  SmallVector<DummiesCutOp> onPath;
+  for (auto cut = connection->get().getDefiningOp<DummiesCutOp>(); cut;
+       cut = cut.getUpstream().getDefiningOp<DummiesCutOp>())
+    onPath.push_back(cut);
+  for (DummiesCutOp cut : llvm::reverse(onPath)) {
+    OpBuilder builder(cut);
+    auto axi4Cut = CutOp::create(builder, cut.getLoc(), port.getType(),
+                                 cut.getClock(), cut.getReset(), port);
+    for (NamedAttribute attr : getPulpConfig(cut))
+      axi4Cut->setAttr(attr.getName(), attr.getValue());
+    port = axi4Cut;
+  }
+
   if (PortType needed = adapted.lookup(connection)) {
     Operation *consumer = connection->getOwner();
     auto [clock, reset] = domainOf(consumer);
@@ -816,6 +849,11 @@ void NetworkLowering::emit() {
     access.erase();
   for (DummiesExtSubordinateOp subordinate : subordinates)
     subordinate.erase();
+  // Cuts and crossbars can feed each other, so the cuts let go of their uses.
+  for (DummiesCutOp cut : cuts) {
+    cut->dropAllUses();
+    cut.erase();
+  }
   // A crossbar is only unused once the crossbars below it are gone.
   for (DummiesXbarOp xbar : llvm::reverse(ordered))
     xbar.erase();
@@ -834,6 +872,12 @@ LogicalResult NetworkLowering::lower(const DenseSet<StringAttr> &instantiated) {
   for (DummiesXbarOp xbar : xbars)
     if (xbar.getDownstream().use_empty())
       return xbar.emitOpError("must reach at least one subordinate");
+  for (DummiesCutOp cut : cuts) {
+    if (cut.getDownstream().use_empty())
+      return cut.emitOpError("must reach a subordinate");
+    if (isOnCutCycle(cut))
+      return cut.emitOpError("is part of a cycle in the dummies network");
+  }
 
   for (DummiesExtManagerOp manager : managers)
     if (manager->hasAttr(kPulpAtopFilterAttr))
@@ -843,8 +887,8 @@ LogicalResult NetworkLowering::lower(const DenseSet<StringAttr> &instantiated) {
                 "front of it";
 
   for (DummiesExtManagerOp manager : managers)
-    for (OpOperand *connection : outgoingConnections(manager.getPort()))
-      if (failed(checkDomain(manager, connection->getOwner())))
+    for (Operation *user : manager.getPort().getUsers())
+      if (failed(checkDomain(manager, user)))
         return failure();
   for (DummiesExtSubordinateOp subordinate : subordinates)
     if (failed(checkDomain(subordinate,

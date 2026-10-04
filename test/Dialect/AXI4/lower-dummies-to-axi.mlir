@@ -316,3 +316,37 @@ hw.module @MixedWidthCrossbars(in %clk : !seq.clock, in %rst_ni : i1) {
   axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>
   // CHECK: hw.output %[[BOTTOM]]
 }
+
+// -----
+
+// A cut lowers to one on the same connection, keeping its PULP config
+// CHECK-LABEL: hw.module @Cuts(
+hw.module @Cuts(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[ABOVE:.+]] = axi4.cut %clk, %rst_ni, %core {PULP_CONFIG_Bypass = "1'b1"}
+  %above = axi4.dummies.cut %clk, %rst_ni, %core {PULP_CONFIG_Bypass = "1'b1", other = 1 : i32}
+  // CHECK: %[[XBAR:.+]] = axi4.xbar %clk, %rst_ni mgrs %[[ABOVE]]
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %above addr_width = 32, data_width = 64
+  // CHECK: %[[FIRST:.+]] = axi4.cut %clk, %rst_ni, %[[XBAR]]
+  %first = axi4.dummies.cut %clk, %rst_ni, %xbar
+  // CHECK: %[[SECOND:.+]] = axi4.cut %clk, %rst_ni, %[[FIRST]]
+  %second = axi4.dummies.cut %clk, %rst_ni, %first
+  %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %second windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  // CHECK: hw.output %[[SECOND]]
+}
+
+// -----
+
+// A converter goes in front of the endpoint it adapts the connection to, so
+// after the cuts on the way
+// CHECK-LABEL: hw.module @CutBeforeConverter(
+hw.module @CutBeforeConverter(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[CUT:.+]] = axi4.cut %clk, %rst_ni, %manager : !axi4.port<{{.*}} data_width = 64,
+  %cut = axi4.dummies.cut %clk, %rst_ni, %mgr
+  // CHECK: %[[CONV:.+]] = axi4.data_width_converter %clk, %rst_ni, %[[CUT]] : {{.*}} -> !axi4.port<{{.*}} data_width = 32,
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %cut windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>
+  // CHECK: hw.output %[[CONV]]
+}
