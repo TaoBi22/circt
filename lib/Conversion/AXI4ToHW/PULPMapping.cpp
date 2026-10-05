@@ -974,6 +974,55 @@ pulpIWConverterSource(StringRef name, IWConverterOp converter, bool atops) {
   return text;
 }
 
+/// Report the ID remappers PULP's axi_id_remap cannot express.
+static LogicalResult checkPulpIDRemapSupported(IDRemapOp remap) {
+  auto upstream = cast<PortType>(remap.getUpstream().getType());
+  if (failed(checkPulpIdWidths(remap, "axi_id_remap", upstream, "upstream")))
+    return failure();
+  auto downstream = cast<PortType>(remap.getDownstream().getType());
+  return checkPulpIdWidths(remap, "axi_id_remap", downstream, "downstream");
+}
+
+/// A SystemVerilog wrapper named `name` instantiating PULP's axi_id_remap,
+/// with the ports `remap`'s external module lowers to.
+static FailureOr<std::string> pulpIDRemapSource(StringRef name, IDRemapOp remap,
+                                                bool atops) {
+  auto upstream = cast<PortType>(remap.getUpstream().getType());
+  auto downstream = cast<PortType>(remap.getDownstream().getType());
+  std::string prefix = (name + "_").str();
+
+  std::string text;
+  llvm::raw_string_ostream os(text);
+  emitDualIdWrapper(os, name, "axi_id_remap", upstream, /*numUpstream=*/1,
+                    downstream, /*numDownstream=*/1, atops);
+
+  // Every request the upstream port can have in flight may share one ID, so
+  // this many per ID never stalls.
+  std::string txnsPerId =
+      Twine(std::max(maxOutstanding(remap.getUpstream()), 1u)).str();
+
+  if (failed(emitPulpInstance(
+          os, remap, "axi_id_remap", "i_id_remap",
+          {{"AxiSlvPortIdWidth", Twine(upstream.getWriteIdWidth()).str()},
+           {"AxiSlvPortMaxUniqIds", Twine(remap.getMaxUniqueIds()).str()},
+           {"AxiMaxTxnsPerId", txnsPerId, /*derived=*/false},
+           {"AxiMstPortIdWidth", Twine(downstream.getWriteIdWidth()).str()},
+           {"slv_req_t", prefix + "slv_req_t"},
+           {"slv_resp_t", prefix + "slv_resp_t"},
+           {"mst_req_t", prefix + "mst_req_t"},
+           {"mst_resp_t", prefix + "mst_resp_t"}})))
+    return failure();
+  os << "    .clk_i      (clk_i),\n";
+  os << "    .rst_ni     (rst_ni),\n";
+  os << "    .slv_req_i  (slv_req[0]),\n";
+  os << "    .slv_resp_o (slv_resp[0]),\n";
+  os << "    .mst_req_o  (mst_req[0]),\n";
+  os << "    .mst_resp_i (mst_resp[0])\n";
+  os << "  );\n";
+  os << "endmodule\n";
+  return text;
+}
+
 /// Report the burst splitters PULP's axi_burst_splitter cannot express.
 static LogicalResult checkPulpBurstSplitterSupported(BurstSplitterOp splitter) {
   auto upstream = cast<PortType>(splitter.getUpstream().getType());
@@ -1409,6 +1458,7 @@ LogicalResult circt::AXI4ToHW::checkPulpSupported(Operation *op) {
       .Case<MuxOp>(checkPulpMuxSupported)
       .Case<DWConverterOp>(checkPulpDWConverterSupported)
       .Case<IWConverterOp>(checkPulpIWConverterSupported)
+      .Case<IDRemapOp>(checkPulpIDRemapSupported)
       .Case<BurstSplitterOp>(checkPulpBurstSplitterSupported)
       .Case<BurstUnwrapperOp>(checkPulpBurstUnwrapperSupported)
       .Case<ToMemOp>(checkPulpToMemSupported)
@@ -1449,6 +1499,9 @@ LogicalResult circt::AXI4ToHW::attachPulpSource(ImplicitLocOpBuilder &b,
           })
           .Case<IWConverterOp>([&](IWConverterOp converter) {
             return pulpIWConverterSource(name, converter, atops);
+          })
+          .Case<IDRemapOp>([&](IDRemapOp remap) {
+            return pulpIDRemapSource(name, remap, atops);
           })
           .Case<BurstSplitterOp>([&](BurstSplitterOp splitter) {
             return pulpBurstSplitterSource(name, splitter, atops);

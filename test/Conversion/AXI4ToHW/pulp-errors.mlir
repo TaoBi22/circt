@@ -425,3 +425,42 @@ hw.module @FilterSplitIds(in %clk : !seq.clock, in %rst_ni : i1, in %port : !por
 // expected-warning @below {{lowering AXI4 port 'axi' changes the ports of this module; its implementation must match the new port list}}
 // expected-error @below {{port 'axi' is marked both 'pulp.atops' and 'pulp.atop_filter'}}
 hw.module.extern @BothMarkers(in %axi : !port {pulp.atops, pulp.atop_filter})
+
+// -----
+
+!split_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitIdRemapIds(in %clk : !seq.clock, in %rst_ni : i1,
+                           in %upstream : !split_ids,
+                           out downstream : !narrow_ids) {
+  // expected-error @below {{'axi4.id_remap' op cannot be lowered to a PULP axi_id_remap, which uses a single ID width per side, because its upstream write ID width (4) and read ID width (3) differ}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!split_ids) -> !narrow_ids
+  hw.output %remap : !narrow_ids
+}
+
+// -----
+
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!split_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @SplitIdRemapDownstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
+                                     in %upstream : !wide_ids,
+                                     out downstream : !split_ids) {
+  // expected-error @below {{'axi4.id_remap' op cannot be lowered to a PULP axi_id_remap, which uses a single ID width per side, because its downstream write ID width (2) and read ID width (3) differ}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!wide_ids) -> !split_ids
+  hw.output %remap : !split_ids
+}
+
+// -----
+
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @RemapTrackedIdsConfig(in %clk : !seq.clock, in %rst_ni : i1,
+                                 in %upstream : !wide_ids,
+                                 out downstream : !narrow_ids) {
+  // expected-error @below {{cannot set PULP parameter 'AxiSlvPortMaxUniqIds'}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 {PULP_CONFIG_AxiSlvPortMaxUniqIds = 2 : i32} : (!wide_ids) -> !narrow_ids
+  hw.output %remap : !narrow_ids
+}
