@@ -431,9 +431,6 @@ private:
   /// where a converter has to bridge the two.
   DenseMap<OpOperand *, PortType> types;
   DenseMap<OpOperand *, PortType> adapted;
-  /// The crossbars and remappers in the order their downstream types were
-  /// inferred.
-  SmallVector<Operation *> ordered;
   /// Which downstream ports each of a crossbar's upstream ports reaches.
   DenseMap<Operation *, SmallVector<llvm::BitVector>> connectivity;
   /// The `!axi4.port` value feeding each connection.
@@ -716,7 +713,6 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
                                 userWidth, *windows, writes, reads)});
   }
 
-  ordered.push_back(xbar);
   return success();
 }
 
@@ -741,7 +737,6 @@ LogicalResult NetworkLowering::inferRemapTypes(DummiesIDRemapOp remap) {
   if (failed(adaptToSubordinate(connection, driven, "remapper")))
     return failure();
 
-  ordered.push_back(remap);
   return success();
 }
 
@@ -873,35 +868,46 @@ void NetworkLowering::emit() {
     drive(connection, arg);
   }
 
-  for (Operation *stage : ordered) {
-    if (auto remap = dyn_cast<DummiesIDRemapOp>(stage)) {
-      OpOperand *connection =
-          outgoingConnections(remap.getDownstream()).front();
-      OpOperand *upstream = incomingConnections(remap).front();
-      OpBuilder builder(remap);
-      auto axi4Remap = IDRemapOp::create(builder, remap.getLoc(),
-                                         types[connection], remap.getClock(),
-                                         remap.getReset(), lowered[upstream],
-                                         trackedIds(remap, types[upstream]));
-      for (NamedAttribute attr : getPulpConfig(remap))
-        axi4Remap->setAttr(attr.getName(), attr.getValue());
-      drive(connection, axi4Remap);
-      continue;
+  // A crossbar or remapper is built on placeholders for its inputs, which are
+  // only all lowered once every stage is built.
+  DenseMap<OpOperand *, Value> placeholders;
+  auto placeholdersFor = [&](OpBuilder &builder, Operation *stage) {
+    SmallVector<Value> inputs;
+    for (OpOperand *connection : incomingConnections(stage)) {
+      Value placeholder =
+          UnrealizedConversionCastOp::create(builder, stage->getLoc(),
+                                             types[connection], ValueRange())
+              .getResult(0);
+      placeholders.insert({connection, placeholder});
+      inputs.push_back(placeholder);
     }
+    return inputs;
+  };
 
-    auto xbar = cast<DummiesXbarOp>(stage);
+  for (DummiesIDRemapOp remap : remaps) {
+    OpOperand *connection = outgoingConnections(remap.getDownstream()).front();
+    OpOperand *upstream = incomingConnections(remap).front();
+    OpBuilder builder(remap);
+    auto axi4Remap = IDRemapOp::create(
+        builder, remap.getLoc(), types[connection], remap.getClock(),
+        remap.getReset(), placeholdersFor(builder, remap).front(),
+        trackedIds(remap, types[upstream]));
+    for (NamedAttribute attr : getPulpConfig(remap))
+      axi4Remap->setAttr(attr.getName(), attr.getValue());
+    drive(connection, axi4Remap);
+  }
+
+  for (DummiesXbarOp xbar : xbars) {
     SmallVector<OpOperand *> downstream =
         outgoingConnections(xbar.getDownstream());
-    SmallVector<Value> upstream;
-    for (OpOperand *connection : incomingConnections(xbar))
-      upstream.push_back(lowered[connection]);
     SmallVector<Type> results;
     for (OpOperand *connection : downstream)
       results.push_back(types[connection]);
 
     OpBuilder builder(xbar);
-    auto axi4Xbar = XbarOp::create(builder, xbar.getLoc(), results,
-                                   xbar.getClock(), xbar.getReset(), upstream);
+    auto axi4Xbar =
+        XbarOp::create(builder, xbar.getLoc(), results, xbar.getClock(),
+                       xbar.getReset(), placeholdersFor(builder, xbar));
     for (NamedAttribute attr : getPulpConfig(xbar))
       axi4Xbar->setAttr(attr.getName(), attr.getValue());
 
@@ -921,6 +927,12 @@ void NetworkLowering::emit() {
       drive(connection, result);
   }
 
+  for (auto [connection, placeholder] : placeholders) {
+    Operation *cast = placeholder.getDefiningOp();
+    placeholder.replaceAllUsesWith(lowered[connection]);
+    cast->erase();
+  }
+
   for (DummiesExtSubordinateOp subordinate : subordinates) {
     OpOperand *connection = incomingConnections(subordinate).front();
     module.appendOutput(
@@ -932,21 +944,19 @@ void NetworkLowering::emit() {
                    markers);
   }
 
-  for (DummiesAccessesOp access : accesses)
-    access.erase();
-  for (DummiesExtSubordinateOp subordinate : subordinates)
-    subordinate.erase();
-  // Cuts, crossbars and remappers can feed each other, so the cuts let go of
-  // their uses.
-  for (DummiesCutOp cut : cuts) {
-    cut->dropAllUses();
-    cut.erase();
-  }
-  // A crossbar or remapper is only unused once the ones below it are gone.
-  for (Operation *stage : llvm::reverse(ordered))
-    stage->erase();
-  for (DummiesExtManagerOp manager : managers)
-    manager.erase();
+  // Every op lets go of its operands first, so the network is erased in any
+  // order.
+  SmallVector<Operation *> network;
+  llvm::append_range(network, accesses);
+  llvm::append_range(network, subordinates);
+  llvm::append_range(network, cuts);
+  llvm::append_range(network, remaps);
+  llvm::append_range(network, xbars);
+  llvm::append_range(network, managers);
+  for (Operation *op : network)
+    op->dropAllReferences();
+  for (Operation *op : network)
+    op->erase();
 }
 
 LogicalResult NetworkLowering::lower(const DenseSet<StringAttr> &instantiated) {
