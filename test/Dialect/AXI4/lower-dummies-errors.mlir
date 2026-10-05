@@ -310,18 +310,25 @@ hw.module @NothingBelowLoop(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
-// Two subordinates behind one crossbar share a window, so the access can be
-// routed round the loop rather than straight to its subordinate. Routing must
-// still end.
-hw.module @RevisitingRoute(in %clk : !seq.clock, in %rst_ni : i1) {
+hw.module @ConflictingAccesses(in %clk : !seq.clock, in %rst_ni : i1) {
   %core, %core_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  // expected-note @below {{crossbar here}}
-  %x = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %up addr_width = 32, data_width = 64
-  %s_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %x windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
-  %down = axi4.dummies.id_remap %clk, %rst_ni, %x max_unique_ids = 4
-  %y = axi4.dummies.xbar %clk, %rst_ni mgrs %down addr_width = 32, data_width = 64
-  %t_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %y windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
-  %up = axi4.dummies.id_remap %clk, %rst_ni, %y max_unique_ids = 4
-  // expected-error @below {{'axi4.dummies.accesses' op is routed around a loop, through the same crossbar twice}}
-  axi4.dummies.accesses %core_access -> %s_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  // expected-error @below {{'axi4.xbar' op downstream ports #0 and #1 have overlapping windows}}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core addr_width = 32, data_width = 64
+  %a_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  %b_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %core_access -> %a_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %core_access -> %b_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+hw.module @AmbiguousAccess(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %a = axi4.dummies.xbar %clk, %rst_ni mgrs %core addr_width = 32, data_width = 64
+  %left = axi4.dummies.cut %clk, %rst_ni, %a
+  %right = axi4.dummies.cut %clk, %rst_ni, %a
+  %b = axi4.dummies.xbar %clk, %rst_ni mgrs %left, %right addr_width = 32, data_width = 64
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %b windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  // expected-error @below {{'axi4.dummies.accesses' op is ambiguous: the manager reaches the subordinate by more than one route}}
+  axi4.dummies.accesses %core_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
 }

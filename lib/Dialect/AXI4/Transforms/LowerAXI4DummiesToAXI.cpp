@@ -403,12 +403,14 @@ struct NetworkLowering {
 
 private:
   LogicalResult checkOneModule();
-  void getReachableSubordinates(OpOperand *connection,
-                                SmallPtrSetImpl<Operation *> &passed,
-                                SmallVectorImpl<Operation *> &reached);
+  void findRoutes(OpOperand *connection, Operation *subordinate,
+                  SmallPtrSetImpl<Operation *> &passed,
+                  SmallVectorImpl<OpOperand *> &route,
+                  SmallVectorImpl<SmallVector<OpOperand *>> &routes);
   FailureOr<SmallVector<WindowAttr>>
   windowsBelow(OpOperand *connection, uint32_t dataWidth,
-               SmallPtrSetImpl<Operation *> &passed);
+               SmallPtrSetImpl<Operation *> &passed,
+               const SmallPtrSetImpl<Operation *> &targeted);
   WindowSetAttr windowsOfRemapInput(OpOperand *connection);
   LogicalResult inferConnectionWindows();
   LogicalResult inferIdWidths();
@@ -436,6 +438,8 @@ private:
 
   /// The accesses each manager declares.
   DenseMap<Operation *, SmallVector<DummiesAccessesOp>> declared;
+  /// The subordinates the accesses routed through each connection target.
+  DenseMap<OpOperand *, SmallPtrSet<Operation *, 4>> targeted;
   /// The windows each connection carries.
   DenseMap<OpOperand *, WindowSetAttr> windows;
   /// The IDs each remapper tracks.
@@ -494,40 +498,50 @@ LogicalResult NetworkLowering::checkOneModule() {
   return failure(crossing.wasInterrupted());
 }
 
-/// Add the subordinates a connection reaches to `reached`, following the
-/// crossbars and remappers below it but no crossbar in `passed`.
-void NetworkLowering::getReachableSubordinates(
-    OpOperand *connection, SmallPtrSetImpl<Operation *> &passed,
-    SmallVectorImpl<Operation *> &reached) {
+/// Add the routes from `connection` to `subordinate` to `routes`, each the
+/// connections along it, through no crossbar in `passed`. Stops at two, which
+/// is already one too many.
+void NetworkLowering::findRoutes(
+    OpOperand *connection, Operation *subordinate,
+    SmallPtrSetImpl<Operation *> &passed, SmallVectorImpl<OpOperand *> &route,
+    SmallVectorImpl<SmallVector<OpOperand *>> &routes) {
   Operation *consumer = connection->getOwner();
-  if (isa<DummiesExtSubordinateOp>(consumer)) {
-    reached.push_back(consumer);
+  if (routes.size() == 2 ||
+      (isa<DummiesXbarOp>(consumer) && passed.contains(consumer)))
     return;
-  }
-  if (isa<DummiesXbarOp>(consumer) && !passed.insert(consumer).second)
-    return;
-  for (OpOperand *below : outgoingConnections(downstreamOf(consumer)))
-    getReachableSubordinates(below, passed, reached);
-  if (isa<DummiesXbarOp>(consumer))
+
+  route.push_back(connection);
+  if (consumer == subordinate) {
+    routes.emplace_back(route.begin(), route.end());
+  } else if (!isa<DummiesExtSubordinateOp>(consumer)) {
+    passed.insert(consumer);
+    for (OpOperand *below : outgoingConnections(downstreamOf(consumer)))
+      findRoutes(below, subordinate, passed, route, routes);
     passed.erase(consumer);
+  }
+  route.pop_back();
 }
 
-/// The windows of the subordinates a connection reaches, in beats of
-/// `dataWidth`, along paths through no crossbar in `passed`.
+/// The windows of the subordinates in `targeted` a connection reaches, or of
+/// all of them if it is empty, in beats of `dataWidth`, along paths through no
+/// crossbar in `passed`.
 FailureOr<SmallVector<WindowAttr>>
 NetworkLowering::windowsBelow(OpOperand *connection, uint32_t dataWidth,
-                              SmallPtrSetImpl<Operation *> &passed) {
+                              SmallPtrSetImpl<Operation *> &passed,
+                              const SmallPtrSetImpl<Operation *> &targeted) {
   Operation *consumer = connection->getOwner();
 
   // A remapper leaves the beats alone.
   if (auto remap = dyn_cast<DummiesIDRemapOp>(consumer))
     return windowsBelow(outgoingConnections(remap.getDownstream()).front(),
-                        dataWidth, passed);
+                        dataWidth, passed, targeted);
 
   // A crossbar carries the windows of everything below it, each of them
   // already in beats of its own data width.
   SmallVector<WindowAttr> presented;
   if (auto subordinate = dyn_cast<DummiesExtSubordinateOp>(consumer)) {
+    if (!targeted.empty() && !targeted.contains(subordinate))
+      return presented;
     llvm::append_range(presented, subordinate.getWindows().getWindows());
   } else {
     auto xbar = cast<DummiesXbarOp>(consumer);
@@ -535,7 +549,7 @@ NetworkLowering::windowsBelow(OpOperand *connection, uint32_t dataWidth,
       return presented;
     for (OpOperand *below : outgoingConnections(xbar.getDownstream())) {
       FailureOr<SmallVector<WindowAttr>> windows =
-          windowsBelow(below, xbar.getDataWidth(), passed);
+          windowsBelow(below, xbar.getDataWidth(), passed, targeted);
       if (failed(windows))
         return failure();
       llvm::append_range(presented, *windows);
@@ -567,35 +581,24 @@ WindowSetAttr NetworkLowering::windowsOfRemapInput(OpOperand *connection) {
 }
 
 /// Give every connection its windows. A manager's are those its accesses grant
-/// it. A crossbar's downstream port's are those of the subordinates below it,
-/// reached without passing back through the crossbar or any other twice.
+/// it. A crossbar's downstream port's are those of the subordinates the
+/// accesses routed through it target, or of every subordinate below it if none
+/// is routed through it, reached without passing back through the crossbar or
+/// any other twice.
 LogicalResult NetworkLowering::inferConnectionWindows() {
   for (DummiesExtManagerOp manager : managers) {
-    SmallVector<OpOperand *> connections =
-        outgoingConnections(manager.getPort());
-
-    // Every access the manager declares must be to a subordinate it reaches.
-    SmallVector<Operation *> reached;
-    SmallPtrSet<Operation *, 8> passed;
-    if (!connections.empty())
-      getReachableSubordinates(connections.front(), passed, reached);
-    for (DummiesAccessesOp access : declared[manager])
-      if (!llvm::is_contained(reached, access.getSubordinate().getDefiningOp()))
-        return access.emitOpError(
-            "declares an access to a subordinate the manager cannot reach");
-
     FailureOr<WindowSetAttr> granted = inferWindows(manager, declared[manager]);
     if (failed(granted))
       return failure();
-    windows.insert({connections.front(), *granted});
+    windows.insert({outgoingConnections(manager.getPort()).front(), *granted});
   }
 
   for (DummiesXbarOp xbar : xbars) {
     for (auto [index, connection] :
          llvm::enumerate(outgoingConnections(xbar.getDownstream()))) {
       SmallPtrSet<Operation *, 8> passed = {xbar};
-      FailureOr<SmallVector<WindowAttr>> below =
-          windowsBelow(connection, xbar.getDataWidth(), passed);
+      FailureOr<SmallVector<WindowAttr>> below = windowsBelow(
+          connection, xbar.getDataWidth(), passed, targeted[connection]);
       if (failed(below))
         return failure();
       if (below->empty())
@@ -821,7 +824,8 @@ LogicalResult NetworkLowering::adaptToXbar(DummiesXbarOp xbar) {
 LogicalResult NetworkLowering::inferTypes() {
   for (DummiesIDRemapOp remap : remaps)
     uniqueIds[remap] = remap.getMaxUniqueIds();
-  if (failed(inferIdWidths()) || failed(inferConnectionWindows()))
+  if (failed(inferIdWidths()) || failed(routeAccesses()) ||
+      failed(inferConnectionWindows()))
     return failure();
   clampUniqueIds();
   inferCounts();
@@ -870,9 +874,10 @@ LogicalResult NetworkLowering::inferTypes() {
   return success();
 }
 
-/// Route each access hop by hop to the subordinate it reaches, through the
-/// downstream port of each crossbar whose windows cover it, and connect the
-/// crossbar's upstream port to that downstream port.
+/// Route each access to the subordinate it targets, along the one route from
+/// its manager through no crossbar twice. Each connection on the route targets
+/// the subordinate, and each crossbar on it connects the upstream port the
+/// route enters by to the downstream port it leaves by.
 LogicalResult NetworkLowering::routeAccesses() {
   for (DummiesXbarOp xbar : xbars)
     connectivity[xbar].assign(
@@ -881,36 +886,33 @@ LogicalResult NetworkLowering::routeAccesses() {
 
   for (DummiesAccessesOp access : accesses) {
     auto manager = access.getManager().getDefiningOp<DummiesExtManagerOp>();
-    OpOperand *connection = outgoingConnections(manager.getPort()).front();
+    Operation *subordinate = access.getSubordinate().getDefiningOp();
+    SmallVector<OpOperand *> connections =
+        outgoingConnections(manager.getPort());
     SmallPtrSet<Operation *, 8> passed;
-    while (!isa<DummiesExtSubordinateOp>(connection->getOwner())) {
-      if (auto remap = dyn_cast<DummiesIDRemapOp>(connection->getOwner())) {
-        connection = outgoingConnections(remap.getDownstream()).front();
-        continue;
-      }
+    SmallVector<OpOperand *> route;
+    SmallVector<SmallVector<OpOperand *>> routes;
+    if (!connections.empty())
+      findRoutes(connections.front(), subordinate, passed, route, routes);
+    if (routes.empty())
+      return access.emitOpError(
+          "declares an access to a subordinate the manager cannot reach");
+    if (routes.size() > 1)
+      return access.emitOpError("is ambiguous: the manager reaches the "
+                                "subordinate by more than one route");
 
-      auto xbar = cast<DummiesXbarOp>(connection->getOwner());
-      if (!passed.insert(xbar).second) {
-        auto diag = access.emitOpError(
-            "is routed around a loop, through the same crossbar twice");
-        diag.attachNote(xbar.getLoc()) << "crossbar here";
-        return diag;
-      }
-      unsigned upstream = connection->getOperandNumber() -
-                          xbar.getUpstream().getBeginOperandIndex();
-      OpOperand *next = nullptr;
-      for (auto [index, below] :
-           llvm::enumerate(outgoingConnections(xbar.getDownstream()))) {
-        if (llvm::any_of(windows[below].getWindows(), [&](WindowAttr window) {
-              return window.overlaps(access.getWindow());
-            })) {
-          connectivity[xbar][upstream].set(index);
-          next = below;
-          break;
-        }
-      }
-      assert(next && "a reachable subordinate's window is below some port");
-      connection = next;
+    for (auto [above, below] :
+         llvm::zip(routes.front(), llvm::drop_begin(routes.front()))) {
+      targeted[below].insert(subordinate);
+      auto xbar = dyn_cast<DummiesXbarOp>(above->getOwner());
+      if (!xbar)
+        continue;
+      unsigned upstream =
+          above->getOperandNumber() - xbar.getUpstream().getBeginOperandIndex();
+      SmallVector<OpOperand *> downstream =
+          outgoingConnections(xbar.getDownstream());
+      connectivity[xbar][upstream].set(llvm::find(downstream, below) -
+                                       downstream.begin());
     }
   }
   return success();
@@ -1107,7 +1109,7 @@ LogicalResult NetworkLowering::lower(const DenseSet<StringAttr> &instantiated) {
   for (DummiesAccessesOp access : accesses)
     declared[access.getManager().getDefiningOp()].push_back(access);
 
-  if (failed(inferTypes()) || failed(routeAccesses()))
+  if (failed(inferTypes()))
     return failure();
 
   emit();

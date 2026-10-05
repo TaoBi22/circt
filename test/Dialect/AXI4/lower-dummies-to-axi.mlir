@@ -130,13 +130,13 @@ hw.module @ChainedCrossbars(in %clk : !seq.clock, in %rst_ni : i1) {
 // -----
 
 // A crossbar reached through another is connected by the accesses made through
-// it, not by the windows of the port reaching it, which cover rom too
+// it
 // CHECK-LABEL: hw.module @ChainedConnectivity(
 hw.module @ChainedConnectivity(in %clk : !seq.clock, in %rst_ni : i1) {
   %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   %dma, %dma_access = axi4.dummies.ext_manager "dma" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  // CHECK: %[[TOP:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %core, %debug {PULP_CONFIG_Connectivity = {{\[}}[true, true], [true, false]]} : ({{.*}}) -> (!axi4.port<{{[^>]*}} windows = <<base = 0x2000, {{.*}}>, !axi4.port<{{[^>]*}} windows = <<base = 0x0, last = 0x1fff,
+  // CHECK: %[[TOP:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %core, %debug {PULP_CONFIG_Connectivity = {{\[}}[true, true], [true, false]]} : ({{.*}}) -> (!axi4.port<{{[^>]*}} windows = <<base = 0x2000, {{.*}}>, !axi4.port<{{[^>]*}} windows = <<base = 0x0, last = 0xfff, {{[^>]*}}>>>>,
   %top = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64
   // CHECK: axi4.xbar %clk, %rst_ni mgrs %[[TOP]]#1, %{{.+}} {PULP_CONFIG_Connectivity = {{\[}}[false, true], [true, false]]} : ({{.*}}) -> (!axi4.port<{{[^>]*}} windows = <<base = 0x1000, {{.*}}>, !axi4.port<{{[^>]*}} windows = <<base = 0x0, last = 0xfff,
   %bottom = axi4.dummies.xbar %clk, %rst_ni mgrs %top, %dma addr_width = 32, data_width = 64
@@ -415,4 +415,32 @@ hw.module @RemapPastUpstreamIds(in %clk : !seq.clock, in %rst_ni : i1) {
   %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 8
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %remap windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+// Two subordinates serve HBM, one directly below P and one below W. A port
+// carries the windows of the subordinates the accesses through it target, and
+// no access from P targets W's HBM, so P sends only the scratchpad towards W.
+// CHECK-LABEL: hw.module @TwoWaysToHbm(
+// CHECK:         %[[P:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %quad :
+// CHECK-SAME:      -> (!axi4.port<{{[^>]*}} windows = <<base = 0x80000000, last = 0xffffffff, {{[^>]*}}>>>>, {{[^>]*}}>, !axi4.port<{{[^>]*}} windows = <<base = 0x71000000, last = 0x710fffff, {{[^>]*}}>>>>,
+// CHECK:         %[[TO_W:.+]] = axi4.cut %clk, %rst_ni, %[[P]]#1
+// CHECK:         axi4.xbar %clk, %rst_ni mgrs %m_w, %[[TO_W]] {PULP_CONFIG_Connectivity = {{\[}}[true, true], [true, false]]}
+hw.module @TwoWaysToHbm(in %clk : !seq.clock, in %rst_ni : i1) {
+  %quad, %quad_access = axi4.dummies.ext_manager "quad" %clk, %rst_ni addr_width = 48, data_width = 64, outstanding_writes = 16, outstanding_reads = 16
+  %m_w, %m_w_access = axi4.dummies.ext_manager "m_w" %clk, %rst_ni addr_width = 48, data_width = 64, outstanding_writes = 16, outstanding_reads = 16
+
+  %p = axi4.dummies.xbar %clk, %rst_ni mgrs %quad addr_width = 48, data_width = 64
+  %p_to_w = axi4.dummies.cut %clk, %rst_ni, %p
+  %w = axi4.dummies.xbar %clk, %rst_ni mgrs %m_w, %p_to_w addr_width = 48, data_width = 64
+
+  %hbm_p_access = axi4.dummies.ext_subordinate "hbm_p" %clk, %rst_ni, %p windows <<base = 0x80000000, last = 0xffffffff, burst_specs = <<incr, len = 256>>>> addr_width = 48, data_width = 64, outstanding_writes = 16, outstanding_reads = 16
+  %hbm_w_access = axi4.dummies.ext_subordinate "hbm_w" %clk, %rst_ni, %w windows <<base = 0x80000000, last = 0xffffffff, burst_specs = <<incr, len = 256>>>> addr_width = 48, data_width = 64, outstanding_writes = 32, outstanding_reads = 32
+  %spm_access = axi4.dummies.ext_subordinate "spm" %clk, %rst_ni, %w windows <<base = 0x71000000, last = 0x710fffff, burst_specs = <<incr, len = 256>>>> addr_width = 48, data_width = 64, outstanding_writes = 32, outstanding_reads = 32
+
+  axi4.dummies.accesses %quad_access -> %hbm_p_access with <base = 0x80000000, last = 0xffffffff, burst_specs = <<incr, len = 256>>>
+  axi4.dummies.accesses %quad_access -> %spm_access with <base = 0x71000000, last = 0x710fffff, burst_specs = <<incr, len = 256>>>
+  axi4.dummies.accesses %m_w_access -> %hbm_w_access with <base = 0x80000000, last = 0xffffffff, burst_specs = <<incr, len = 256>>>
+  axi4.dummies.accesses %m_w_access -> %spm_access with <base = 0x71000000, last = 0x710fffff, burst_specs = <<incr, len = 256>>>
 }
