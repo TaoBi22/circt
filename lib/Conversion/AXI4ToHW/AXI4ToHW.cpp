@@ -277,6 +277,19 @@ static std::string portShape(PortType port) {
       .str();
 }
 
+/// The suffix naming the user width of a component carrying `port`.
+static std::string userShape(PortType port) {
+  return ("_usr" + Twine(port.getUserWidth())).str();
+}
+
+/// A port `op` carries, which agrees with its others on the user width.
+static PortType anyPort(Operation *op) {
+  for (Value value : llvm::concat<Value>(op->getOperands(), op->getResults()))
+    if (auto port = dyn_cast<PortType>(value.getType()))
+      return port;
+  llvm_unreachable("every component carries a port");
+}
+
 /// The component `op` lowers to, or nothing if it is not one.
 static std::optional<Component> getComponent(Operation *op) {
   return TypeSwitch<Operation *, std::optional<Component>>(op)
@@ -695,8 +708,9 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
         {b.getStringAttr("mgr0"), type, hw::ModulePort::Direction::Input},
         {b.getStringAttr("sub0"), type, hw::ModulePort::Direction::Output}};
     FailureOr<hw::HWModuleExternOp> shape = getShape(
-        StringAttr::get(context, "axi_atop_filter_" + portShape(type)), ports,
-        DictionaryAttr::get(context),
+        StringAttr::get(context,
+                        "axi_atop_filter_" + portShape(type) + userShape(type)),
+        ports, DictionaryAttr::get(context),
         [](const hw::ModulePort &port) { return port.name == "mgr0"; },
         [&](hw::HWModuleExternOp shape) {
           return attachPulpAtopFilterSource(b, shape, type);
@@ -724,7 +738,8 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
     // the config of the PULP IP.
     bool atops = atopPaths.components.contains(op);
     FailureOr<hw::HWModuleExternOp> shape = getShape(
-        b.getStringAttr(component.moduleName + (atops ? "_atop" : "")),
+        b.getStringAttr(component.moduleName + userShape(anyPort(op)) +
+                        (atops ? "_atop" : "")),
         componentPorts(component),
         pulpMapping ? getPulpConfig(op) : DictionaryAttr(),
         [&](const hw::ModulePort &port) {

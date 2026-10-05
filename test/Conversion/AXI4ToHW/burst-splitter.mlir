@@ -5,7 +5,7 @@
 
 // A splitter changes only the bursts a port carries, so both faces explode into
 // the same payload structs
-// CHECK-LABEL: hw.module.extern @axi_burst_splitter_a32_d64_i4(
+// CHECK-LABEL: hw.module.extern @axi_burst_splitter_a32_d64_i4_usr0(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
 // CHECK-SAME:    in %mgr0_aw : !hw.struct<id: i4, addr: i32,
 // CHECK-SAME:    in %mgr0_rready : i1,
@@ -24,7 +24,7 @@
 // CHECK-SAME:    out downstream_rready : i1)
 hw.module @BurstSplitter(in %clk : !seq.clock, in %rst_ni : i1,
                          in %upstream : !burstty, out downstream : !beats) {
-  // CHECK: %burst_splitter0.mgr0_awready, {{.*}} = hw.instance "burst_splitter0" @axi_burst_splitter_a32_d64_i4(
+  // CHECK: %burst_splitter0.mgr0_awready, {{.*}} = hw.instance "burst_splitter0" @axi_burst_splitter_a32_d64_i4_usr0(
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %upstream_aw:
   // CHECK-SAME: sub0_awready: %downstream_awready: i1

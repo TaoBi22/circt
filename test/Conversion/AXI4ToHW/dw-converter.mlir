@@ -8,7 +8,7 @@ hw.module.extern @Subordinate(in %clk : !seq.clock, in %rst_ni : i1, in %axi : !
 
 // The module name carries both data widths, and its two faces carry the payload
 // structs of their own side
-// CHECK-LABEL: hw.module.extern @axi_dw_converter_a32_d64to32_i4(
+// CHECK-LABEL: hw.module.extern @axi_dw_converter_a32_d64to32_i4_usr0(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
 // CHECK-SAME:    in %mgr0_w : !hw.struct<data: i64, strb: i8,
 // CHECK-SAME:    in %sub0_r : !hw.struct<id: i4, data: i32,
@@ -21,7 +21,7 @@ hw.module @Narrowing(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-SAME: axi_awready: %dw_converter0.mgr0_awready: i1
   %m = hw.instance "mgr" @Manager(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1) -> (axi: !wide)
 
-  // CHECK: %dw_converter0.mgr0_awready, {{.*}} = hw.instance "dw_converter0" @axi_dw_converter_a32_d64to32_i4(
+  // CHECK: %dw_converter0.mgr0_awready, {{.*}} = hw.instance "dw_converter0" @axi_dw_converter_a32_d64to32_i4_usr0(
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %mgr.axi_aw:
   // CHECK-SAME: sub0_awready: %sub.axi_awready: i1
@@ -41,15 +41,15 @@ hw.module.extern @Subordinate(in %clk : !seq.clock, in %rst_ni : i1, in %axi : !
 
 // A converter that keeps the data width has the same ports as a cut, so the
 // kind is part of what makes two components share a module
-// CHECK: hw.module.extern @axi_cut_a32_d64_i4(
-// CHECK: hw.module.extern @axi_dw_converter_a32_d64to64_i4(
+// CHECK: hw.module.extern @axi_cut_a32_d64_i4_usr0(
+// CHECK: hw.module.extern @axi_dw_converter_a32_d64to64_i4_usr0(
 
 // CHECK-LABEL: hw.module @SameShapeAsACut(
 hw.module @SameShapeAsACut(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1) -> (axi: !port)
-  // CHECK: hw.instance "cut0" @axi_cut_a32_d64_i4(
+  // CHECK: hw.instance "cut0" @axi_cut_a32_d64_i4_usr0(
   %cut = axi4.cut %clk, %rst_ni, %m : !port
-  // CHECK: hw.instance "dw_converter0" @axi_dw_converter_a32_d64to64_i4(
+  // CHECK: hw.instance "dw_converter0" @axi_dw_converter_a32_d64to64_i4_usr0(
   %dwc = axi4.data_width_converter %clk, %rst_ni, %cut : (!port) -> !port
   hw.instance "sub" @Subordinate(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1, axi: %dwc: !port) -> ()
 }

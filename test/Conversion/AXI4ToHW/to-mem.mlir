@@ -4,7 +4,7 @@
 
 // Only the port face explodes; the memory interface is carried through as the
 // signals it already is, taken and driven around it
-// CHECK-LABEL: hw.module.extern @axi_to_mem_a32_d64_i4(
+// CHECK-LABEL: hw.module.extern @axi_to_mem_a32_d64_i4_usr0(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
 // CHECK-SAME:    in %mem_rvalid_i : i1, in %mem_rdata_i : i64,
 // CHECK-SAME:    in %mgr0_aw : !hw.struct<id: i4, addr: i32,
@@ -26,7 +26,7 @@ hw.module @ToMem(in %clk : !seq.clock, in %rst_ni : i1, in %port : !mem_port,
                  in %rvalid : i1, in %rdata : i64,
                  out valid : i1, out addr : i32, out wdata : i64,
                  out strb : i8, out we : i1) {
-  // CHECK: %to_mem0.mgr0_awready, {{.*}} = hw.instance "to_mem0" @axi_to_mem_a32_d64_i4(
+  // CHECK: %to_mem0.mgr0_awready, {{.*}} = hw.instance "to_mem0" @axi_to_mem_a32_d64_i4_usr0(
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mem_rvalid_i: %rvalid: i1, mem_rdata_i: %rdata: i64
   // CHECK-SAME: mgr0_aw: %port_aw:

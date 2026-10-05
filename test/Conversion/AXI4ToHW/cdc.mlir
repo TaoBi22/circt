@@ -6,7 +6,7 @@ hw.module.extern @Manager(in %clk : !seq.clock, in %rst_ni : i1, out axi : !port
 hw.module.extern @Subordinate(in %clk : !seq.clock, in %rst_ni : i1, in %axi : !port)
 
 // A crossing takes a clock per side, and the single reset it may not cross
-// CHECK-LABEL: hw.module.extern @axi_cdc_a32_d64_i4(
+// CHECK-LABEL: hw.module.extern @axi_cdc_a32_d64_i4_usr0(
 // CHECK-SAME:    in %src_clk_i : !seq.clock, in %dst_clk_i : !seq.clock,
 // CHECK-SAME:    in %rst_ni : i1,
 // CHECK-SAME:    in %mgr0_aw : !hw.struct<id: i4, addr: i32,
@@ -26,7 +26,7 @@ hw.module @Crossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
   %m = hw.instance "mgr" @Manager(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1) -> (axi: !port)
 
   // Each side's clock reaches the port of its own domain
-  // CHECK: %cdc0.mgr0_awready, {{.*}} = hw.instance "cdc0" @axi_cdc_a32_d64_i4(
+  // CHECK: %cdc0.mgr0_awready, {{.*}} = hw.instance "cdc0" @axi_cdc_a32_d64_i4_usr0(
   // CHECK-SAME: src_clk_i: %clk: !seq.clock, dst_clk_i: %other_clk: !seq.clock
   // CHECK-SAME: rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %mgr.axi_aw:

@@ -8,7 +8,7 @@ hw.module.extern @Subordinate(in %clk : !seq.clock, in %rst_ni : i1, in %axi : !
 
 // The module name carries both ID widths, and its two faces carry the payload
 // structs of their own side
-// CHECK-LABEL: hw.module.extern @axi_iw_converter_a32_d64_i4to2(
+// CHECK-LABEL: hw.module.extern @axi_iw_converter_a32_d64_i4to2_usr0(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
 // CHECK-SAME:    in %mgr0_aw : !hw.struct<id: i4, addr: i32,
 // CHECK-SAME:    in %sub0_r : !hw.struct<id: i2, data: i64,
@@ -21,7 +21,7 @@ hw.module @Narrowing(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-SAME: axi_awready: %iw_converter0.mgr0_awready: i1
   %m = hw.instance "mgr" @Manager(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1) -> (axi: !wide_ids)
 
-  // CHECK: %iw_converter0.mgr0_awready, {{.*}} = hw.instance "iw_converter0" @axi_iw_converter_a32_d64_i4to2(
+  // CHECK: %iw_converter0.mgr0_awready, {{.*}} = hw.instance "iw_converter0" @axi_iw_converter_a32_d64_i4to2_usr0(
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %mgr.axi_aw:
   // CHECK-SAME: sub0_awready: %sub.axi_awready: i1
@@ -41,14 +41,14 @@ hw.module.extern @Manager(in %clk : !seq.clock, in %rst_ni : i1, out axi : !narr
 hw.module.extern @Subordinate(in %clk : !seq.clock, in %rst_ni : i1, in %axi : !wide_ids)
 
 // Widening is the same component with the widths the other way round
-// CHECK-LABEL: hw.module.extern @axi_iw_converter_a32_d64_i2to4(
+// CHECK-LABEL: hw.module.extern @axi_iw_converter_a32_d64_i2to4_usr0(
 // CHECK-SAME:    in %mgr0_aw : !hw.struct<id: i2, addr: i32,
 // CHECK-SAME:    out sub0_aw : !hw.struct<id: i4, addr: i32,
 
 // CHECK-LABEL: hw.module @Widening(
 hw.module @Widening(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1) -> (axi: !narrow_ids)
-  // CHECK: hw.instance "iw_converter0" @axi_iw_converter_a32_d64_i2to4(
+  // CHECK: hw.instance "iw_converter0" @axi_iw_converter_a32_d64_i2to4_usr0(
   %iwc = axi4.id_width_converter %clk, %rst_ni, %m : (!narrow_ids) -> !wide_ids
   hw.instance "sub" @Subordinate(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1, axi: %iwc: !wide_ids) -> ()
 }

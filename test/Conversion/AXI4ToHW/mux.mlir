@@ -6,7 +6,7 @@
 
 // A mux tags its managers' transactions, so its downstream face carries the
 // wider IDs the name ends in; the name counts the managers it arbitrates
-// CHECK-LABEL: hw.module.extern @axi_mux_2u_a32_d64_i4_o5(
+// CHECK-LABEL: hw.module.extern @axi_mux_2u_a32_d64_i4_o5_usr0(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
 // CHECK-SAME:    in %mgr0_aw : !hw.struct<id: i4, addr: i32,
 // CHECK-SAME:    in %mgr1_aw : !hw.struct<id: i4, addr: i32,
@@ -25,7 +25,7 @@
 // CHECK-SAME:    out downstream_rready : i1)
 hw.module @Mux(in %clk : !seq.clock, in %rst_ni : i1, in %a : !lo, in %b : !hi,
                out downstream : !sub) {
-  // CHECK: %mux0.mgr0_awready, {{.*}} = hw.instance "mux0" @axi_mux_2u_a32_d64_i4_o5(
+  // CHECK: %mux0.mgr0_awready, {{.*}} = hw.instance "mux0" @axi_mux_2u_a32_d64_i4_o5_usr0(
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %a_aw:
   // CHECK-SAME: mgr1_aw: %b_aw:

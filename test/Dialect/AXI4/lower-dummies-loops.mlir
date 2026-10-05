@@ -28,9 +28,9 @@
 
 // Lowering to PULP traces the atomics through the loops and ends
 // PULP-LABEL: hw.module @QuadrantLoops(
-// PULP:         hw.instance "xbar0" @axi_xbar_3u3d_a48_d64_i3_o5_atop(
-// PULP:         hw.instance "id_remap0" @axi_id_remap_a48_d64_i5to2_u4_atop(
-// PULP:         hw.instance "xbar1" @axi_xbar_2u2d_a48_d64_i2_o3_atop(
+// PULP:         hw.instance "xbar0" @axi_xbar_3u3d_a48_d64_i3_o5_usr0_atop(
+// PULP:         hw.instance "id_remap0" @axi_id_remap_a48_d64_i5to2_u4_usr0_atop(
+// PULP:         hw.instance "xbar1" @axi_xbar_2u2d_a48_d64_i2_o3_usr0_atop(
 hw.module @QuadrantLoops(in %clk : !seq.clock, in %rst_ni : i1) {
   %soc, %soc_access = axi4.dummies.ext_manager "soc" %clk, %rst_ni addr_width = 48, data_width = 64, outstanding_writes = 8, outstanding_reads = 8 {pulp.atops}
   %core0, %core0_access = axi4.dummies.ext_manager "core0" %clk, %rst_ni addr_width = 48, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {pulp.atops}
@@ -74,8 +74,8 @@ hw.module @QuadrantLoops(in %clk : !seq.clock, in %rst_ni : i1) {
 // CHECK:         %[[DOWN_CUT:.+]] = axi4.cut %clk, %rst_ni, %[[DOWN]]
 // CHECK:         hw.output %[[INTER]]#0, %[[WIDE]]#0
 // PULP-LABEL: hw.module @SocLoop(
-// PULP:         hw.instance "id_remap0" @axi_id_remap_a32_d64_i4to2_u4(
-// PULP:         hw.instance "id_remap1" @axi_id_remap_a32_d64_i3to3_u8(
+// PULP:         hw.instance "id_remap0" @axi_id_remap_a32_d64_i4to2_u4_usr0(
+// PULP:         hw.instance "id_remap1" @axi_id_remap_a32_d64_i3to3_u8_usr0(
 hw.module @SocLoop(in %clk : !seq.clock, in %rst_ni : i1) {
   %m_inter, %m_inter_access = axi4.dummies.ext_manager "m_inter" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   %m_wide, %m_wide_access = axi4.dummies.ext_manager "m_wide" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4

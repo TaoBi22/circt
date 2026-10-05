@@ -6,7 +6,7 @@
 
 // A demux carries every width through, so all of its faces explode into the
 // same payload structs; the name counts the downstream ports it routes to
-// CHECK-LABEL: hw.module.extern @axi_demux_2d_a32_d64_i4(
+// CHECK-LABEL: hw.module.extern @axi_demux_2d_a32_d64_i4_usr0(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
 // CHECK-SAME:    in %mgr0_aw : !hw.struct<id: i4, addr: i32,
 // CHECK-SAME:    in %mgr0_rready : i1,
@@ -24,7 +24,7 @@
 // CHECK-SAME:    out hi_rready : i1)
 hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !mgr,
                  out lo : !lo, out hi : !hi) {
-  // CHECK: %demux0.mgr0_awready, {{.*}} = hw.instance "demux0" @axi_demux_2d_a32_d64_i4(
+  // CHECK: %demux0.mgr0_awready, {{.*}} = hw.instance "demux0" @axi_demux_2d_a32_d64_i4_usr0(
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %upstream_aw:
   // CHECK-SAME: sub0_awready: %lo_awready: i1

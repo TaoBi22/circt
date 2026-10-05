@@ -13,7 +13,7 @@ hw.module.extern @ManagerAndSubordinate(in %clk : !seq.clock, in %rst_ni : i1, i
 
 // One external module per crossbar, with a port group per endpoint named
 // based on port index
-// CHECK-LABEL: hw.module.extern @axi_xbar_2u3d_a32_d64_i4_o5(
+// CHECK-LABEL: hw.module.extern @axi_xbar_2u3d_a32_d64_i4_o5_usr0(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
 // CHECK-SAME:    in %mgr0_aw : !hw.struct<id: i4, addr: i32,
 // CHECK-SAME:    in %mgr0_rready : i1,
@@ -41,7 +41,7 @@ hw.module @ManyEndpoints(in %clk : !seq.clock, in %rst_ni : i1) {
       clk: %clk: !seq.clock, rst_ni: %rst_ni: i1, axi_sub: %xbar#2: !sub_c)
     -> (axi_mgr: !narrow_mgr)
 
-  // CHECK: %xbar0.mgr0_awready, {{.*}} = hw.instance "xbar0" @axi_xbar_2u3d_a32_d64_i4_o5(
+  // CHECK: %xbar0.mgr0_awready, {{.*}} = hw.instance "xbar0" @axi_xbar_2u3d_a32_d64_i4_o5_usr0(
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %mgr.axi_aw:
   // CHECK-SAME: mgr1_aw: %both.axi_mgr_aw:
@@ -68,9 +68,9 @@ hw.module.extern @Manager(out axi : !mgr)
 hw.module.extern @Subordinate(in %axi : !sub)
 
 // A single manager needs no extra ID bits, but still gets a crossbar
-// CHECK-LABEL: hw.module.extern @axi_xbar_1u1d_a32_d64_i4_o5(
+// CHECK-LABEL: hw.module.extern @axi_xbar_1u1d_a32_d64_i4_o5_usr0(
 // CHECK-LABEL: hw.module @SingleManager(
-// CHECK:         hw.instance "xbar0" @axi_xbar_1u1d_a32_d64_i4_o5(
+// CHECK:         hw.instance "xbar0" @axi_xbar_1u1d_a32_d64_i4_o5_usr0(
 hw.module @SingleManager(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
   %s = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub)
@@ -95,14 +95,14 @@ hw.module.extern @HighSubordinate(in %axi : !high_sub)
 // Only crossbars whose ports match exactly share a module. Differing widths
 // give a different name, and anything else the name does not describe - the
 // address map here - collides and takes a suffix.
-// CHECK: hw.module.extern @axi_xbar_1u1d_a32_d64_i4_o5(
-// CHECK: hw.module.extern @axi_xbar_1u1d_a32_d64_i4_o6(
-// CHECK: hw.module.extern @axi_xbar_1u1d_a32_d64_i4_o5_0(
+// CHECK: hw.module.extern @axi_xbar_1u1d_a32_d64_i4_o5_usr0(
+// CHECK: hw.module.extern @axi_xbar_1u1d_a32_d64_i4_o6_usr0(
+// CHECK: hw.module.extern @axi_xbar_1u1d_a32_d64_i4_o5_usr0_0(
 // CHECK-LABEL: hw.module @Sharing(
-// CHECK:         hw.instance "xbar0" @axi_xbar_1u1d_a32_d64_i4_o5(
-// CHECK:         hw.instance "xbar1" @axi_xbar_1u1d_a32_d64_i4_o5(
-// CHECK:         hw.instance "xbar2" @axi_xbar_1u1d_a32_d64_i4_o6(
-// CHECK:         hw.instance "xbar3" @axi_xbar_1u1d_a32_d64_i4_o5_0(
+// CHECK:         hw.instance "xbar0" @axi_xbar_1u1d_a32_d64_i4_o5_usr0(
+// CHECK:         hw.instance "xbar1" @axi_xbar_1u1d_a32_d64_i4_o5_usr0(
+// CHECK:         hw.instance "xbar2" @axi_xbar_1u1d_a32_d64_i4_o6_usr0(
+// CHECK:         hw.instance "xbar3" @axi_xbar_1u1d_a32_d64_i4_o5_usr0_0(
 hw.module @Sharing(in %clk : !seq.clock, in %rst_ni : i1) {
   %m0 = hw.instance "mgr0" @Manager() -> (axi: !mgr)
   %s0 = axi4.xbar %clk, %rst_ni mgrs %m0 : (!mgr) -> (!sub)

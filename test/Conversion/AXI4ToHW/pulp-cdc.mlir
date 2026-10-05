@@ -7,19 +7,19 @@ hw.module.extern @Subordinate(in %axi : !port)
 
 // The external module is unchanged by the option - the wrapper is verilog
 // hanging off it, in its own file
-// CHECK:       hw.module.extern @axi_cdc_a32_d64_i4(
+// CHECK:       hw.module.extern @axi_cdc_a32_d64_i4_usr0(
 // CHECK-SAME:    in %src_clk_i : !seq.clock, in %dst_clk_i : !seq.clock,
 // CHECK-SAME:    in %rst_ni : i1,
 // CHECK-SAME:    out sub0_rready : i1)
-// CHECK-SAME:    attributes {source = @axi_cdc_a32_d64_i4.sv}
-// CHECK:      sv.verbatim.source @axi_cdc_a32_d64_i4.sv
+// CHECK-SAME:    attributes {source = @axi_cdc_a32_d64_i4_usr0.sv}
+// CHECK:      sv.verbatim.source @axi_cdc_a32_d64_i4_usr0.sv
 
 // The wrapper takes a clock per side, and the single reset
-// CHECK-SAME:   module axi_cdc_a32_d64_i4 (\0A
+// CHECK-SAME:   module axi_cdc_a32_d64_i4_usr0 (\0A
 // CHECK-SAME:     input  logic src_clk_i,\0A
 // CHECK-SAME:     input  logic dst_clk_i,\0A
 // CHECK-SAME:     input  logic rst_ni,\0A
-// CHECK-SAME:     input  axi_cdc_a32_d64_i4_mgr_aw_t mgr0_aw,\0A
+// CHECK-SAME:     input  axi_cdc_a32_d64_i4_usr0_mgr_aw_t mgr0_aw,\0A
 // CHECK-SAME:     output logic sub0_rready\0A);
 
 // One req/resp pair per side, bridged to the ports of that side
@@ -40,11 +40,11 @@ hw.module.extern @Subordinate(in %axi : !port)
 // CHECK-SAME:     .dst_rst_ni (rst_ni),\0A
 // CHECK-SAME:     .dst_req_o  (mst_req),\0A
 
-// CHECK-SAME:  output_file = #hw.output_file<"axi_cdc_a32_d64_i4.sv">
-// CHECK-SAME:  verilogName = "axi_cdc_a32_d64_i4"
+// CHECK-SAME:  output_file = #hw.output_file<"axi_cdc_a32_d64_i4_usr0.sv">
+// CHECK-SAME:  verilogName = "axi_cdc_a32_d64_i4_usr0"
 
 // CHECK-LABEL: hw.module @Crossing(
-// CHECK:         hw.instance "cdc0" @axi_cdc_a32_d64_i4(
+// CHECK:         hw.instance "cdc0" @axi_cdc_a32_d64_i4_usr0(
 hw.module @Crossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
                     in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !port)

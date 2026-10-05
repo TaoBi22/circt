@@ -7,34 +7,34 @@ hw.module.extern @Subordinate(in %axi : !port)
 
 // The external module is unchanged by the option - the wrapper is verilog
 // hanging off it, in its own file
-// CHECK:       hw.module.extern @axi_cut_a32_d64_i4(
+// CHECK:       hw.module.extern @axi_cut_a32_d64_i4_usr0(
 // CHECK-SAME:    in %mgr0_aw : !hw.struct<id: i4, addr: i32,
 // CHECK-SAME:    out sub0_rready : i1)
-// CHECK-SAME:    attributes {source = @axi_cut_a32_d64_i4.sv}
-// CHECK:      sv.verbatim.source @axi_cut_a32_d64_i4.sv
+// CHECK-SAME:    attributes {source = @axi_cut_a32_d64_i4_usr0.sv}
+// CHECK:      sv.verbatim.source @axi_cut_a32_d64_i4_usr0.sv
 
 // The write path carries the write ID and the read path the read one, so that
 // the two widths stay independent - axi_cut never inspects them
-// CHECK-SAME:   typedef logic [4-1:0] axi_cut_a32_d64_i4_wid_t;\0A
-// CHECK-SAME:   typedef logic [4-1:0] axi_cut_a32_d64_i4_rid_t;\0A
-// CHECK-SAME:   `AXI_TYPEDEF_AW_CHAN_T(axi_cut_a32_d64_i4_aw_chan_t, axi_cut_a32_d64_i4_addr_t, axi_cut_a32_d64_i4_wid_t, axi_cut_a32_d64_i4_user_t)\0A
-// CHECK-SAME:   `AXI_TYPEDEF_AR_CHAN_T(axi_cut_a32_d64_i4_ar_chan_t, axi_cut_a32_d64_i4_addr_t, axi_cut_a32_d64_i4_rid_t, axi_cut_a32_d64_i4_user_t)\0A
+// CHECK-SAME:   typedef logic [4-1:0] axi_cut_a32_d64_i4_usr0_wid_t;\0A
+// CHECK-SAME:   typedef logic [4-1:0] axi_cut_a32_d64_i4_usr0_rid_t;\0A
+// CHECK-SAME:   `AXI_TYPEDEF_AW_CHAN_T(axi_cut_a32_d64_i4_usr0_aw_chan_t, axi_cut_a32_d64_i4_usr0_addr_t, axi_cut_a32_d64_i4_usr0_wid_t, axi_cut_a32_d64_i4_usr0_user_t)\0A
+// CHECK-SAME:   `AXI_TYPEDEF_AR_CHAN_T(axi_cut_a32_d64_i4_usr0_ar_chan_t, axi_cut_a32_d64_i4_usr0_addr_t, axi_cut_a32_d64_i4_usr0_rid_t, axi_cut_a32_d64_i4_usr0_user_t)\0A
 
 // The wrapper declares a port per exploded signal, with the same name and the
 // mirrored direction
-// CHECK-SAME:   module axi_cut_a32_d64_i4 (\0A
+// CHECK-SAME:   module axi_cut_a32_d64_i4_usr0 (\0A
 // CHECK-SAME:     input  logic clk_i,\0A
 // CHECK-SAME:     input  logic rst_ni,\0A
-// CHECK-SAME:     input  axi_cut_a32_d64_i4_mgr_aw_t mgr0_aw,\0A
+// CHECK-SAME:     input  axi_cut_a32_d64_i4_usr0_mgr_aw_t mgr0_aw,\0A
 // CHECK-SAME:     input  logic mgr0_awvalid,\0A
 // CHECK-SAME:     output logic mgr0_awready,\0A
-// CHECK-SAME:     output axi_cut_a32_d64_i4_sub_aw_t sub0_aw,\0A
+// CHECK-SAME:     output axi_cut_a32_d64_i4_usr0_sub_aw_t sub0_aw,\0A
 // CHECK-SAME:     input  logic sub0_rvalid,\0A
 // CHECK-SAME:     output logic sub0_rready\0A);
 
 // One req/resp pair per side, bridged to the ports of that side
-// CHECK-SAME:   axi_cut_a32_d64_i4_req_t  slv_req;\0A
-// CHECK-SAME:   axi_cut_a32_d64_i4_resp_t mst_resp;\0A
+// CHECK-SAME:   axi_cut_a32_d64_i4_usr0_req_t  slv_req;\0A
+// CHECK-SAME:   axi_cut_a32_d64_i4_usr0_resp_t mst_resp;\0A
 // CHECK-SAME:   assign slv_req.aw = '{id: mgr0_aw.id,
 // CHECK-SAME:   assign mgr0_awready = slv_resp.aw_ready;\0A
 // CHECK-SAME:   assign sub0_aw = '{id: mst_req.aw.id,
@@ -47,11 +47,11 @@ hw.module.extern @Subordinate(in %axi : !port)
 // CHECK-SAME:     .slv_req_i  (slv_req),\0A
 // CHECK-SAME:     .mst_resp_i (mst_resp)\0A
 
-// CHECK-SAME:  output_file = #hw.output_file<"axi_cut_a32_d64_i4.sv">
-// CHECK-SAME:  verilogName = "axi_cut_a32_d64_i4"
+// CHECK-SAME:  output_file = #hw.output_file<"axi_cut_a32_d64_i4_usr0.sv">
+// CHECK-SAME:  verilogName = "axi_cut_a32_d64_i4_usr0"
 
 // CHECK-LABEL: hw.module @Cut(
-// CHECK:         hw.instance "cut0" @axi_cut_a32_d64_i4(
+// CHECK:         hw.instance "cut0" @axi_cut_a32_d64_i4_usr0(
 hw.module @Cut(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !port)
   %cut = axi4.cut %clk, %rst_ni, %m : !port
@@ -69,9 +69,9 @@ hw.module.extern @Subordinate(in %axi : !port)
 
 // Differing write and read ID widths need no PULP restriction here
 // CHECK:      sv.verbatim.source
-// CHECK-SAME:   typedef logic [1-1:0] axi_cut_a32_d64_i4_user_t;\0A
-// CHECK-SAME:   typedef logic [4-1:0] axi_cut_a32_d64_i4_wid_t;\0A
-// CHECK-SAME:   typedef logic [2-1:0] axi_cut_a32_d64_i4_rid_t;\0A
+// CHECK-SAME:   typedef logic [1-1:0] axi_cut_a32_d64_i4_usr0_user_t;\0A
+// CHECK-SAME:   typedef logic [4-1:0] axi_cut_a32_d64_i4_usr0_wid_t;\0A
+// CHECK-SAME:   typedef logic [2-1:0] axi_cut_a32_d64_i4_usr0_rid_t;\0A
 // CHECK-SAME:   assign slv_req.aw = '{id: mgr0_aw.id,
 // CHECK-SAME:     region: mgr0_aw.region, atop: '0, user: '0};\0A
 // CHECK-SAME:   assign mgr0_b = '{id: slv_resp.b.id, resp: slv_resp.b.resp};\0A
@@ -90,7 +90,7 @@ hw.module.extern @Manager(out axi : !port)
 hw.module.extern @Subordinate(in %axi : !port)
 
 // CHECK:      sv.verbatim.source
-// CHECK-SAME:   typedef logic [3-1:0] axi_cut_a32_d64_i4_user_t;\0A
+// CHECK-SAME:   typedef logic [3-1:0] axi_cut_a32_d64_i4_usr3_user_t;\0A
 // CHECK-SAME:   assign slv_req.aw = '{id: mgr0_aw.id,
 // CHECK-SAME:     user: mgr0_aw.user, atop: '0};\0A
 // CHECK-SAME:   assign mgr0_b = '{id: slv_resp.b.id, resp: slv_resp.b.resp, user: slv_resp.b.user};\0A

@@ -7,7 +7,7 @@
 
 // The external modules the components become are internal to the lowering, so
 // they keep a signal per channel
-// CHECK-LABEL: hw.module.extern @axi_cut_a32_d64_i5(
+// CHECK-LABEL: hw.module.extern @axi_cut_a32_d64_i5_usr4(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
 // CHECK-SAME:    in %mgr0_aw : !hw.struct<id: i5, addr: i32,
 // CHECK-SAME:    in %mgr0_awvalid : i1,
@@ -65,7 +65,7 @@ hw.module @Passthrough(in %p : !narrow, out q : !narrow) {
 // CHECK:         %[[RESP:.+]] = hw.struct_create (%cut0.mgr0_awready, %cut0.mgr0_arready, %cut0.mgr0_wready, %cut0.mgr0_bvalid, %cut0.mgr0_b, %cut0.mgr0_rvalid, %cut0.mgr0_r)
 // CHECK:         %mgr.axi_req = hw.instance "mgr" @ExternManager(
 // CHECK-SAME:      axi_resp: %[[RESP]]:
-// CHECK:         hw.instance "cut0" @axi_cut_a32_d64_i5(
+// CHECK:         hw.instance "cut0" @axi_cut_a32_d64_i5_usr4(
 // CHECK-SAME:      mgr0_aw: %{{.+}}: !hw.struct<id: i5, addr: i32,
 // CHECK:         %[[REQ:.+]] = hw.struct_create (%{{.+}}, %cut0.sub0_awvalid, %cut0.sub0_w, %cut0.sub0_wvalid, %cut0.sub0_bready, %cut0.sub0_ar, %cut0.sub0_arvalid, %cut0.sub0_rready)
 // CHECK:         hw.instance "sub" @ExternSubordinate(

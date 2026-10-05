@@ -8,25 +8,25 @@ hw.module.extern @Subordinate(in %axi : !narrow_ids)
 
 // The external module is unchanged by the option - the wrapper is verilog
 // hanging off it, in its own file
-// CHECK:       hw.module.extern @axi_iw_converter_a32_d64_i4to2(
+// CHECK:       hw.module.extern @axi_iw_converter_a32_d64_i4to2_usr0(
 // CHECK-SAME:    out sub0_rready : i1)
-// CHECK-SAME:    attributes {source = @axi_iw_converter_a32_d64_i4to2.sv}
-// CHECK:      sv.verbatim.source @axi_iw_converter_a32_d64_i4to2.sv
+// CHECK-SAME:    attributes {source = @axi_iw_converter_a32_d64_i4to2_usr0.sv}
+// CHECK:      sv.verbatim.source @axi_iw_converter_a32_d64_i4to2_usr0.sv
 
 // Only the ID widths differ between the sides, so each side gets an ID typedef
 // and a channel type family of its own
-// CHECK-SAME:   typedef logic [4-1:0] axi_iw_converter_a32_d64_i4to2_slv_id_t;\0A
-// CHECK-SAME:   typedef logic [2-1:0] axi_iw_converter_a32_d64_i4to2_mst_id_t;\0A
-// CHECK-SAME:   `AXI_TYPEDEF_ALL(axi_iw_converter_a32_d64_i4to2_slv, axi_iw_converter_a32_d64_i4to2_addr_t, axi_iw_converter_a32_d64_i4to2_slv_id_t,
-// CHECK-SAME:   `AXI_TYPEDEF_ALL(axi_iw_converter_a32_d64_i4to2_mst, axi_iw_converter_a32_d64_i4to2_addr_t, axi_iw_converter_a32_d64_i4to2_mst_id_t,
+// CHECK-SAME:   typedef logic [4-1:0] axi_iw_converter_a32_d64_i4to2_usr0_slv_id_t;\0A
+// CHECK-SAME:   typedef logic [2-1:0] axi_iw_converter_a32_d64_i4to2_usr0_mst_id_t;\0A
+// CHECK-SAME:   `AXI_TYPEDEF_ALL(axi_iw_converter_a32_d64_i4to2_usr0_slv, axi_iw_converter_a32_d64_i4to2_usr0_addr_t, axi_iw_converter_a32_d64_i4to2_usr0_slv_id_t,
+// CHECK-SAME:   `AXI_TYPEDEF_ALL(axi_iw_converter_a32_d64_i4to2_usr0_mst, axi_iw_converter_a32_d64_i4to2_usr0_addr_t, axi_iw_converter_a32_d64_i4to2_usr0_mst_id_t,
 
 // Each face's payload structs carry the ID width of its own side
-// CHECK-SAME:   typedef struct packed { axi_iw_converter_a32_d64_i4to2_slv_id_t id; {{.*}} } axi_iw_converter_a32_d64_i4to2_mgr_aw_t;\0A
-// CHECK-SAME:   typedef struct packed { axi_iw_converter_a32_d64_i4to2_mst_id_t id; {{.*}} } axi_iw_converter_a32_d64_i4to2_sub_aw_t;\0A
+// CHECK-SAME:   typedef struct packed { axi_iw_converter_a32_d64_i4to2_usr0_slv_id_t id; {{.*}} } axi_iw_converter_a32_d64_i4to2_usr0_mgr_aw_t;\0A
+// CHECK-SAME:   typedef struct packed { axi_iw_converter_a32_d64_i4to2_usr0_mst_id_t id; {{.*}} } axi_iw_converter_a32_d64_i4to2_usr0_sub_aw_t;\0A
 
 // One face per side, bridged to the single struct of the array
-// CHECK-SAME:   module axi_iw_converter_a32_d64_i4to2 (\0A
-// CHECK-SAME:   axi_iw_converter_a32_d64_i4to2_slv_req_t  [1-1:0] slv_req;\0A
+// CHECK-SAME:   module axi_iw_converter_a32_d64_i4to2_usr0 (\0A
+// CHECK-SAME:   axi_iw_converter_a32_d64_i4to2_usr0_slv_req_t  [1-1:0] slv_req;\0A
 // CHECK-SAME:   assign slv_req[0].aw = '{id: mgr0_aw.id,
 // CHECK-SAME:   assign sub0_aw = '{id: mst_req[0].aw.id,
 
@@ -48,10 +48,10 @@ hw.module.extern @Subordinate(in %axi : !narrow_ids)
 // CHECK-SAME:     .slv_req_i  (slv_req[0]),\0A
 // CHECK-SAME:     .mst_resp_i (mst_resp[0])\0A
 
-// CHECK-SAME:  output_file = #hw.output_file<"axi_iw_converter_a32_d64_i4to2.sv">
+// CHECK-SAME:  output_file = #hw.output_file<"axi_iw_converter_a32_d64_i4to2_usr0.sv">
 
 // CHECK-LABEL: hw.module @Narrowing(
-// CHECK:         hw.instance "iw_converter0" @axi_iw_converter_a32_d64_i4to2(
+// CHECK:         hw.instance "iw_converter0" @axi_iw_converter_a32_d64_i4to2_usr0(
 hw.module @Narrowing(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !wide_ids)
   %iwc = axi4.id_width_converter %clk, %rst_ni, %m : (!wide_ids) -> !narrow_ids
@@ -67,9 +67,9 @@ hw.module @Narrowing(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module.extern @Manager(out axi : !narrow_ids)
 hw.module.extern @Subordinate(in %axi : !wide_ids)
 
-// CHECK:      sv.verbatim.source @axi_iw_converter_a32_d64_i2to4.sv
-// CHECK-SAME:   typedef logic [2-1:0] axi_iw_converter_a32_d64_i2to4_slv_id_t;\0A
-// CHECK-SAME:   typedef logic [4-1:0] axi_iw_converter_a32_d64_i2to4_mst_id_t;\0A
+// CHECK:      sv.verbatim.source @axi_iw_converter_a32_d64_i2to4_usr0.sv
+// CHECK-SAME:   typedef logic [2-1:0] axi_iw_converter_a32_d64_i2to4_usr0_slv_id_t;\0A
+// CHECK-SAME:   typedef logic [4-1:0] axi_iw_converter_a32_d64_i2to4_usr0_mst_id_t;\0A
 // CHECK-SAME:     .AxiSlvPortIdWidth      (2),\0A
 // CHECK-SAME:     .AxiMstPortIdWidth      (4),\0A
 hw.module @Widening(in %clk : !seq.clock, in %rst_ni : i1) {
