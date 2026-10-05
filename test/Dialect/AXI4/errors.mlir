@@ -912,3 +912,11 @@ hw.module @MovingIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
   // expected-error @below {{'axi4.id_remap' op upstream and downstream windows must cover the same addresses}}
   %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!wide_ids) -> !moved_ids
 }
+
+// -----
+
+hw.module @DummiesRemapTrackingNothing(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.id_remap' op 'max_unique_ids' must be at least 1}}
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 0
+}

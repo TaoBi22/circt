@@ -34,3 +34,18 @@ hw.module @System(in %clk : !seq.clock, in %rst_ni : i1) {
   axi4.dummies.accesses %core_access -> %periph_access with <base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 2>>>
   axi4.dummies.accesses %debug_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>
 }
+
+// A remapper compacts the IDs the crossbar widens before they reach the memory
+// CHECK-LABEL: hw.module @Remapped(
+// CHECK-SAME:    out mem_aw : !hw.struct<id: i2, addr: i32,
+// CHECK: hw.instance "xbar0" @axi_xbar_2u1d_a32_d64_i2_o3
+// CHECK: hw.instance "id_remap0" @axi_id_remap_a32_d64_i3to2_u4
+hw.module @Remapped(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %xbar max_unique_ids = 4
+  %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %remap windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %debug_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}

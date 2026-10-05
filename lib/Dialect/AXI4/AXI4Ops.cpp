@@ -676,6 +676,16 @@ LogicalResult DummiesXbarOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// DummiesIDRemapOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult DummiesIDRemapOp::verify() {
+  if (getMaxUniqueIds() < 1)
+    return emitOpError("'max_unique_ids' must be at least 1");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // DummiesAccessesOp
 //===----------------------------------------------------------------------===//
 

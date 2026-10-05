@@ -370,3 +370,13 @@ hw.module @DummiesCut(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: axi4.dummies.ext_subordinate %clk, %rst_ni, %[[CUT]]
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %cut windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
 }
+
+// CHECK-LABEL: hw.module @DummiesIdRemap
+hw.module @DummiesIdRemap(in %clk : !seq.clock, in %rst_ni : i1) {
+  // CHECK: %[[MGR:.+]], %{{.+}} = axi4.dummies.ext_manager
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[REMAP:.+]] = axi4.dummies.id_remap %clk, %rst_ni, %[[MGR]] max_unique_ids = 2 {a}
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 2 {a}
+  // CHECK: axi4.dummies.ext_subordinate %clk, %rst_ni, %[[REMAP]]
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %remap windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+}

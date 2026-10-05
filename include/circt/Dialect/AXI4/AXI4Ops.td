@@ -602,6 +602,31 @@ def DummiesCutOp : AXI4DummiesOp<"cut", [PortResultsAtMostOneUse]> {
   let assemblyFormat = "$clock `,` $reset `,` $upstream attr-dict";
 }
 
+def DummiesIDRemapOp : AXI4DummiesOp<"id_remap", [PortResultsAtMostOneUse]> {
+  let summary = "An AXI4 ID remapper";
+  let description = [{
+    Compacts the IDs in flight on a connection, tracking up to
+    `max_unique_ids` upstream IDs at once.
+
+    Example:
+    ```mlir
+    %downstream = axi4.dummies.id_remap %clk, %rst_ni, %upstream
+      max_unique_ids = 4
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset,
+                       DummiesPortType:$upstream, I32Attr:$max_unique_ids);
+  let results = (outs DummiesPortType:$downstream);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `,` $upstream `max_unique_ids` `=` $max_unique_ids
+      attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
 def DummiesAccessesOp : AXI4DummiesOp<"accesses"> {
   let summary = "Declares that a manager accesses a window of a subordinate";
   let description = [{

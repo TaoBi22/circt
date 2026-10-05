@@ -350,3 +350,69 @@ hw.module @CutBeforeConverter(in %clk : !seq.clock, in %rst_ni : i1) {
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>
   // CHECK: hw.output %[[CONV]]
 }
+
+// -----
+
+// A remapper below a crossbar compacts the IDs the crossbar widens, and holds
+// as many requests as it tracks IDs. It keeps its PULP config.
+// CHECK-LABEL: hw.module @RemapBelowXbar(
+// CHECK-SAME:    out mem : !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 4, outstanding_reads = 4>)
+hw.module @RemapBelowXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[XBAR:.+]] = axi4.xbar %clk, %rst_ni mgrs %core, %debug
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64
+  // CHECK: %[[REMAP:.+]] = axi4.id_remap %clk, %rst_ni, %[[XBAR]] max_unique_ids = 4 {PULP_CONFIG_AxiMaxTxnsPerId = 2 : i32} : (!axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} outstanding_writes = 8, outstanding_reads = 8>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 4, outstanding_reads = 4>
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %xbar max_unique_ids = 4 {PULP_CONFIG_AxiMaxTxnsPerId = 2 : i32, other = 1 : i32}
+  %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %remap windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %debug_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  // CHECK: hw.output %[[REMAP]]
+}
+
+// -----
+
+// A crossbar's upstream ports share ID widths, so it widens a remapper's
+// narrower IDs onto the other manager's
+// CHECK-LABEL: hw.module @RemapIntoXbar(
+hw.module @RemapIntoXbar(in %clk : !seq.clock, in %rst_ni : i1) {
+  %dma, %dma_access = axi4.dummies.ext_manager "dma" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 16, outstanding_reads = 16
+  %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[REMAP:.+]] = axi4.id_remap %clk, %rst_ni, %dma max_unique_ids = 2 : {{.*}} -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} outstanding_writes = 2, outstanding_reads = 2>
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %dma max_unique_ids = 2
+  // CHECK: %[[WIDENED:.+]] = axi4.id_width_converter %clk, %rst_ni, %[[REMAP]] : {{.*}} -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2,
+  // CHECK: axi4.xbar %clk, %rst_ni mgrs %[[WIDENED]], %core
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %remap, %core addr_width = 32, data_width = 64
+  %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %dma_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+// CHECK-LABEL: hw.module @CutsAroundRemap(
+hw.module @CutsAroundRemap(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  // CHECK: %[[ABOVE:.+]] = axi4.cut %clk, %rst_ni, %manager
+  %above = axi4.dummies.cut %clk, %rst_ni, %mgr
+  // CHECK: %[[REMAP:.+]] = axi4.id_remap %clk, %rst_ni, %[[ABOVE]] max_unique_ids = 4
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %above max_unique_ids = 4
+  // CHECK: %[[BELOW:.+]] = axi4.cut %clk, %rst_ni, %[[REMAP]]
+  %below = axi4.dummies.cut %clk, %rst_ni, %remap
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %below windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  // CHECK: hw.output %[[BELOW]]
+}
+
+// -----
+
+// The ID widths are inferred, so a remapper is never asked to track more IDs
+// than its upstream port can carry
+// CHECK-LABEL: hw.module @RemapPastUpstreamIds(
+hw.module @RemapPastUpstreamIds(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
+  // CHECK: axi4.id_remap %clk, %rst_ni, %manager max_unique_ids = 2 : {{.*}} -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1,
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 8
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %remap windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
+  axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+}

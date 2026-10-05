@@ -250,7 +250,7 @@ static bool needsConverter(PortType port, uint32_t dataWidth,
 static std::pair<Value, Value> domainOf(Operation *op) {
   return TypeSwitch<Operation *, std::pair<Value, Value>>(op)
       .Case<DummiesExtManagerOp, DummiesExtSubordinateOp, DummiesXbarOp,
-            DummiesCutOp>(
+            DummiesCutOp, DummiesIDRemapOp>(
           [](auto op) { return std::make_pair(op.getClock(), op.getReset()); });
 }
 
@@ -318,6 +318,14 @@ static void setPortAttrs(hw::HWModuleOp module, size_t index,
   module.setAllPortAttrs(all);
 }
 
+/// The IDs a remapper tracks, of those its `upstream` port can carry.
+static uint32_t trackedIds(DummiesIDRemapOp remap, PortType upstream) {
+  uint32_t idWidth =
+      std::min(upstream.getWriteIdWidth(), upstream.getReadIdWidth());
+  return static_cast<uint32_t>(
+      std::min<uint64_t>(remap.getMaxUniqueIds(), uint64_t{1} << idWidth));
+}
+
 /// Whether a type belongs to the dummies subdialect.
 static bool isDummiesType(Type type) {
   return isa<DummiesPortType, DummiesManagerAccessType,
@@ -331,6 +339,13 @@ static SmallVector<OpOperand *> incomingConnections(Operation *op) {
     if (isa<DummiesPortType>(operand.get().getType()))
       connections.push_back(&operand);
   return connections;
+}
+
+/// The port a crossbar or remapper drives downstream.
+static Value downstreamOf(Operation *stage) {
+  return TypeSwitch<Operation *, Value>(stage)
+      .Case<DummiesXbarOp, DummiesIDRemapOp>(
+          [](auto op) { return op.getDownstream(); });
 }
 
 /// The use a connection ends at, past any cuts on it.
@@ -384,8 +399,11 @@ private:
   getReachableSubordinates(OpOperand *connection);
   FailureOr<WindowSetAttr> windowsBelow(OpOperand *connection,
                                         uint32_t dataWidth);
+  LogicalResult adaptToSubordinate(OpOperand *connection, PortType driven,
+                                   const Twine &source);
   LogicalResult inferManagerTypes();
   LogicalResult inferXbarTypes(DummiesXbarOp xbar);
+  LogicalResult inferRemapTypes(DummiesIDRemapOp remap);
   LogicalResult inferTypes();
   LogicalResult inferConnectivity();
   void drive(OpOperand *connection, Value port);
@@ -400,6 +418,7 @@ private:
   SmallVector<DummiesAccessesOp> accesses;
   SmallVector<DummiesXbarOp> xbars;
   SmallVector<DummiesCutOp> cuts;
+  SmallVector<DummiesIDRemapOp> remaps;
 
   /// The accesses each manager declares.
   DenseMap<Operation *, SmallVector<DummiesAccessesOp>> declared;
@@ -412,8 +431,9 @@ private:
   /// where a converter has to bridge the two.
   DenseMap<OpOperand *, PortType> types;
   DenseMap<OpOperand *, PortType> adapted;
-  /// The crossbars in the order their downstream types were inferred.
-  SmallVector<DummiesXbarOp> ordered;
+  /// The crossbars and remappers in the order their downstream types were
+  /// inferred.
+  SmallVector<Operation *> ordered;
   /// Which downstream ports each of a crossbar's upstream ports reaches.
   DenseMap<Operation *, SmallVector<llvm::BitVector>> connectivity;
   /// The `!axi4.port` value feeding each connection.
@@ -429,10 +449,11 @@ bool NetworkLowering::collect() {
             [&](auto op) { subordinates.push_back(op); })
         .Case<DummiesAccessesOp>([&](auto op) { accesses.push_back(op); })
         .Case<DummiesXbarOp>([&](auto op) { xbars.push_back(op); })
-        .Case<DummiesCutOp>([&](auto op) { cuts.push_back(op); });
+        .Case<DummiesCutOp>([&](auto op) { cuts.push_back(op); })
+        .Case<DummiesIDRemapOp>([&](auto op) { remaps.push_back(op); });
   });
   return !managers.empty() || !subordinates.empty() || !xbars.empty() ||
-         !cuts.empty();
+         !cuts.empty() || !remaps.empty();
 }
 
 /// A network must be described in one module, so every dummies value in it
@@ -459,7 +480,8 @@ LogicalResult NetworkLowering::checkOneModule() {
   return failure(crossing.wasInterrupted());
 }
 
-/// The subordinates a connection reaches, following the crossbars below it.
+/// The subordinates a connection reaches, following the crossbars and
+/// remappers below it.
 FailureOr<SmallVector<DummiesExtSubordinateOp>>
 NetworkLowering::getReachableSubordinates(OpOperand *connection) {
   if (auto it = reachableSubordinates.find(connection);
@@ -474,8 +496,8 @@ NetworkLowering::getReachableSubordinates(OpOperand *connection) {
           dyn_cast<DummiesExtSubordinateOp>(connection->getOwner())) {
     found.push_back(subordinate);
   } else {
-    auto xbar = cast<DummiesXbarOp>(connection->getOwner());
-    for (OpOperand *below : outgoingConnections(xbar.getDownstream())) {
+    for (OpOperand *below :
+         outgoingConnections(downstreamOf(connection->getOwner()))) {
       FailureOr<SmallVector<DummiesExtSubordinateOp>> reached =
           getReachableSubordinates(below);
       if (failed(reached))
@@ -494,6 +516,11 @@ NetworkLowering::getReachableSubordinates(OpOperand *connection) {
 FailureOr<WindowSetAttr> NetworkLowering::windowsBelow(OpOperand *connection,
                                                        uint32_t dataWidth) {
   Operation *consumer = connection->getOwner();
+
+  // A remapper leaves the beats alone.
+  if (auto remap = dyn_cast<DummiesIDRemapOp>(consumer))
+    return windowsBelow(outgoingConnections(remap.getDownstream()).front(),
+                        dataWidth);
 
   // A crossbar carries the windows of everything below it, each of them
   // already in beats of its own data width.
@@ -521,6 +548,33 @@ FailureOr<WindowSetAttr> NetworkLowering::windowsBelow(OpOperand *connection,
                                       window.getLast(), *bursts));
   }
   return WindowSetAttr::get(module.getContext(), windows);
+}
+
+/// Adapt a connection carrying `driven` straight to the subordinate consuming
+/// it, if one does. The subordinate presents a port of its own: its own data
+/// width, and its own ID widths, log2 of the requests it can hold.
+LogicalResult NetworkLowering::adaptToSubordinate(OpOperand *connection,
+                                                  PortType driven,
+                                                  const Twine &source) {
+  auto subordinate = dyn_cast<DummiesExtSubordinateOp>(connection->getOwner());
+  if (!subordinate)
+    return success();
+  if (failed(checkSubordinate(subordinate, source, driven.getAddrWidth())))
+    return failure();
+
+  // It serves the bursts driven in beats of its own data width.
+  FailureOr<WindowSetAttr> served =
+      convertWindows(subordinate, driven.getWindows(), driven.getDataWidth(),
+                     subordinate.getDataWidth());
+  if (failed(served))
+    return failure();
+  PortType port = getSubordinatePortType(subordinate, userWidth, *served,
+                                         driven.getOutstandingWrites(),
+                                         driven.getOutstandingReads());
+  if (needsConverter(port, driven.getDataWidth(), driven.getWriteIdWidth(),
+                     driven.getReadIdWidth()))
+    adapted.insert({connection, port});
+  return success();
 }
 
 /// Give the connection each manager drives the port type the manager declares,
@@ -561,28 +615,9 @@ LogicalResult NetworkLowering::inferManagerTypes() {
                        userWidth, *windows, manager.getOutstandingWrites(),
                        manager.getOutstandingReads())});
 
-    // A subordinate the manager reaches without a crossbar presents a port of
-    // its own: its own data width, and its own ID widths, log2 of the requests
-    // it can hold.
-    if (auto subordinate = dyn_cast<DummiesExtSubordinateOp>(
-            connections.front()->getOwner())) {
-      if (failed(
-              checkSubordinate(subordinate, "manager", manager.getAddrWidth())))
-        return failure();
-
-      // It serves the manager's bursts in beats of its own data width.
-      FailureOr<WindowSetAttr> served =
-          convertWindows(subordinate, *windows, manager.getDataWidth(),
-                         subordinate.getDataWidth());
-      if (failed(served))
-        return failure();
-      PortType port = getSubordinatePortType(subordinate, userWidth, *served,
-                                             manager.getOutstandingWrites(),
-                                             manager.getOutstandingReads());
-      if (needsConverter(port, manager.getDataWidth(), writeIdWidth,
-                         readIdWidth))
-        adapted.insert({connections.front(), port});
-    }
+    if (failed(adaptToSubordinate(connections.front(),
+                                  types[connections.front()], "manager")))
+      return failure();
   }
   return success();
 }
@@ -685,28 +720,59 @@ LogicalResult NetworkLowering::inferXbarTypes(DummiesXbarOp xbar) {
   return success();
 }
 
+/// Give a remapper's downstream connection a port type, from the type of its
+/// upstream connection: IDs just wide enough for the IDs it tracks, and as
+/// many requests in flight as it tracks IDs.
+LogicalResult NetworkLowering::inferRemapTypes(DummiesIDRemapOp remap) {
+  PortType upstream = types[incomingConnections(remap).front()];
+  OpOperand *connection = outgoingConnections(remap.getDownstream()).front();
+  uint32_t uniqueIds = trackedIds(remap, upstream);
+  uint32_t idWidth = llvm::Log2_64_Ceil(uniqueIds);
+  uint32_t writes = std::min(upstream.getOutstandingWrites(), uniqueIds);
+  uint32_t reads = std::min(upstream.getOutstandingReads(), uniqueIds);
+  PortType driven = PortType::get(
+      module.getContext(), upstream.getAddrWidth(), upstream.getDataWidth(),
+      idWidth, idWidth, userWidth, upstream.getWindows(), writes, reads);
+  types.insert({connection, driven});
+
+  if (auto subordinate =
+          dyn_cast<DummiesExtSubordinateOp>(connection->getOwner()))
+    warnBottleneck(subordinate, writes, reads);
+  if (failed(adaptToSubordinate(connection, driven, "remapper")))
+    return failure();
+
+  ordered.push_back(remap);
+  return success();
+}
+
 /// Give every connection in the network a port type, working down from the
 /// managers.
 LogicalResult NetworkLowering::inferTypes() {
   if (failed(inferManagerTypes()))
     return failure();
 
-  // A crossbar can be lowered once everything reaching it has been.
-  SmallVector<DummiesXbarOp> pending(xbars);
+  // A crossbar or remapper can be lowered once everything reaching it has
+  // been.
+  SmallVector<Operation *> pending(xbars.begin(), xbars.end());
+  pending.append(remaps.begin(), remaps.end());
   while (!pending.empty()) {
-    SmallVector<DummiesXbarOp> waiting;
-    for (DummiesXbarOp xbar : pending) {
-      if (llvm::all_of(incomingConnections(xbar), [&](OpOperand *connection) {
+    SmallVector<Operation *> waiting;
+    for (Operation *stage : pending) {
+      if (!llvm::all_of(incomingConnections(stage), [&](OpOperand *connection) {
             return types.contains(connection);
           })) {
-        if (failed(inferXbarTypes(xbar)))
-          return failure();
-      } else {
-        waiting.push_back(xbar);
+        waiting.push_back(stage);
+        continue;
       }
+      LogicalResult inferred =
+          isa<DummiesXbarOp>(stage)
+              ? inferXbarTypes(cast<DummiesXbarOp>(stage))
+              : inferRemapTypes(cast<DummiesIDRemapOp>(stage));
+      if (failed(inferred))
+        return failure();
     }
     if (waiting.size() == pending.size())
-      return waiting.front().emitOpError(
+      return waiting.front()->emitOpError(
           "is part of a cycle in the dummies network");
     pending = waiting;
   }
@@ -725,7 +791,12 @@ LogicalResult NetworkLowering::inferConnectivity() {
     Operation *subordinate = access.getSubordinate().getDefiningOp();
     auto manager = access.getManager().getDefiningOp<DummiesExtManagerOp>();
     OpOperand *connection = outgoingConnections(manager.getPort()).front();
-    while (auto xbar = dyn_cast<DummiesXbarOp>(connection->getOwner())) {
+    while (!isa<DummiesExtSubordinateOp>(connection->getOwner())) {
+      if (auto remap = dyn_cast<DummiesIDRemapOp>(connection->getOwner())) {
+        connection = outgoingConnections(remap.getDownstream()).front();
+        continue;
+      }
+      auto xbar = cast<DummiesXbarOp>(connection->getOwner());
       unsigned upstream = connection->getOperandNumber() -
                           xbar.getUpstream().getBeginOperandIndex();
       for (auto [index, below] :
@@ -802,7 +873,23 @@ void NetworkLowering::emit() {
     drive(connection, arg);
   }
 
-  for (DummiesXbarOp xbar : ordered) {
+  for (Operation *stage : ordered) {
+    if (auto remap = dyn_cast<DummiesIDRemapOp>(stage)) {
+      OpOperand *connection =
+          outgoingConnections(remap.getDownstream()).front();
+      OpOperand *upstream = incomingConnections(remap).front();
+      OpBuilder builder(remap);
+      auto axi4Remap = IDRemapOp::create(builder, remap.getLoc(),
+                                         types[connection], remap.getClock(),
+                                         remap.getReset(), lowered[upstream],
+                                         trackedIds(remap, types[upstream]));
+      for (NamedAttribute attr : getPulpConfig(remap))
+        axi4Remap->setAttr(attr.getName(), attr.getValue());
+      drive(connection, axi4Remap);
+      continue;
+    }
+
+    auto xbar = cast<DummiesXbarOp>(stage);
     SmallVector<OpOperand *> downstream =
         outgoingConnections(xbar.getDownstream());
     SmallVector<Value> upstream;
@@ -849,14 +936,15 @@ void NetworkLowering::emit() {
     access.erase();
   for (DummiesExtSubordinateOp subordinate : subordinates)
     subordinate.erase();
-  // Cuts and crossbars can feed each other, so the cuts let go of their uses.
+  // Cuts, crossbars and remappers can feed each other, so the cuts let go of
+  // their uses.
   for (DummiesCutOp cut : cuts) {
     cut->dropAllUses();
     cut.erase();
   }
-  // A crossbar is only unused once the crossbars below it are gone.
-  for (DummiesXbarOp xbar : llvm::reverse(ordered))
-    xbar.erase();
+  // A crossbar or remapper is only unused once the ones below it are gone.
+  for (Operation *stage : llvm::reverse(ordered))
+    stage->erase();
   for (DummiesExtManagerOp manager : managers)
     manager.erase();
 }
@@ -878,6 +966,9 @@ LogicalResult NetworkLowering::lower(const DenseSet<StringAttr> &instantiated) {
     if (isOnCutCycle(cut))
       return cut.emitOpError("is part of a cycle in the dummies network");
   }
+  for (DummiesIDRemapOp remap : remaps)
+    if (remap.getDownstream().use_empty())
+      return remap.emitOpError("must reach a subordinate");
 
   for (DummiesExtManagerOp manager : managers)
     if (manager->hasAttr(kPulpAtopFilterAttr))

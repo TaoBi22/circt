@@ -265,3 +265,19 @@ hw.module @ManagerCutClockDomain(in %clk : !seq.clock, in %other_clk : !seq.cloc
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %cut windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
 }
+
+// -----
+
+hw.module @DanglingRemap(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.id_remap' op must reach a subordinate}}
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 4
+}
+
+// -----
+
+hw.module @RemapCycle(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.id_remap' op is part of a cycle in the dummies network}}
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %cut max_unique_ids = 4
+  %cut = axi4.dummies.cut %clk, %rst_ni, %remap
+}
