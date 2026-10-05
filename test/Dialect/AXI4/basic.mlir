@@ -245,6 +245,16 @@ hw.module @IdWidthConverter(in %clk : !seq.clock, in %rst_ni : i1,
   %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !narrow_ids
 }
 
+// A remapper tracking 2 IDs holds only 2 of the 4 requests in flight
+!remapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 1, read_id_width = 1, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
+
+// CHECK-LABEL: hw.module @IdRemap
+hw.module @IdRemap(in %clk : !seq.clock, in %rst_ni : i1,
+                   in %upstream : !wide_ids) {
+  // CHECK: axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 2 : (!axi4.port<{{.*}} write_id_width = 4, read_id_width = 4, {{.*}} outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} outstanding_writes = 2, outstanding_reads = 2>
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 2 : (!wide_ids) -> !remapped
+}
+
 // Typedefs for a splitter, which keeps each burst's kind and takes it down to a
 // single beat
 !bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>

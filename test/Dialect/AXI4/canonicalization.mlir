@@ -25,6 +25,15 @@ hw.module @IdentityIdWidthConverter(in %clk : !seq.clock, in %rst_ni : i1,
   axi4.abstract_subordinate %clk, %rst_ni, %iwc concurrent_writes 4 concurrent_reads 4 : !port
 }
 
+// CHECK-LABEL: hw.module @IdentityIdRemap
+hw.module @IdentityIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
+                           in %upstream : !port) {
+  // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
+  // CHECK-NOT: axi4.id_remap
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!port) -> !port
+  axi4.abstract_subordinate %clk, %rst_ni, %remap concurrent_writes 4 concurrent_reads 4 : !port
+}
+
 !beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
 
 // CHECK-LABEL: hw.module @IdempotentBurstSplitter

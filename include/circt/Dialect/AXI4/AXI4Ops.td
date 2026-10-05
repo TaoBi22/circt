@@ -312,6 +312,36 @@ def IWConverterOp : AXI4Op<"id_width_converter", [PortResultsAtMostOneUse]> {
   let hasCanonicalizeMethod = 1;
 }
 
+def IDRemapOp : AXI4Op<"id_remap", [PortResultsAtMostOneUse]> {
+  let summary = "An AXI4 ID remapper";
+  let description = [{
+    Compacts the IDs in flight on an AXI4 connection into a smaller ID space.
+    While an upstream ID has requests in flight, it holds a free downstream ID,
+    which is released when they complete. Up to `max_unique_ids` upstream IDs
+    can hold one at once, each for writes and reads, so requests with different
+    upstream IDs stay independent. A request whose ID would exceed that stalls
+    until another ID's requests complete.
+
+    Example:
+    ```mlir
+    %downstream = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4
+      : (!axi4.port<...>) -> !axi4.port<...>
+    ```
+  }];
+
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream,
+                       I32Attr:$max_unique_ids);
+  let results = (outs PortType:$downstream);
+
+  let assemblyFormat = [{
+    $clock `,` $reset `,` $upstream `max_unique_ids` `=` $max_unique_ids
+      attr-dict `:` functional-type($upstream, $downstream)
+  }];
+
+  let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
+}
+
 def BurstSplitterOp : AXI4Op<"burst_splitter", [PortResultsAtMostOneUse]> {
   let summary = "An AXI4 burst splitter";
   let description = [{

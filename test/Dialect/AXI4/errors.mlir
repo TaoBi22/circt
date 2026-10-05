@@ -846,3 +846,69 @@ hw.module @ReversedDummiesAccess(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.dummies.accesses' op operand #0 must be a handle on a dummies manager's accesses, but got '!axi4.dummies.subordinate_access'}}
   "axi4.dummies.accesses"(%sub_access, %mgr_access) {window = #axi4.window<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>} : (!axi4.dummies.subordinate_access, !axi4.dummies.manager_access) -> ()
 }
+
+// -----
+
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!no_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 1, read_id_width = 1, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 0, outstanding_reads = 0>
+
+hw.module @RemapTrackingNothing(in %clk : !seq.clock, in %rst_ni : i1,
+                                in %upstream : !wide_ids) {
+  // expected-error @below {{'axi4.id_remap' op 'max_unique_ids' must be at least 1}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 0 : (!wide_ids) -> !no_ids
+}
+
+// -----
+
+!few_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 1, read_id_width = 1, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
+!more_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
+
+hw.module @RemapPastUpstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
+                                in %upstream : !few_ids) {
+  // expected-error @below {{'axi4.id_remap' op 'max_unique_ids' (4) must be at most the 2 IDs the upstream port's 'write_id_width' gives}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!few_ids) -> !more_ids
+}
+
+// -----
+
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!short_reads = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 1, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 2>
+
+hw.module @RemapPastDownstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
+                                  in %upstream : !wide_ids) {
+  // expected-error @below {{'axi4.id_remap' op 'max_unique_ids' (4) must be at most the 2 IDs the downstream port's 'read_id_width' gives}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!wide_ids) -> !short_reads
+}
+
+// -----
+
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+!unclamped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
+
+hw.module @UnclampedIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
+                            in %upstream : !wide_ids) {
+  // expected-error @below {{'axi4.id_remap' op downstream port's 'outstanding_writes' (2) must be the 3 writes the upstream port can issue with its distinct IDs tracked}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 3 : (!wide_ids) -> !unclamped
+}
+
+// -----
+
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!thin_data = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @RewidthingIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
+                             in %upstream : !wide_ids) {
+  // expected-error @below {{'axi4.id_remap' op downstream port's 'data_width' (32) must match upstream port's (64)}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!wide_ids) -> !thin_data
+}
+
+// -----
+
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!moved_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+
+hw.module @MovingIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
+                         in %upstream : !wide_ids) {
+  // expected-error @below {{'axi4.id_remap' op upstream and downstream windows must cover the same addresses}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!wide_ids) -> !moved_ids
+}

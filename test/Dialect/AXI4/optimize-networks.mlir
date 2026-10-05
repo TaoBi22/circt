@@ -43,6 +43,7 @@ hw.module @UnreachableBehindAdaptors(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: %[[SUBS:.+]]:2 = axi4.xbar
   // CHECK-NOT: axi4.cut
   // CHECK-NOT: axi4.id_width_converter
+  // CHECK-NOT: axi4.id_remap
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   // expected-remark @below {{removed downstream port #2, which no upstream manager addresses}}
@@ -53,7 +54,9 @@ hw.module @UnreachableBehindAdaptors(in %clk : !seq.clock, in %rst_ni : i1) {
   %cut = axi4.cut %clk, %rst_ni, %gap : !sub_gap
   %converted = axi4.id_width_converter %clk, %rst_ni, %cut
     : (!sub_gap) -> !sub_gap
-  axi4.abstract_subordinate %clk, %rst_ni, %converted concurrent_writes 4 concurrent_reads 4 : !sub_gap
+  %remapped = axi4.id_remap %clk, %rst_ni, %converted max_unique_ids = 4
+    : (!sub_gap) -> !sub_gap
+  axi4.abstract_subordinate %clk, %rst_ni, %remapped concurrent_writes 4 concurrent_reads 4 : !sub_gap
 }
 
 // A reachable port is left alone however little it is used

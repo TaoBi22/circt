@@ -39,8 +39,8 @@ static FailureOr<SmallVector<Operation *>> collectBranch(Value port) {
     branch.push_back(consumer);
 
     // An adaptor carries the connection onwards
-    if (isa<CutOp, CDCOp, DWConverterOp, IWConverterOp, BurstSplitterOp,
-            BurstUnwrapperOp>(consumer)) {
+    if (isa<CutOp, CDCOp, DWConverterOp, IWConverterOp, IDRemapOp,
+            BurstSplitterOp, BurstUnwrapperOp>(consumer)) {
       port = consumer->getResult(0);
       continue;
     }

@@ -163,6 +163,16 @@ LogicalResult IWConverterOp::canonicalize(IWConverterOp op,
 }
 
 //===----------------------------------------------------------------------===//
+// IDRemapOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult IDRemapOp::canonicalize(IDRemapOp op, PatternRewriter &rewriter) {
+  // Equal types mean the upstream port never has more IDs in flight than the
+  // remapper tracks, so it never stalls.
+  return eraseIdentity(op, op.getUpstream(), op.getDownstream(), rewriter);
+}
+
+//===----------------------------------------------------------------------===//
 // BurstSplitterOp
 //===----------------------------------------------------------------------===//
 

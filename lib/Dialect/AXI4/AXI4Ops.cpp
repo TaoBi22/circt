@@ -429,6 +429,44 @@ LogicalResult IWConverterOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// IDRemapOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult IDRemapOp::verify() {
+  auto upstream = cast<PortType>(getUpstream().getType());
+  auto downstream = cast<PortType>(getDownstream().getType());
+  uint64_t uniqueIds = getMaxUniqueIds();
+
+  if (uniqueIds < 1)
+    return emitOpError("'max_unique_ids' must be at least 1");
+  for (const WidthField &field : ArrayRef(kWidths).drop_front(kNumSharedWidths))
+    for (auto [port, desc] :
+         {std::pair(upstream, "upstream"), std::pair(downstream, "downstream")})
+      if (uniqueIds > (uint64_t{1} << (port.*field.get)()))
+        return emitOpError()
+               << "'max_unique_ids' (" << uniqueIds << ") must be at most the "
+               << (uint64_t{1} << (port.*field.get)()) << " IDs the " << desc
+               << " port's '" << field.name << "' gives";
+
+  if (failed(verifyWidthsMatch(
+          *this, ArrayRef(kWidths).take_front(kNumSharedWidths), downstream,
+          "downstream port", upstream, "upstream port")))
+    return failure();
+
+  if (failed(verifyOutstanding(
+          *this, "downstream port", downstream,
+          {std::min<uint64_t>(upstream.getOutstandingWrites(), uniqueIds),
+           std::min<uint64_t>(upstream.getOutstandingReads(), uniqueIds)},
+          "the upstream port can issue with its distinct IDs tracked")))
+    return failure();
+
+  return verifyWindowsConvert(
+      *this, upstream, downstream,
+      [](BurstSpecAttr spec) -> FailureOr<BurstSpecAttr> { return spec; },
+      "the upstream's bursts");
+}
+
+//===----------------------------------------------------------------------===//
 // BurstSplitterOp
 //===----------------------------------------------------------------------===//
 
