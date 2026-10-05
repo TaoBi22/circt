@@ -335,6 +335,18 @@ static std::optional<Component> getComponent(Operation *op) {
                          {{"clk_i", converter.getClock()},
                           {"rst_ni", converter.getReset()}}};
       })
+      .Case<IDRemapOp>([](IDRemapOp remap) {
+        auto upstream = cast<PortType>(remap.getUpstream().getType());
+        auto downstream = cast<PortType>(remap.getDownstream().getType());
+        return Component{
+            remap,
+            ("axi_id_remap_" + portShape(upstream) + "to" +
+             Twine(downstream.getWriteIdWidth()) + "_u" +
+             Twine(remap.getMaxUniqueIds()))
+                .str(),
+            "id_remap",
+            {{"clk_i", remap.getClock()}, {"rst_ni", remap.getReset()}}};
+      })
       .Case<DemuxOp>([](DemuxOp demux) {
         auto port = cast<PortType>(demux.getUpstream().getType());
         return Component{
