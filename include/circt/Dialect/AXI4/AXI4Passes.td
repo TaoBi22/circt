@@ -68,6 +68,11 @@ def LowerAXI4DummiesToAXI : Pass<"lower-axi4-dummies-to-axi", "mlir::ModuleOp"> 
     The external endpoints become ports of the module the network is described
     in, so that module must not be instantiated.
 
+    The network may loop, so long as every loop passes through an
+    `axi4.dummies.id_remap`. A crossbar's downstream port carries the windows
+    of the subordinates below it reached without passing through any crossbar
+    twice.
+
     Every port in the network carries the user width given by `user-width`.
     The PULP atop markers `pulp.atops` and `pulp.atop_filter` on an external
     endpoint are put on the port it becomes.

@@ -146,7 +146,7 @@ hw.module @DanglingXbar(in %clk : !seq.clock, in %rst_ni : i1) {
 // -----
 
 hw.module @Cycle(in %clk : !seq.clock, in %rst_ni : i1) {
-  // expected-error @below {{'axi4.dummies.xbar' op is part of a cycle in the dummies network}}
+  // expected-error @below {{'axi4.dummies.xbar' op is part of a loop with no ID remapper, around which its IDs would grow without bound}}
   %ab = axi4.dummies.xbar %clk, %rst_ni mgrs %ba addr_width = 32, data_width = 64
   %ba = axi4.dummies.xbar %clk, %rst_ni mgrs %ab addr_width = 32, data_width = 64
 }
@@ -250,7 +250,7 @@ hw.module @CutCycle(in %clk : !seq.clock, in %rst_ni : i1) {
 // -----
 
 hw.module @CutThroughXbarCycle(in %clk : !seq.clock, in %rst_ni : i1) {
-  // expected-error @below {{'axi4.dummies.xbar' op is part of a cycle in the dummies network}}
+  // expected-error @below {{'axi4.dummies.xbar' op is part of a loop with no ID remapper, around which its IDs would grow without bound}}
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %cut addr_width = 32, data_width = 64
   %cut = axi4.dummies.cut %clk, %rst_ni, %xbar
 }
@@ -280,4 +280,48 @@ hw.module @RemapCycle(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.dummies.id_remap' op is part of a cycle in the dummies network}}
   %remap = axi4.dummies.id_remap %clk, %rst_ni, %cut max_unique_ids = 4
   %cut = axi4.dummies.cut %clk, %rst_ni, %remap
+}
+
+// -----
+
+hw.module @LoopWithoutRemap(in %clk : !seq.clock, in %rst_ni : i1) {
+  %soc, %soc_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %core, %core_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.xbar' op is part of a loop with no ID remapper, around which its IDs would grow without bound}}
+  %q = axi4.dummies.xbar %clk, %rst_ni mgrs %soc, %c addr_width = 32, data_width = 64
+  %c = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %q addr_width = 32, data_width = 64
+  %tcdm_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %c windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  %out_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %q windows <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %soc_access -> %tcdm_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
+  axi4.dummies.accesses %core_access -> %out_access with <base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+hw.module @NothingBelowLoop(in %clk : !seq.clock, in %rst_ni : i1) {
+  %soc, %soc_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.xbar' op downstream port #1 reaches no subordinate without looping back through a crossbar}}
+  %q = axi4.dummies.xbar %clk, %rst_ni mgrs %soc, %c addr_width = 32, data_width = 64
+  %down = axi4.dummies.id_remap %clk, %rst_ni, %q max_unique_ids = 4
+  %c = axi4.dummies.xbar %clk, %rst_ni mgrs %down addr_width = 32, data_width = 64
+  %out_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %q windows <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  axi4.dummies.accesses %soc_access -> %out_access with <base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>>
+}
+
+// -----
+
+// Two subordinates behind one crossbar share a window, so the access can be
+// routed round the loop rather than straight to its subordinate. Routing must
+// still end.
+hw.module @RevisitingRoute(in %clk : !seq.clock, in %rst_ni : i1) {
+  %core, %core_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-note @below {{crossbar here}}
+  %x = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %up addr_width = 32, data_width = 64
+  %s_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %x windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  %down = axi4.dummies.id_remap %clk, %rst_ni, %x max_unique_ids = 4
+  %y = axi4.dummies.xbar %clk, %rst_ni mgrs %down addr_width = 32, data_width = 64
+  %t_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %y windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
+  %up = axi4.dummies.id_remap %clk, %rst_ni, %y max_unique_ids = 4
+  // expected-error @below {{'axi4.dummies.accesses' op is routed around a loop, through the same crossbar twice}}
+  axi4.dummies.accesses %core_access -> %s_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
 }
