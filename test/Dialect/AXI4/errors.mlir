@@ -145,6 +145,24 @@ hw.module @XbarTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1, in %mgr :
 
 !mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
+hw.module @XbarHoldsNoPendingWrites(in %clk : !seq.clock, in %rst_ni : i1, in %mgr : !mgr) {
+  // expected-error @below {{'axi4.xbar' op 'downstream_pending_writes' must be at least 1}}
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 4 downstream_pending_writes 0 : (!mgr) -> !mgr
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+hw.module @MuxHoldsNoPendingWrites(in %clk : !seq.clock, in %rst_ni : i1, in %mgr : !mgr) {
+  // expected-error @below {{'axi4.mux' op 'downstream_pending_writes' must be at least 1}}
+  %sub = axi4.mux %clk, %rst_ni, %mgr downstream_pending_writes 0 : (!mgr) -> !mgr
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
 hw.module @NoSubordinates(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
   // expected-error @below {{'axi4.xbar' op must have at least one downstream port}}
@@ -845,6 +863,14 @@ hw.module @DummiesXbarTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // expected-error @below {{'axi4.dummies.xbar' op 'upstream_concurrent_per_id' must be at least 1}}
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64, upstream_concurrent_per_id = 0
+}
+
+// -----
+
+hw.module @DummiesXbarHoldsNoPendingWrites(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
+  // expected-error @below {{'axi4.dummies.xbar' op 'downstream_pending_writes' must be at least 1}}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4, downstream_pending_writes = 0
 }
 
 // -----

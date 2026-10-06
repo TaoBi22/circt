@@ -193,8 +193,8 @@ hw.module @SplitWindow(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @LongerBurstSubordinate(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: %[[MGR:.+]] = axi4.abstract_manager
   %mgr = axi4.abstract_manager %clk, %rst_ni : !short_mgr
-  // CHECK: %[[XBAR:.+]] = axi4.xbar %clk, %rst_ni mgrs %[[MGR]] upstream_concurrent_per_id 4
-  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 4 : (!short_mgr) -> !long_sub
+  // CHECK: %[[XBAR:.+]] = axi4.xbar %clk, %rst_ni mgrs %[[MGR]] upstream_concurrent_per_id 4 downstream_pending_writes 16
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 4 downstream_pending_writes 16 : (!short_mgr) -> !long_sub
   // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]] concurrent_writes_per_id 2 concurrent_reads_per_id 2 :
   axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 2 concurrent_reads_per_id 2 : !long_sub
 }
@@ -306,8 +306,8 @@ hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1,
 // CHECK-LABEL: hw.module @Mux
 hw.module @Mux(in %clk : !seq.clock, in %rst_ni : i1,
                  in %upstream1 : !demux_lo, in %upstream2 : !demux_hi) {
-  // CHECK: axi4.mux %clk, %rst_ni, %upstream1, %upstream2 : (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>, !axi4.port<{{.*}} windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>) -> !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, {{.*}} windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-  %downstream = axi4.mux %clk, %rst_ni, %upstream1, %upstream2 : (!demux_lo, !demux_hi) -> (!muxed)
+  // CHECK: axi4.mux %clk, %rst_ni, %upstream1, %upstream2 downstream_pending_writes 16 : (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>, !axi4.port<{{.*}} windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>) -> !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, {{.*}} windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+  %downstream = axi4.mux %clk, %rst_ni, %upstream1, %upstream2 downstream_pending_writes 16 : (!demux_lo, !demux_hi) -> (!muxed)
 }
 
 !mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>

@@ -315,6 +315,16 @@ hw.module @ConfigMaxMstTrans(in %clk : !seq.clock, in %rst_ni : i1, in %port : !
 
 !port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
+hw.module @ConfigMaxSlvTrans(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
+  // expected-error @below {{'axi4.xbar' op cannot set PULP parameter 'MaxSlvTrans' through 'PULP_CONFIG_MaxSlvTrans', because the wrapper derives it from the op}}
+  %s = axi4.xbar %clk, %rst_ni mgrs %port upstream_concurrent_per_id 4 {PULP_CONFIG_MaxSlvTrans = 16 : i32} : (!port) -> (!port)
+  hw.output %s : !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
 hw.module @ConfigValue(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
   // expected-error @below {{'axi4.cut' op has 'PULP_CONFIG_Bypass', which must be an integer, a string or a matrix of booleans to set a PULP parameter}}
   %cut = axi4.cut %clk, %rst_ni, %port {PULP_CONFIG_Bypass = [true]} : !port

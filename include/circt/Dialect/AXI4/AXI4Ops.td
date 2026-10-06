@@ -189,7 +189,9 @@ def XbarOp : AXI4Op<"xbar", [PortResultsAtMostOneUse]> {
     subordinates. Every address a manager can issue to must be covered by
     exactly one downstream port, which must support at least the bursts the
     manager issues there. Each upstream port tracks up to
-    `upstream_concurrent_per_id` requests with any one ID.
+    `upstream_concurrent_per_id` requests with any one ID. If
+    `downstream_pending_writes` is given, each downstream port lets up to that
+    many writes run ahead of their data.
 
     Example:
     ```mlir
@@ -201,12 +203,14 @@ def XbarOp : AXI4Op<"xbar", [PortResultsAtMostOneUse]> {
 
   let arguments = (ins ClockType:$clock, I1:$reset,
                        Variadic<PortType>:$upstream,
-                       I32Attr:$upstream_concurrent_per_id);
+                       I32Attr:$upstream_concurrent_per_id,
+                       OptionalAttr<I32Attr>:$downstream_pending_writes);
   let results = (outs Variadic<PortType>:$downstream);
 
   let assemblyFormat = [{
     $clock `,` $reset `mgrs` $upstream
-      `upstream_concurrent_per_id` $upstream_concurrent_per_id attr-dict `:`
+      `upstream_concurrent_per_id` $upstream_concurrent_per_id
+      (`downstream_pending_writes` $downstream_pending_writes^)? attr-dict `:`
       functional-type($upstream, $downstream)
   }];
 
@@ -460,7 +464,9 @@ def MuxOp : AXI4Op<"mux", [PortResultsAtMostOneUse]> {
   let summary = "An AXI4 multiplexer";
   let description = [{
     Multiplexes between several AXI4 ports. Concurrent requests are arbitrated
-    between using round robin arbitration.
+    between using round robin arbitration. If `downstream_pending_writes` is
+    given, the downstream port lets up to that many writes run ahead of their
+    data.
 
     Example:
     ```mlir
@@ -469,11 +475,13 @@ def MuxOp : AXI4Op<"mux", [PortResultsAtMostOneUse]> {
     ```
   }];
 
-  let arguments = (ins ClockType:$clock, I1:$reset, Variadic<PortType>:$upstream);
+  let arguments = (ins ClockType:$clock, I1:$reset, Variadic<PortType>:$upstream,
+                       OptionalAttr<I32Attr>:$downstream_pending_writes);
   let results = (outs PortType:$downstream);
 
   let assemblyFormat = [{
-    $clock `,` $reset `,` $upstream attr-dict `:`
+    $clock `,` $reset `,` $upstream
+      (`downstream_pending_writes` $downstream_pending_writes^)? attr-dict `:`
       functional-type($upstream, $downstream)
   }];
 
@@ -614,7 +622,8 @@ def DummiesXbarOp : AXI4DummiesOp<"xbar"> {
     Routes the requests of a set of upstream managers onto downstream
     subordinates. Each use of its result corresponds to a physical downstream
     port. Each upstream port tracks up to `upstream_concurrent_per_id` requests
-    with any one ID.
+    with any one ID. If `downstream_pending_writes` is given, each downstream
+    port lets up to that many writes run ahead of their data.
 
     Example:
     ```mlir
@@ -626,13 +635,16 @@ def DummiesXbarOp : AXI4DummiesOp<"xbar"> {
   let arguments = (ins ClockType:$clock, I1:$reset,
                        Variadic<DummiesPortType>:$upstream,
                        I32Attr:$addr_width, I32Attr:$data_width,
-                       I32Attr:$upstream_concurrent_per_id);
+                       I32Attr:$upstream_concurrent_per_id,
+                       OptionalAttr<I32Attr>:$downstream_pending_writes);
   let results = (outs DummiesPortType:$downstream);
 
   let assemblyFormat = [{
     $clock `,` $reset `mgrs` $upstream `addr_width` `=` $addr_width `,`
       `data_width` `=` $data_width `,`
-      `upstream_concurrent_per_id` `=` $upstream_concurrent_per_id attr-dict
+      `upstream_concurrent_per_id` `=` $upstream_concurrent_per_id
+      (`,` `downstream_pending_writes` `=` $downstream_pending_writes^)?
+      attr-dict
   }];
 
   let hasVerifier = 1;

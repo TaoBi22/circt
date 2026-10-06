@@ -284,11 +284,11 @@ hw.module @SingleManagerXbar(in %clk : !seq.clock, in %rst_ni : i1,
 
 // CHECK-LABEL: hw.module @SingleSubordinateXbar
 hw.module @SingleSubordinateXbar(in %clk : !seq.clock, in %rst_ni : i1) {
-  // CHECK: %[[DOWN:.+]] = axi4.mux %clk, %rst_ni, %{{.+}}, %{{.+}}
+  // CHECK: %[[DOWN:.+]] = axi4.mux %clk, %rst_ni, %{{.+}}, %{{.+}} downstream_pending_writes 16
   // CHECK-NOT: axi4.xbar
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
-  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4 downstream_pending_writes 16
     : (!mgr_lo, !mgr_hi) -> (!sub_both)
   axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_both
 }

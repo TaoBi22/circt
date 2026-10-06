@@ -37,7 +37,7 @@
 // CHECK-SAME:     .slv_aw_chan_t (axi_mux_2u_a32_d64_i4_o5_usr0_slv_aw_chan_t),\0A
 // CHECK-SAME:     .mst_resp_t    (axi_mux_2u_a32_d64_i4_o5_usr0_mst_resp_t),\0A
 // CHECK-SAME:     .NoSlvPorts    (2),\0A
-// CHECK-SAME:     .MaxWTrans     (8),\0A
+// CHECK-SAME:     .MaxWTrans     (16),\0A
 // CHECK-SAME:     .FallThrough   (1'b0)\0A
 // CHECK-SAME:   ) i_mux (\0A
 // CHECK-SAME:     .test_i      (1'b0),\0A
@@ -53,6 +53,6 @@
 // CHECK:         hw.instance "mux0" @axi_mux_2u_a32_d64_i4_o5_usr0(
 hw.module @Mux(in %clk : !seq.clock, in %rst_ni : i1, in %a : !lo, in %b : !hi,
                out downstream : !sub) {
-  %downstream = axi4.mux %clk, %rst_ni, %a, %b : (!lo, !hi) -> !sub
+  %downstream = axi4.mux %clk, %rst_ni, %a, %b downstream_pending_writes 16 : (!lo, !hi) -> !sub
   hw.output %downstream : !sub
 }

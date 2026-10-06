@@ -290,11 +290,12 @@ static LogicalResult verifyPerId(Operation *op, const Twine &portDesc,
   return success();
 }
 
-/// Verify that each of an op's request budgets `attrs` admits at least one
-/// request.
+/// Verify that each of an op's request budgets `attrs` that it has admits at
+/// least one request.
 static LogicalResult verifyBudgets(Operation *op, ArrayRef<StringRef> attrs) {
   for (StringRef name : attrs)
-    if (op->getAttrOfType<IntegerAttr>(name).getValue().isZero())
+    if (auto budget = op->getAttrOfType<IntegerAttr>(name);
+        budget && budget.getValue().isZero())
       return op->emitOpError() << "'" << name << "' must be at least 1";
   return success();
 }
@@ -311,7 +312,8 @@ LogicalResult XbarOp::verify() {
     return emitOpError("must have at least one upstream port");
   if (downstream.empty())
     return emitOpError("must have at least one downstream port");
-  if (failed(verifyBudgets(*this, {"upstream_concurrent_per_id"})))
+  if (failed(verifyBudgets(
+          *this, {"upstream_concurrent_per_id", "downstream_pending_writes"})))
     return failure();
 
   // Make sure all upstream ports agree on widths
@@ -660,6 +662,8 @@ LogicalResult MuxOp::verify() {
   ValueRange upstream = getUpstream();
   if (upstream.empty())
     return emitOpError("must have at least one upstream port");
+  if (failed(verifyBudgets(*this, {"downstream_pending_writes"})))
+    return failure();
 
   // Make sure all upstream ports agree on widths
   auto upstreamTy = cast<PortType>(upstream.front().getType());
@@ -747,7 +751,8 @@ LogicalResult DummiesExtSubordinateOp::verify() {
 LogicalResult DummiesXbarOp::verify() {
   if (getUpstream().empty())
     return emitOpError("must have at least one upstream port");
-  if (failed(verifyBudgets(*this, {"upstream_concurrent_per_id"})))
+  if (failed(verifyBudgets(
+          *this, {"upstream_concurrent_per_id", "downstream_pending_writes"})))
     return failure();
 
   auto emitError = [&]() { return emitOpError(); };

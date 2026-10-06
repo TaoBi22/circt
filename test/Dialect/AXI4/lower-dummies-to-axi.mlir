@@ -120,8 +120,8 @@ hw.module @ChainedCrossbars(in %clk : !seq.clock, in %rst_ni : i1) {
   %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // CHECK: %[[TOP:.+]] = axi4.xbar %clk, %rst_ni mgrs %core upstream_concurrent_per_id 4
   %top = axi4.dummies.xbar %clk, %rst_ni mgrs %core addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
-  // CHECK: %[[BOTTOM:.+]] = axi4.xbar %clk, %rst_ni mgrs %[[TOP]] upstream_concurrent_per_id 4
-  %bottom = axi4.dummies.xbar %clk, %rst_ni mgrs %top addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
+  // CHECK: %[[BOTTOM:.+]] = axi4.xbar %clk, %rst_ni mgrs %[[TOP]] upstream_concurrent_per_id 4 downstream_pending_writes 16
+  %bottom = axi4.dummies.xbar %clk, %rst_ni mgrs %top addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4, downstream_pending_writes = 16
   %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %bottom windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
   // CHECK: hw.output %[[BOTTOM]]

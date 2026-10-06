@@ -244,7 +244,8 @@ LogicalResult XbarOp::canonicalize(XbarOp op, PatternRewriter &rewriter) {
   // And an xbar with one subordinate can be treated as a mux
   if (downstream.size() == 1) {
     auto mux = MuxOp::create(rewriter, op.getLoc(), downstream[0].getType(),
-                             op.getClock(), op.getReset(), upstream);
+                             op.getClock(), op.getReset(), upstream,
+                             op.getDownstreamPendingWritesAttr());
     rewriter.replaceOp(op, mux.getDownstream());
     return success();
   }

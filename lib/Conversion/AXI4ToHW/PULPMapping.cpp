@@ -270,6 +270,12 @@ static void emitAddrMap(llvm::raw_ostream &os, StringRef prefix,
 /// axi_mux does.
 static constexpr uint32_t kPendingWrites = 8;
 
+/// The writes a downstream port lets run ahead of their data: `pending` if
+/// given, else PULP's default.
+static std::string pulpPendingWrites(std::optional<uint32_t> pending) {
+  return Twine(pending.value_or(kPendingWrites)).str();
+}
+
 /// The `MaxTrans` of a PULP axi_demux that admits at least `perId` requests per
 /// ID. Its ID counters are full at all ones, 2**clog2(MaxTrans) - 1, which is
 /// one short of a power of two.
@@ -520,7 +526,7 @@ static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar,
   SmallVector<PulpParam> cfg = {
       {"NoSlvPorts", Twine(numUpstream).str()},
       {"NoMstPorts", Twine(numDownstream).str()},
-      {"MaxSlvTrans", Twine(kPendingWrites).str(), /*derived=*/false},
+      {"MaxSlvTrans", pulpPendingWrites(xbar.getDownstreamPendingWrites())},
       {"MaxMstTrans", pulpMaxTrans(xbar.getUpstreamConcurrentPerId())},
       {"FallThrough", "1'b0", /*derived=*/false},
       {"LatencyMode", "axi_pkg::CUT_ALL_AX", /*derived=*/false},
@@ -1270,7 +1276,7 @@ static FailureOr<std::string> pulpMuxSource(StringRef name, MuxOp mux,
            {"mst_req_t", prefix + "mst_req_t"},
            {"mst_resp_t", prefix + "mst_resp_t"},
            {"NoSlvPorts", Twine(numUpstream).str()},
-           {"MaxWTrans", Twine(kPendingWrites).str(), /*derived=*/false},
+           {"MaxWTrans", pulpPendingWrites(mux.getDownstreamPendingWrites())},
            {"FallThrough", "1'b0", /*derived=*/false}})))
     return failure();
   os << "    .clk_i       (clk_i),\n";
