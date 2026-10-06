@@ -5,17 +5,16 @@
 hw.module.extern @Manager(out axi : !port)
 hw.module.extern @Subordinate(in %axi : !port)
 
-// A PULP_CONFIG_ attribute overrides a parameter the wrapper sets, and adds one
-// it does not. An i1 is a bit, any other integer is decimal, and a string is
-// verbatim.
+// A PULP_CONFIG_ attribute overrides a parameter the wrapper sets. An i1 is a
+// bit, any other integer is decimal, and a string is verbatim.
 // CHECK:      sv.verbatim.source @axi_demux_1d_a32_d64_i4_usr0.sv
 // CHECK-SAME:   axi_demux #(\0A
 // CHECK-SAME:     .AxiIdWidth  (4),\0A
 // CHECK-SAME:     .MaxTrans    (5),\0A
 // CHECK-SAME:     .AxiLookBits (2),\0A
 // CHECK-SAME:     .UniqueIds   (1'b1),\0A
-// CHECK-SAME:     .SpillAr     (1'b0),\0A
-// CHECK-SAME:     .SpillW      (DoSpill)\0A
+// CHECK-SAME:     .SpillW      (DoSpill),\0A
+// CHECK-SAME:     .SpillAr     (1'b1),\0A
 // CHECK-SAME:   ) i_demux (\0A
 
 // CHECK-LABEL: hw.module @Demux(
@@ -23,7 +22,7 @@ hw.module.extern @Subordinate(in %axi : !port)
 // CHECK:         hw.instance "demux0" @axi_demux_1d_a32_d64_i4_usr0(
 hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !port)
-  %s = axi4.demux %clk, %rst_ni, %m upstream_concurrent_per_id 4 {PULP_CONFIG_AxiLookBits = 2 : i32, PULP_CONFIG_UniqueIds = true, PULP_CONFIG_SpillAr = false, PULP_CONFIG_SpillW = "DoSpill"} : (!port) -> (!port)
+  %s = axi4.demux %clk, %rst_ni, %m upstream_concurrent_per_id 4 {PULP_CONFIG_AxiLookBits = 2 : i32, PULP_CONFIG_UniqueIds = true, PULP_CONFIG_SpillAr = true, PULP_CONFIG_SpillW = "DoSpill"} : (!port) -> (!port)
   hw.instance "sub" @Subordinate(axi: %s: !port) -> ()
 }
 
@@ -38,7 +37,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 // The crossbar's config naming a field of xbar_cfg_t sets it in Cfg, and any
 // other config is a parameter of axi_xbar
 // CHECK:      sv.verbatim.source @axi_xbar_1u1d_a32_d64_i4_o4_usr0.sv
-// CHECK-SAME:   LatencyMode:        axi_pkg::NO_LATENCY,\0A
+// CHECK-SAME:   LatencyMode:        axi_pkg::CUT_ALL_AX,\0A
 // CHECK-SAME:   NoAddrRules:        1,\0A
 // CHECK-SAME:   PipelineStages:     2,\0A
 // CHECK-SAME:   default:            '0\0A
@@ -48,7 +47,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 // CHECK-SAME:   ) i_xbar (\0A
 hw.module @Xbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !port)
-  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY", PULP_CONFIG_PipelineStages = 2 : i32, PULP_CONFIG_ATOPs = false} : (!port) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 {PULP_CONFIG_LatencyMode = "axi_pkg::CUT_ALL_AX", PULP_CONFIG_PipelineStages = 2 : i32, PULP_CONFIG_ATOPs = false} : (!port) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
 

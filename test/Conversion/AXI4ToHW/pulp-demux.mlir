@@ -59,7 +59,14 @@
 // CHECK-SAME:     .NoMstPorts  (2),\0A
 // CHECK-SAME:     .MaxTrans    (5),\0A
 // CHECK-SAME:     .AxiLookBits (4),\0A
-// CHECK-SAME:     .UniqueIds   (1'b0)\0A
+// CHECK-SAME:     .UniqueIds   (1'b0),\0A
+
+// Register stages are cuts, so the demux has no spill registers
+// CHECK-SAME:     .SpillAw     (1'b0),\0A
+// CHECK-SAME:     .SpillW      (1'b0),\0A
+// CHECK-SAME:     .SpillB      (1'b0),\0A
+// CHECK-SAME:     .SpillAr     (1'b0),\0A
+// CHECK-SAME:     .SpillR      (1'b0)\0A
 // CHECK-SAME:   ) i_demux (\0A
 // CHECK-SAME:     .slv_aw_select_i (aw_select),\0A
 // CHECK-SAME:     .slv_ar_select_i (ar_select),\0A

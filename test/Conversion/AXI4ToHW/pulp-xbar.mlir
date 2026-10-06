@@ -39,6 +39,9 @@ hw.module.extern @High(in %axi : !sub_hi)
 // running ahead of their data take PULP's default
 // CHECK-SAME:   MaxSlvTrans:        8,\0A
 // CHECK-SAME:   MaxMstTrans:        4,\0A
+
+// Register stages are cuts, so the crossbar adds none
+// CHECK-SAME:   LatencyMode:        axi_pkg::NO_LATENCY,\0A
 // CHECK-SAME:   NoAddrRules:        2,\0A
 
 // One rule per window of each downstream port, half open, indexed by port. The

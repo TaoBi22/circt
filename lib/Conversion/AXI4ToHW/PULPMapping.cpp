@@ -529,7 +529,7 @@ static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar,
       {"MaxSlvTrans", pulpPendingWrites(xbar.getDownstreamPendingWrites())},
       {"MaxMstTrans", pulpMaxTrans(xbar.getUpstreamConcurrentPerId())},
       {"FallThrough", "1'b0", /*derived=*/false},
-      {"LatencyMode", "axi_pkg::CUT_ALL_AX", /*derived=*/false},
+      {"LatencyMode", "axi_pkg::NO_LATENCY", /*derived=*/false},
       {"AxiIdWidthSlvPorts", Twine(upstreamId).str()},
       {"AxiIdUsedSlvPorts", Twine(upstreamId).str(), /*derived=*/false},
       {"UniqueIds", "1'b0", /*derived=*/false},
@@ -700,6 +700,14 @@ static void emitSymmetricWrapper(llvm::raw_ostream &os, StringRef name,
     emitFaceBridge(os, port, "sub", j, /*isManager=*/true, "mst_req" + index,
                    "mst_resp" + index, atops);
   }
+}
+
+/// The spill registers of a PULP axi_demux or axi_mux, all off.
+static SmallVector<PulpParam> pulpNoSpills() {
+  SmallVector<PulpParam> params;
+  for (StringRef name : {"SpillAw", "SpillW", "SpillB", "SpillAr", "SpillR"})
+    params.push_back({name, "1'b0", /*derived=*/false});
+  return params;
 }
 
 /// The typedefs `emitSymmetricWrapper` names the channel and req/resp types
@@ -1198,8 +1206,8 @@ static FailureOr<std::string> pulpDemuxSource(StringRef name, DemuxOp demux,
     os << "  );\n";
   }
 
-  // The spill registers are left at the axi_demux defaults unless the config
-  // sets them.
+  // The spill registers are off unless the config sets them, as register
+  // stages are `axi4.cut`s.
   SmallVector<PulpParam> params = {{"AxiIdWidth", Twine(idWidth).str()},
                                    {"AtopSupport", atops ? "1'b1" : "1'b0",
                                     /*derived=*/false}};
@@ -1209,6 +1217,7 @@ static FailureOr<std::string> pulpDemuxSource(StringRef name, DemuxOp demux,
       {"MaxTrans", pulpMaxTrans(demux.getUpstreamConcurrentPerId())});
   params.push_back({"AxiLookBits", Twine(idWidth).str(), /*derived=*/false});
   params.push_back({"UniqueIds", "1'b0", /*derived=*/false});
+  llvm::append_range(params, pulpNoSpills());
   if (failed(checkAtopConfig(demux, "AtopSupport", atops)) ||
       failed(emitPulpInstance(os, demux, "axi_demux", "i_demux", params)))
     return failure();
@@ -1256,28 +1265,30 @@ static FailureOr<std::string> pulpMuxSource(StringRef name, MuxOp mux,
   emitDualIdWrapper(os, name, "axi_mux", upstream, numUpstream, downstream,
                     /*numDownstream=*/1, atops);
 
-  // The spill registers are left at the axi_mux defaults unless the config
-  // sets them. PULP drives one downstream port, so it takes the single struct
-  // of the array the wrapper bridged to.
-  if (failed(emitPulpInstance(
-          os, mux, "axi_mux", "i_mux",
-          {{"SlvAxiIDWidth", Twine(upstream.getWriteIdWidth()).str()},
-           {"slv_aw_chan_t", prefix + "slv_aw_chan_t"},
-           {"mst_aw_chan_t", prefix + "mst_aw_chan_t"},
-           {"w_chan_t", prefix + "slv_w_chan_t"},
-           {"slv_b_chan_t", prefix + "slv_b_chan_t"},
-           {"mst_b_chan_t", prefix + "mst_b_chan_t"},
-           {"slv_ar_chan_t", prefix + "slv_ar_chan_t"},
-           {"mst_ar_chan_t", prefix + "mst_ar_chan_t"},
-           {"slv_r_chan_t", prefix + "slv_r_chan_t"},
-           {"mst_r_chan_t", prefix + "mst_r_chan_t"},
-           {"slv_req_t", prefix + "slv_req_t"},
-           {"slv_resp_t", prefix + "slv_resp_t"},
-           {"mst_req_t", prefix + "mst_req_t"},
-           {"mst_resp_t", prefix + "mst_resp_t"},
-           {"NoSlvPorts", Twine(numUpstream).str()},
-           {"MaxWTrans", pulpPendingWrites(mux.getDownstreamPendingWrites())},
-           {"FallThrough", "1'b0", /*derived=*/false}})))
+  // PULP drives one downstream port, so it takes the single struct of the
+  // array the wrapper bridged to.
+  SmallVector<PulpParam> params = {
+      {"SlvAxiIDWidth", Twine(upstream.getWriteIdWidth()).str()},
+      {"slv_aw_chan_t", prefix + "slv_aw_chan_t"},
+      {"mst_aw_chan_t", prefix + "mst_aw_chan_t"},
+      {"w_chan_t", prefix + "slv_w_chan_t"},
+      {"slv_b_chan_t", prefix + "slv_b_chan_t"},
+      {"mst_b_chan_t", prefix + "mst_b_chan_t"},
+      {"slv_ar_chan_t", prefix + "slv_ar_chan_t"},
+      {"mst_ar_chan_t", prefix + "mst_ar_chan_t"},
+      {"slv_r_chan_t", prefix + "slv_r_chan_t"},
+      {"mst_r_chan_t", prefix + "mst_r_chan_t"},
+      {"slv_req_t", prefix + "slv_req_t"},
+      {"slv_resp_t", prefix + "slv_resp_t"},
+      {"mst_req_t", prefix + "mst_req_t"},
+      {"mst_resp_t", prefix + "mst_resp_t"},
+      {"NoSlvPorts", Twine(numUpstream).str()},
+      {"MaxWTrans", pulpPendingWrites(mux.getDownstreamPendingWrites())},
+      {"FallThrough", "1'b0", /*derived=*/false}};
+  // The spill registers are off unless the config sets them, as register
+  // stages are `axi4.cut`s.
+  llvm::append_range(params, pulpNoSpills());
+  if (failed(emitPulpInstance(os, mux, "axi_mux", "i_mux", std::move(params))))
     return failure();
   os << "    .clk_i       (clk_i),\n";
   os << "    .rst_ni      (rst_ni),\n";

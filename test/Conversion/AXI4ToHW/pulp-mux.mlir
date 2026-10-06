@@ -38,7 +38,14 @@
 // CHECK-SAME:     .mst_resp_t    (axi_mux_2u_a32_d64_i4_o5_usr0_mst_resp_t),\0A
 // CHECK-SAME:     .NoSlvPorts    (2),\0A
 // CHECK-SAME:     .MaxWTrans     (16),\0A
-// CHECK-SAME:     .FallThrough   (1'b0)\0A
+// CHECK-SAME:     .FallThrough   (1'b0),\0A
+
+// Register stages are cuts, so the mux has no spill registers
+// CHECK-SAME:     .SpillAw       (1'b0),\0A
+// CHECK-SAME:     .SpillW        (1'b0),\0A
+// CHECK-SAME:     .SpillB        (1'b0),\0A
+// CHECK-SAME:     .SpillAr       (1'b0),\0A
+// CHECK-SAME:     .SpillR        (1'b0)\0A
 // CHECK-SAME:   ) i_mux (\0A
 // CHECK-SAME:     .test_i      (1'b0),\0A
 // CHECK-SAME:     .slv_reqs_i  (slv_req),\0A
