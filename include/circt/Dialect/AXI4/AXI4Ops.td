@@ -268,21 +268,24 @@ def CDCOp : AXI4Op<"cdc", [PortResultsAtMostOneUse,
 def DWConverterOp : AXI4Op<"data_width_converter", [PortResultsAtMostOneUse]> {
   let summary = "An AXI4 data width converter";
   let description = [{
-    Changes the data width of an AXI4 connection.
+    Changes the data width of an AXI4 connection. It converts reads with up to
+    `max_unique_read_ids` different IDs at once, one read per ID at a time; a
+    further read stalls until one with its ID, or a free slot, completes.
 
     Example:
     ```mlir
     %downstream = axi4.data_width_converter %clk, %rst_ni, %upstream
-      : (!axi4.port<...>) -> !axi4.port<...>
+      max_unique_read_ids 4 : (!axi4.port<...>) -> !axi4.port<...>
     ```
   }];
 
-  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream);
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream,
+                       I32Attr:$max_unique_read_ids);
   let results = (outs PortType:$downstream);
 
   let assemblyFormat = [{
-    $clock `,` $reset `,` $upstream attr-dict `:`
-      functional-type($upstream, $downstream)
+    $clock `,` $reset `,` $upstream `max_unique_read_ids` $max_unique_read_ids
+      attr-dict `:` functional-type($upstream, $downstream)
   }];
 
   let hasVerifier = 1;
@@ -296,20 +299,25 @@ def IWConverterOp : AXI4Op<"id_width_converter", [PortResultsAtMostOneUse]> {
 
     Widening prepends zeroes to each ID. Narrowing remaps the IDs in flight
     onto the narrower ones, which orders transactions that end up sharing an
-    ID.
+    ID. It tracks up to `max_unique_ids` upstream IDs at once, each with up to
+    `concurrent_per_id` requests in flight; further requests stall until one
+    completes. Widening tracks nothing, so ignores both.
 
     Example:
     ```mlir
     %downstream = axi4.id_width_converter %clk, %rst_ni, %upstream
+      max_unique_ids = 8, concurrent_per_id = 2
       : (!axi4.port<...>) -> !axi4.port<...>
     ```
   }];
 
-  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream);
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream,
+                       I32Attr:$max_unique_ids, I32Attr:$concurrent_per_id);
   let results = (outs PortType:$downstream);
 
   let assemblyFormat = [{
-    $clock `,` $reset `,` $upstream attr-dict `:`
+    $clock `,` $reset `,` $upstream `max_unique_ids` `=` $max_unique_ids `,`
+      `concurrent_per_id` `=` $concurrent_per_id attr-dict `:`
       functional-type($upstream, $downstream)
   }];
 
@@ -325,22 +333,25 @@ def IDRemapOp : AXI4Op<"id_remap", [PortResultsAtMostOneUse]> {
     which is released when they complete. Up to `max_unique_ids` upstream IDs
     can hold one at once, each for writes and reads, so requests with different
     upstream IDs stay independent. A request whose ID would exceed that stalls
-    until another ID's requests complete.
+    until another ID's requests complete. Each ID holds up to
+    `concurrent_per_id` requests in flight; a further request with that ID
+    stalls until one completes.
 
     Example:
     ```mlir
-    %downstream = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4
-      : (!axi4.port<...>) -> !axi4.port<...>
+    %downstream = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4,
+      concurrent_per_id = 2 : (!axi4.port<...>) -> !axi4.port<...>
     ```
   }];
 
   let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream,
-                       I32Attr:$max_unique_ids);
+                       I32Attr:$max_unique_ids, I32Attr:$concurrent_per_id);
   let results = (outs PortType:$downstream);
 
   let assemblyFormat = [{
-    $clock `,` $reset `,` $upstream `max_unique_ids` `=` $max_unique_ids
-      attr-dict `:` functional-type($upstream, $downstream)
+    $clock `,` $reset `,` $upstream `max_unique_ids` `=` $max_unique_ids `,`
+      `concurrent_per_id` `=` $concurrent_per_id attr-dict `:`
+      functional-type($upstream, $downstream)
   }];
 
   let hasVerifier = 1;
@@ -355,18 +366,24 @@ def BurstSplitterOp : AXI4Op<"burst_splitter", [PortResultsAtMostOneUse]> {
     A single beat has no wrapping to do, so a `wrap` burst splits into `incr`
     beats.
 
+    It tracks up to `concurrent_writes` writes and `concurrent_reads` reads in
+    flight; further requests stall until one completes.
+
     Example:
     ```mlir
     %downstream = axi4.burst_splitter %clk, %rst_ni, %upstream
+      concurrent_writes 4 concurrent_reads 4
       : (!axi4.port<...>) -> !axi4.port<...>
     ```
   }];
 
-  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream);
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream,
+                       I32Attr:$concurrent_writes, I32Attr:$concurrent_reads);
   let results = (outs PortType:$downstream);
 
   let assemblyFormat = [{
-    $clock `,` $reset `,` $upstream attr-dict `:`
+    $clock `,` $reset `,` $upstream `concurrent_writes` $concurrent_writes
+      `concurrent_reads` $concurrent_reads attr-dict `:`
       functional-type($upstream, $downstream)
   }];
 
@@ -384,18 +401,24 @@ def BurstUnwrapperOp : AXI4Op<"burst_unwrapper", [PortResultsAtMostOneUse]> {
     one `incr` burst of the same length. One starting anywhere else becomes two,
     split at the wrap boundary.
 
+    It tracks up to `concurrent_writes` writes and `concurrent_reads` reads in
+    flight; further requests stall until one completes.
+
     Example:
     ```mlir
     %downstream = axi4.burst_unwrapper %clk, %rst_ni, %upstream
+      concurrent_writes 4 concurrent_reads 4
       : (!axi4.port<...>) -> !axi4.port<...>
     ```
   }];
 
-  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream);
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream,
+                       I32Attr:$concurrent_writes, I32Attr:$concurrent_reads);
   let results = (outs PortType:$downstream);
 
   let assemblyFormat = [{
-    $clock `,` $reset `,` $upstream attr-dict `:`
+    $clock `,` $reset `,` $upstream `concurrent_writes` $concurrent_writes
+      `concurrent_reads` $concurrent_reads attr-dict `:`
       functional-type($upstream, $downstream)
   }];
 
@@ -618,22 +641,24 @@ def DummiesIDRemapOp : AXI4DummiesOp<"id_remap", [PortResultsAtMostOneUse]> {
   let summary = "An AXI4 ID remapper";
   let description = [{
     Compacts the IDs in flight on a connection, tracking up to
-    `max_unique_ids` upstream IDs at once.
+    `max_unique_ids` upstream IDs at once, each with up to `concurrent_per_id`
+    requests in flight.
 
     Example:
     ```mlir
     %downstream = axi4.dummies.id_remap %clk, %rst_ni, %upstream
-      max_unique_ids = 4
+      max_unique_ids = 4, concurrent_per_id = 2
     ```
   }];
 
   let arguments = (ins ClockType:$clock, I1:$reset,
-                       DummiesPortType:$upstream, I32Attr:$max_unique_ids);
+                       DummiesPortType:$upstream, I32Attr:$max_unique_ids,
+                       I32Attr:$concurrent_per_id);
   let results = (outs DummiesPortType:$downstream);
 
   let assemblyFormat = [{
-    $clock `,` $reset `,` $upstream `max_unique_ids` `=` $max_unique_ids
-      attr-dict
+    $clock `,` $reset `,` $upstream `max_unique_ids` `=` $max_unique_ids `,`
+      `concurrent_per_id` `=` $concurrent_per_id attr-dict
   }];
 
   let hasVerifier = 1;

@@ -271,14 +271,14 @@ hw.module @ManagerCutClockDomain(in %clk : !seq.clock, in %other_clk : !seq.cloc
 hw.module @DanglingRemap(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // expected-error @below {{'axi4.dummies.id_remap' op must reach a subordinate}}
-  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 4
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 4, concurrent_per_id = 4
 }
 
 // -----
 
 hw.module @RemapCycle(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.dummies.id_remap' op is part of a cycle in the dummies network}}
-  %remap = axi4.dummies.id_remap %clk, %rst_ni, %cut max_unique_ids = 4
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %cut max_unique_ids = 4, concurrent_per_id = 4
   %cut = axi4.dummies.cut %clk, %rst_ni, %remap
 }
 
@@ -302,7 +302,7 @@ hw.module @NothingBelowLoop(in %clk : !seq.clock, in %rst_ni : i1) {
   %soc, %soc_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // expected-error @below {{'axi4.dummies.xbar' op downstream port #1 reaches no subordinate without looping back through a crossbar}}
   %q = axi4.dummies.xbar %clk, %rst_ni mgrs %soc, %c addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
-  %down = axi4.dummies.id_remap %clk, %rst_ni, %q max_unique_ids = 4
+  %down = axi4.dummies.id_remap %clk, %rst_ni, %q max_unique_ids = 4, concurrent_per_id = 4
   %c = axi4.dummies.xbar %clk, %rst_ni mgrs %down addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
   %out_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %q windows <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
   axi4.dummies.accesses %soc_access -> %out_access with <base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>>

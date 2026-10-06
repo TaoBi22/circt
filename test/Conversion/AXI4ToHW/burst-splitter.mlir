@@ -28,7 +28,7 @@ hw.module @BurstSplitter(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %upstream_aw:
   // CHECK-SAME: sub0_awready: %downstream_awready: i1
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!burstty) -> !beats
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!burstty) -> !beats
 
   // CHECK: hw.output %burst_splitter0.mgr0_awready,
   // CHECK-SAME: %burst_splitter0.sub0_aw,

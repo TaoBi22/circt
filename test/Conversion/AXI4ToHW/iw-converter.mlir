@@ -25,7 +25,7 @@ hw.module @Narrowing(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %mgr.axi_aw:
   // CHECK-SAME: sub0_awready: %sub.axi_awready: i1
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %m : (!wide_ids) -> !narrow_ids
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %m max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !narrow_ids
 
   // CHECK: hw.instance "sub" @Subordinate(
   // CHECK-SAME: axi_aw: %iw_converter0.sub0_aw:
@@ -49,6 +49,6 @@ hw.module.extern @Subordinate(in %clk : !seq.clock, in %rst_ni : i1, in %axi : !
 hw.module @Widening(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1) -> (axi: !narrow_ids)
   // CHECK: hw.instance "iw_converter0" @axi_iw_converter_a32_d64_i2to4_usr0(
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %m : (!narrow_ids) -> !wide_ids
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %m max_unique_ids = 4, concurrent_per_id = 4 : (!narrow_ids) -> !wide_ids
   hw.instance "sub" @Subordinate(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1, axi: %iwc: !wide_ids) -> ()
 }

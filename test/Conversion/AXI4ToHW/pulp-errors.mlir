@@ -152,7 +152,7 @@ hw.module @SplitDemuxIds(in %clk : !seq.clock, in %rst_ni : i1,
 // PULP's axi_dw_converter converts over a single ID width, shared by writes and
 // reads, so the two must agree - unlike a cut, which never inspects them
 !wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 
 // expected-warning @below {{lowering AXI4 port 'axi' changes the ports of this module; its implementation must match the new port list}}
 hw.module.extern @Manager(out axi : !wide)
@@ -162,7 +162,7 @@ hw.module.extern @Subordinate(in %axi : !thin)
 hw.module @SplitIds(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !wide)
   // expected-error @below {{'axi4.data_width_converter' op cannot be lowered to a PULP axi_dw_converter, which uses a single ID width, because its write ID width (4) and read ID width (2) differ}}
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %m : (!wide) -> !thin
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %m max_unique_read_ids 4 : (!wide) -> !thin
   hw.instance "sub" @Subordinate(axi: %dwc: !thin) -> ()
 }
 
@@ -177,7 +177,7 @@ hw.module @SplitIdConverterIds(in %clk : !seq.clock, in %rst_ni : i1,
                                in %upstream : !split_ids,
                                out downstream : !narrow_ids) {
   // expected-error @below {{'axi4.id_width_converter' op cannot be lowered to a PULP axi_iw_converter, which uses a single ID width per side, because its upstream write ID width (4) and read ID width (3) differ}}
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!split_ids) -> !narrow_ids
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!split_ids) -> !narrow_ids
   hw.output %iwc : !narrow_ids
 }
 
@@ -191,7 +191,7 @@ hw.module @SplitIdConverterDownstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
                                          in %upstream : !wide_ids,
                                          out downstream : !split_ids) {
   // expected-error @below {{'axi4.id_width_converter' op cannot be lowered to a PULP axi_iw_converter, which uses a single ID width per side, because its downstream write ID width (2) and read ID width (3) differ}}
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !split_ids
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !split_ids
   hw.output %iwc : !split_ids
 }
 
@@ -204,7 +204,7 @@ hw.module @SplitIdConverterDownstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @SplitterIds(in %clk : !seq.clock, in %rst_ni : i1,
                        in %upstream : !burstty, out downstream : !beats) {
   // expected-error @below {{'axi4.burst_splitter' op cannot be lowered to a PULP axi_burst_splitter, which uses a single ID width, because its write ID width (4) and read ID width (2) differ}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!burstty) -> !beats
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!burstty) -> !beats
   hw.output %split : !beats
 }
 
@@ -217,7 +217,7 @@ hw.module @SplitterIds(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @SplitterWrappingBurst(in %clk : !seq.clock, in %rst_ni : i1,
                                  in %upstream : !wrapping, out downstream : !beats) {
   // expected-error @below {{'axi4.burst_splitter' op cannot be lowered to a PULP axi_burst_splitter, which does not support wrapping bursts, because its upstream port issues #axi4.burst_spec<wrap, len = 4>}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!wrapping) -> !beats
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!wrapping) -> !beats
   hw.output %split : !beats
 }
 
@@ -230,7 +230,7 @@ hw.module @SplitterWrappingBurst(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @UnwrapperIds(in %clk : !seq.clock, in %rst_ni : i1,
                         in %upstream : !split_ids, out downstream : !unwrapped) {
   // expected-error @below {{'axi4.burst_unwrapper' op cannot be lowered to a PULP axi_burst_unwrap, which uses a single ID width, because its write ID width (4) and read ID width (2) differ}}
-  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!split_ids) -> !unwrapped
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!split_ids) -> !unwrapped
   hw.output %unwrapped : !unwrapped
 }
 
@@ -245,7 +245,7 @@ hw.module @UnwrapperOversizedContainer(in %clk : !seq.clock, in %rst_ni : i1,
                                        in %upstream : !wrapping,
                                        out downstream : !unwrapped) {
   // expected-error @below {{'axi4.burst_unwrapper' op cannot be lowered to a PULP axi_burst_unwrap, which computes a wrapping burst's total size in 11 bits and so supports at most 2047 bytes, because its upstream port issues #axi4.burst_spec<wrap, len = 16> over 1024-bit beats, totalling 2048 bytes}}
-  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !unwrapped
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!wrapping) -> !unwrapped
   hw.output %unwrapped : !unwrapped
 }
 
@@ -394,7 +394,7 @@ hw.module @AtopsToUnmarkedInstance(in %clk : !seq.clock, in %rst_ni : i1) {
 // expected-note @below {{atomics issued from the port marked 'pulp.atops' here}}
 hw.module @AtopsThroughSplitter(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port {pulp.atops}, out out : !split {pulp.atops}) {
   // expected-error @below {{'axi4.burst_splitter' op cannot carry atomics, which PULP's axi_burst_splitter answers with an error}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %port : (!port) -> !split
+  %split = axi4.burst_splitter %clk, %rst_ni, %port concurrent_writes 4 concurrent_reads 4 : (!port) -> !split
   hw.output %split : !split
 }
 
@@ -453,7 +453,7 @@ hw.module @SplitIdRemapIds(in %clk : !seq.clock, in %rst_ni : i1,
                            in %upstream : !split_ids,
                            out downstream : !narrow_ids) {
   // expected-error @below {{'axi4.id_remap' op cannot be lowered to a PULP axi_id_remap, which uses a single ID width per side, because its upstream write ID width (4) and read ID width (3) differ}}
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!split_ids) -> !narrow_ids
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!split_ids) -> !narrow_ids
   hw.output %remap : !narrow_ids
 }
 
@@ -466,7 +466,7 @@ hw.module @SplitIdRemapDownstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
                                      in %upstream : !wide_ids,
                                      out downstream : !split_ids) {
   // expected-error @below {{'axi4.id_remap' op cannot be lowered to a PULP axi_id_remap, which uses a single ID width per side, because its downstream write ID width (2) and read ID width (3) differ}}
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!wide_ids) -> !split_ids
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !split_ids
   hw.output %remap : !split_ids
 }
 
@@ -479,6 +479,6 @@ hw.module @RemapTrackedIdsConfig(in %clk : !seq.clock, in %rst_ni : i1,
                                  in %upstream : !wide_ids,
                                  out downstream : !narrow_ids) {
   // expected-error @below {{cannot set PULP parameter 'AxiSlvPortMaxUniqIds'}}
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 {PULP_CONFIG_AxiSlvPortMaxUniqIds = 2 : i32} : (!wide_ids) -> !narrow_ids
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 {PULP_CONFIG_AxiSlvPortMaxUniqIds = 2 : i32} : (!wide_ids) -> !narrow_ids
   hw.output %remap : !narrow_ids
 }

@@ -20,10 +20,10 @@
 // CHECK-SAME:   assign slv_req.aw = '{id: mgr0_aw.id,
 // CHECK-SAME:   assign sub0_aw = '{id: mst_req.aw.id,
 
-// The transaction counts come from the upstream port, per direction
+// The transaction counts come from the unwrapper, per direction
 // CHECK-SAME:   axi_burst_unwrap #(\0A
-// CHECK-SAME:     .MaxReadTxns  (32),\0A
-// CHECK-SAME:     .MaxWriteTxns (64),\0A
+// CHECK-SAME:     .MaxReadTxns  (2),\0A
+// CHECK-SAME:     .MaxWriteTxns (4),\0A
 // CHECK-SAME:     .AddrWidth    (32),\0A
 // CHECK-SAME:     .DataWidth    (64),\0A
 // CHECK-SAME:     .IdWidth      (4),\0A
@@ -39,6 +39,6 @@
 // CHECK:         hw.instance "burst_unwrapper0" @axi_burst_unwrapper_a32_d64_i4_usr0(
 hw.module @BurstUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
                           in %upstream : !wrapping, out downstream : !unwrapped) {
-  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !unwrapped
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 2 : (!wrapping) -> !unwrapped
   hw.output %unwrapped : !unwrapped
 }

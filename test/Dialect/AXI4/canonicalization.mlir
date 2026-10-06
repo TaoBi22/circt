@@ -12,7 +12,7 @@ hw.module @IdentityDataWidthConverter(in %clk : !seq.clock, in %rst_ni : i1,
                                       in %upstream : !port) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.data_width_converter
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!port) -> !port
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!port) -> !port
   axi4.abstract_subordinate %clk, %rst_ni, %dwc concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
@@ -21,7 +21,7 @@ hw.module @IdentityIdWidthConverter(in %clk : !seq.clock, in %rst_ni : i1,
                                     in %upstream : !port) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.id_width_converter
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!port) -> !port
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!port) -> !port
   axi4.abstract_subordinate %clk, %rst_ni, %iwc concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
@@ -30,7 +30,7 @@ hw.module @IdentityIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
                            in %upstream : !port) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.id_remap
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 16 : (!port) -> !port
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 16, concurrent_per_id = 4 : (!port) -> !port
   axi4.abstract_subordinate %clk, %rst_ni, %remap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
@@ -39,7 +39,7 @@ hw.module @IdentityIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @LimitingIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
                            in %upstream : !port) {
   // CHECK-NEXT: axi4.id_remap
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!port) -> !port
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!port) -> !port
   axi4.abstract_subordinate %clk, %rst_ni, %remap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
@@ -50,7 +50,7 @@ hw.module @IdempotentBurstSplitter(in %clk : !seq.clock, in %rst_ni : i1,
                                    in %upstream : !beats) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.burst_splitter
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!beats) -> !beats
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!beats) -> !beats
   axi4.abstract_subordinate %clk, %rst_ni, %split concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !beats
 }
 
@@ -59,7 +59,7 @@ hw.module @IdempotentBurstUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
                                     in %upstream : !port) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.burst_unwrapper
-  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!port) -> !port
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!port) -> !port
   axi4.abstract_subordinate %clk, %rst_ni, %unwrapped concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
@@ -76,29 +76,32 @@ hw.module @SameClockCdc(in %clk : !seq.clock, in %rst_ni : i1,
 // Chained adaptors
 //===----------------------------------------------------------------------===//
 
-// Check that chained adaptors fuse into one converting to the final type, and
-// that a fused pair restoring the original type then folds away entirely
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 32>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-!thinner = !axi4.port<addr_width = 32, data_width = 16, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 64>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+// Check that chained adaptors fuse into one converting to the final type, with
+// the smaller of their budgets, and that a fused pair restoring the original
+// type then folds away entirely. Converting data widths converts one read per
+// ID at a time.
+!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 32>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
+!thinner = !axi4.port<addr_width = 32, data_width = 16, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 64>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 
 // CHECK-LABEL: hw.module @ChainedDataWidthConverters
 hw.module @ChainedDataWidthConverters(in %clk : !seq.clock, in %rst_ni : i1,
-                                      in %upstream : !port) {
-  // CHECK-NEXT: %[[FUSED:.+]] = axi4.data_width_converter %clk, %rst_ni, %upstream : (!axi4.port<addr_width = 32, data_width = 64, {{.*}}) -> !axi4.port<addr_width = 32, data_width = 16,
+                                      in %upstream : !wide) {
+  // CHECK-NEXT: %[[FUSED:.+]] = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!axi4.port<addr_width = 32, data_width = 64, {{.*}}) -> !axi4.port<addr_width = 32, data_width = 16,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[FUSED]]
-  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream : (!port) -> !thin
-  %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow : (!thin) -> !thinner
+  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 6 : (!wide) -> !thin
+  %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow max_unique_read_ids 4 : (!thin) -> !thinner
   axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !thinner
 }
 
 // A fused adaptor takes the PULP config of both adaptors
 // CHECK-LABEL: hw.module @ChainedPulpConfig
 hw.module @ChainedPulpConfig(in %clk : !seq.clock, in %rst_ni : i1,
-                             in %upstream : !port) {
-  // CHECK-NEXT: %[[FUSED:.+]] = axi4.data_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_A = 1 : i32, PULP_CONFIG_B = 2 : i32}
+                             in %upstream : !wide) {
+  // CHECK-NEXT: %[[FUSED:.+]] = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 {PULP_CONFIG_A = 1 : i32, PULP_CONFIG_B = 2 : i32}
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[FUSED]]
-  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_A = 1 : i32} : (!port) -> !thin
-  %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow {PULP_CONFIG_B = 2 : i32} : (!thin) -> !thinner
+  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 {PULP_CONFIG_A = 1 : i32} : (!wide) -> !thin
+  %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow max_unique_read_ids 4 {PULP_CONFIG_B = 2 : i32} : (!thin) -> !thinner
   axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !thinner
 }
 
@@ -106,23 +109,23 @@ hw.module @ChainedPulpConfig(in %clk : !seq.clock, in %rst_ni : i1,
 // neither value is lost
 // CHECK-LABEL: hw.module @ChainedPulpConfigConflict
 hw.module @ChainedPulpConfigConflict(in %clk : !seq.clock, in %rst_ni : i1,
-                                     in %upstream : !port) {
-  // CHECK-NEXT: %[[NARROW:.+]] = axi4.data_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_A = 1 : i32}
-  // CHECK-NEXT: %[[NARROWER:.+]] = axi4.data_width_converter %clk, %rst_ni, %[[NARROW]] {PULP_CONFIG_A = 2 : i32}
+                                     in %upstream : !wide) {
+  // CHECK-NEXT: %[[NARROW:.+]] = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 {PULP_CONFIG_A = 1 : i32}
+  // CHECK-NEXT: %[[NARROWER:.+]] = axi4.data_width_converter %clk, %rst_ni, %[[NARROW]] max_unique_read_ids 4 {PULP_CONFIG_A = 2 : i32}
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[NARROWER]]
-  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_A = 1 : i32} : (!port) -> !thin
-  %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow {PULP_CONFIG_A = 2 : i32} : (!thin) -> !thinner
+  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 {PULP_CONFIG_A = 1 : i32} : (!wide) -> !thin
+  %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow max_unique_read_ids 4 {PULP_CONFIG_A = 2 : i32} : (!thin) -> !thinner
   axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !thinner
 }
 
 // CHECK-LABEL: hw.module @NarrowThenWidenData
 hw.module @NarrowThenWidenData(in %clk : !seq.clock, in %rst_ni : i1,
-                               in %upstream : !port) {
+                               in %upstream : !wide) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.data_width_converter
-  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream : (!port) -> !thin
-  %wide = axi4.data_width_converter %clk, %rst_ni, %narrow : (!thin) -> !port
-  axi4.abstract_subordinate %clk, %rst_ni, %wide concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
+  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!wide) -> !thin
+  %wide = axi4.data_width_converter %clk, %rst_ni, %narrow max_unique_read_ids 4 : (!thin) -> !wide
+  axi4.abstract_subordinate %clk, %rst_ni, %wide concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !wide
 }
 
 // CHECK-LABEL: hw.module @WidenThenNarrowData
@@ -130,8 +133,8 @@ hw.module @WidenThenNarrowData(in %clk : !seq.clock, in %rst_ni : i1,
                                in %upstream : !thin) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.data_width_converter
-  %wide = axi4.data_width_converter %clk, %rst_ni, %upstream : (!thin) -> !port
-  %narrow = axi4.data_width_converter %clk, %rst_ni, %wide : (!port) -> !thin
+  %wide = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!thin) -> !wide
+  %narrow = axi4.data_width_converter %clk, %rst_ni, %wide max_unique_read_ids 4 : (!wide) -> !thin
   axi4.abstract_subordinate %clk, %rst_ni, %narrow concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !thin
 }
 
@@ -142,8 +145,8 @@ hw.module @WidenThenNarrowIds(in %clk : !seq.clock, in %rst_ni : i1,
                               in %upstream : !port) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.id_width_converter
-  %wide = axi4.id_width_converter %clk, %rst_ni, %upstream : (!port) -> !wide_ids
-  %narrow = axi4.id_width_converter %clk, %rst_ni, %wide : (!wide_ids) -> !port
+  %wide = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!port) -> !wide_ids
+  %narrow = axi4.id_width_converter %clk, %rst_ni, %wide max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !port
   axi4.abstract_subordinate %clk, %rst_ni, %narrow concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
@@ -152,10 +155,10 @@ hw.module @WidenThenNarrowIds(in %clk : !seq.clock, in %rst_ni : i1,
 // CHECK-LABEL: hw.module @ChainedIdWidthConverters
 hw.module @ChainedIdWidthConverters(in %clk : !seq.clock, in %rst_ni : i1,
                                     in %upstream : !wide_ids) {
-  // CHECK-NEXT: %[[FUSED:.+]] = axi4.id_width_converter %clk, %rst_ni, %upstream : (!axi4.port<{{.*}}write_id_width = 6, {{.*}}) -> !axi4.port<{{.*}}write_id_width = 2,
+  // CHECK-NEXT: %[[FUSED:.+]] = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!axi4.port<{{.*}}write_id_width = 6, {{.*}}) -> !axi4.port<{{.*}}write_id_width = 2,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[FUSED]]
-  %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !port
-  %narrower = axi4.id_width_converter %clk, %rst_ni, %narrow : (!port) -> !narrow_ids
+  %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !port
+  %narrower = axi4.id_width_converter %clk, %rst_ni, %narrow max_unique_ids = 4, concurrent_per_id = 4 : (!port) -> !narrow_ids
   axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !narrow_ids
 }
 
@@ -165,10 +168,10 @@ hw.module @ChainedIdWidthConverters(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @IdWidthConvertersDippingBelow(in %clk : !seq.clock, in %rst_ni : i1,
                                          in %upstream : !port) {
   // CHECK-NEXT: %[[NARROW:.+]] = axi4.id_width_converter
-  // CHECK-NEXT: %[[WIDE:.+]] = axi4.id_width_converter %clk, %rst_ni, %[[NARROW]]
+  // CHECK-NEXT: %[[WIDE:.+]] = axi4.id_width_converter %clk, %rst_ni, %[[NARROW]] max_unique_ids = 4, concurrent_per_id = 4
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[WIDE]]
-  %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream : (!port) -> !narrow_ids
-  %wide = axi4.id_width_converter %clk, %rst_ni, %narrow : (!narrow_ids) -> !wide_ids
+  %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!port) -> !narrow_ids
+  %wide = axi4.id_width_converter %clk, %rst_ni, %narrow max_unique_ids = 4, concurrent_per_id = 4 : (!narrow_ids) -> !wide_ids
   axi4.abstract_subordinate %clk, %rst_ni, %wide concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !wide_ids
 }
 

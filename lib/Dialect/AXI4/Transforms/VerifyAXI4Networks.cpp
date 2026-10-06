@@ -192,6 +192,37 @@ void VerifyAXI4NetworksPass::runOnOperation() {
           uint32_t budget = demux.getUpstreamConcurrentPerId();
           warnBottleneck(demux, "upstream port", demux.getUpstream().getType(),
                          budget, budget);
+        })
+        .Case<IDRemapOp>([](IDRemapOp remap) {
+          uint32_t budget = remap.getConcurrentPerId();
+          warnBottleneck(remap, "upstream port", remap.getUpstream().getType(),
+                         budget, budget);
+        })
+        .Case<IWConverterOp>([](IWConverterOp converter) {
+          // Widening tracks nothing
+          PortType upstream = converter.getUpstream().getType();
+          PortType downstream = converter.getDownstream().getType();
+          uint64_t writes = upstream.getConcurrentWritesPerId();
+          uint64_t reads = upstream.getConcurrentReadsPerId();
+          if (downstream.getWriteIdWidth() < upstream.getWriteIdWidth())
+            writes = converter.getConcurrentPerId();
+          if (downstream.getReadIdWidth() < upstream.getReadIdWidth())
+            reads = converter.getConcurrentPerId();
+          warnBottleneck(converter, "upstream port", upstream, writes, reads);
+        })
+        .Case<BurstSplitterOp, BurstUnwrapperOp>([](auto adaptor) {
+          warnBottleneck(
+              adaptor, "upstream port", adaptor.getUpstream().getType(),
+              adaptor.getConcurrentWrites(), adaptor.getConcurrentReads());
+        })
+        .Case<DWConverterOp>([](DWConverterOp converter) {
+          // A conversion converts one read per ID at a time
+          PortType upstream = converter.getUpstream().getType();
+          if (upstream.getDataWidth() ==
+              converter.getDownstream().getType().getDataWidth())
+            return;
+          warnBottleneck(converter, "upstream port", upstream,
+                         upstream.getConcurrentWritesPerId(), 1);
         });
   });
 

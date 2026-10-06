@@ -105,15 +105,15 @@ hw.module @CutCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
 
 // -----
 
-!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 
 hw.module @ConverterCrossing(in %clk : !seq.clock, in %rst_ni : i1,
                              in %other_rst_ni : i1) {
   // expected-note @below {{connected operation here}}
   %mgr = axi4.abstract_manager %clk, %rst_ni : !wide
   // expected-error @below {{'axi4.data_width_converter' op is in a different reset domain to the 'axi4.abstract_manager' connected to it}}
-  %dwc = axi4.data_width_converter %clk, %other_rst_ni, %mgr : (!wide) -> !thin
+  %dwc = axi4.data_width_converter %clk, %other_rst_ni, %mgr max_unique_read_ids 4 : (!wide) -> !thin
   axi4.abstract_subordinate %clk, %other_rst_ni, %dwc concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !thin
 }
 
@@ -168,7 +168,7 @@ hw.module @IdConverterCrossing(in %clk : !seq.clock,
   // expected-note @below {{connected operation here}}
   %mgr = axi4.abstract_manager %clk, %rst_ni : !wide_ids
   // expected-error @below {{'axi4.id_width_converter' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
-  %iwc = axi4.id_width_converter %other_clk, %rst_ni, %mgr : (!wide_ids) -> !narrow_ids
+  %iwc = axi4.id_width_converter %other_clk, %rst_ni, %mgr max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !narrow_ids
   axi4.abstract_subordinate %other_clk, %rst_ni, %iwc concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !narrow_ids
 }
 
@@ -182,7 +182,7 @@ hw.module @SplitterCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
   // expected-note @below {{connected operation here}}
   %mgr = axi4.abstract_manager %clk, %rst_ni : !burstty
   // expected-error @below {{'axi4.burst_splitter' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
-  %split = axi4.burst_splitter %other_clk, %rst_ni, %mgr : (!burstty) -> !beats
+  %split = axi4.burst_splitter %other_clk, %rst_ni, %mgr concurrent_writes 4 concurrent_reads 4 : (!burstty) -> !beats
   axi4.abstract_subordinate %other_clk, %rst_ni, %split concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !beats
 }
 
@@ -196,7 +196,7 @@ hw.module @UnwrapperCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
   // expected-note @below {{connected operation here}}
   %mgr = axi4.abstract_manager %clk, %rst_ni : !wrapping
   // expected-error @below {{'axi4.burst_unwrapper' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
-  %unwrapped = axi4.burst_unwrapper %other_clk, %rst_ni, %mgr : (!wrapping) -> !unwrapped
+  %unwrapped = axi4.burst_unwrapper %other_clk, %rst_ni, %mgr concurrent_writes 4 concurrent_reads 4 : (!wrapping) -> !unwrapped
   axi4.abstract_subordinate %other_clk, %rst_ni, %unwrapped concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !unwrapped
 }
 
@@ -208,7 +208,7 @@ hw.module @UnwrapperCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
 
 hw.module @UnwrapperWithoutWraps(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr = axi4.abstract_manager %clk, %rst_ni : !incrementing
-  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %mgr : (!incrementing) -> !incrementing
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %mgr concurrent_writes 4 concurrent_reads 4 : (!incrementing) -> !incrementing
   axi4.abstract_subordinate %clk, %rst_ni, %unwrapped concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !incrementing
 }
 
@@ -278,7 +278,7 @@ hw.module @IdRemapCrossing(in %clk : !seq.clock,
   // expected-note @below {{connected operation here}}
   %mgr = axi4.abstract_manager %clk, %rst_ni : !wide_ids
   // expected-error @below {{'axi4.id_remap' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
-  %remap = axi4.id_remap %other_clk, %rst_ni, %mgr max_unique_ids = 4 : (!wide_ids) -> !narrow_ids
+  %remap = axi4.id_remap %other_clk, %rst_ni, %mgr max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !narrow_ids
   axi4.abstract_subordinate %other_clk, %rst_ni, %remap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !narrow_ids
 }
 
@@ -304,4 +304,41 @@ hw.module @UndersizedDemuxBudget(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-warning @below {{upstream port can handle fewer writes per ID than the port reaching it can have concurrently outstanding (3 < 4)}}
   %sub = axi4.demux %clk, %rst_ni, %mgr upstream_concurrent_per_id 3 : (!mgr) -> !sub
   axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 3 concurrent_reads_per_id 2 : !sub
+}
+
+// -----
+
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
+
+hw.module @UndersizedRemapBudget(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !wide_ids
+  // expected-warning @below {{upstream port can handle fewer writes per ID than the port reaching it can have concurrently outstanding (2 < 4)}}
+  // expected-warning @below {{upstream port can handle fewer reads per ID than the port reaching it can have concurrently outstanding (2 < 4)}}
+  %remap = axi4.id_remap %clk, %rst_ni, %mgr max_unique_ids = 4, concurrent_per_id = 2 : (!wide_ids) -> !narrow_ids
+  axi4.abstract_subordinate %clk, %rst_ni, %remap concurrent_writes_per_id 2 concurrent_reads_per_id 2 : !narrow_ids
+}
+
+// -----
+
+!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
+
+hw.module @ConvertingReads(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !wide
+  // expected-warning @below {{upstream port can handle fewer reads per ID than the port reaching it can have concurrently outstanding (1 < 4)}}
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %mgr max_unique_read_ids 4 : (!wide) -> !thin
+  axi4.abstract_subordinate %clk, %rst_ni, %dwc concurrent_writes_per_id 4 concurrent_reads_per_id 1 : !thin
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!split = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 4>
+
+hw.module @UndersizedSplitterBudget(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !port
+  // expected-warning @below {{upstream port can handle fewer writes per ID than the port reaching it can have concurrently outstanding (2 < 4)}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %mgr concurrent_writes 2 concurrent_reads 8 : (!port) -> !split
+  axi4.abstract_subordinate %clk, %rst_ni, %split concurrent_writes_per_id 2 concurrent_reads_per_id 4 : !split
 }

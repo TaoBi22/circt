@@ -168,6 +168,7 @@ static LogicalResult fuseAdaptors(Op op, PatternRewriter &rewriter) {
           carrier, [&] { carrier->getResult(0).setType(original.getType()); });
   }
   mergePulpConfig(op, *config, rewriter);
+  mergeBudgets(op, prev, rewriter);
   rewriter.eraseOp(prev);
 
   // A pair restoring the original port type fuses into an adaptor that does

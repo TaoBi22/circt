@@ -67,6 +67,12 @@ void mergePulpConfig(mlir::Operation *op,
                      llvm::ArrayRef<mlir::NamedAttribute> config,
                      mlir::PatternRewriter &rewriter);
 
+/// Lower each request budget of `op` to that of `prev`, the like adaptor it is
+/// fused with, where `prev`'s is smaller, since the pair admits no more than
+/// the tighter of the two.
+void mergeBudgets(mlir::Operation *op, mlir::Operation *prev,
+                  mlir::PatternRewriter &rewriter);
+
 /// The attributes of `op` once the downstream ports marked in `dropped` are
 /// removed, which drops their columns from a PULP `Connectivity` matrix.
 mlir::NamedAttrList

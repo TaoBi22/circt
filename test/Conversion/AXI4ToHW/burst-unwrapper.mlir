@@ -28,7 +28,7 @@ hw.module @BurstUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %upstream_aw:
   // CHECK-SAME: sub0_awready: %downstream_awready: i1
-  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !unwrapped
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!wrapping) -> !unwrapped
 
   // CHECK: hw.output %burst_unwrapper0.mgr0_awready,
   // CHECK-SAME: %burst_unwrapper0.sub0_aw,

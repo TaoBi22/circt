@@ -270,32 +270,6 @@ static void emitAddrMap(llvm::raw_ostream &os, StringRef prefix,
 /// axi_mux does.
 static constexpr uint32_t kPendingWrites = 8;
 
-/// The most writes or reads with one ID any of `ports` keeps outstanding, and
-/// at least one.
-static uint32_t maxPerId(ValueRange ports) {
-  uint32_t most = 1;
-  for (Value value : ports) {
-    auto port = cast<PortType>(value.getType());
-    most = std::max({most, port.getConcurrentWritesPerId(),
-                     port.getConcurrentReadsPerId()});
-  }
-  return most;
-}
-
-/// The writes `port` can keep outstanding across all its IDs, and at least one.
-static uint64_t mostWrites(PortType port) {
-  return std::max<uint64_t>((uint64_t{1} << port.getWriteIdWidth()) *
-                                port.getConcurrentWritesPerId(),
-                            1);
-}
-
-/// The reads `port` can keep outstanding across all its IDs, and at least one.
-static uint64_t mostReads(PortType port) {
-  return std::max<uint64_t>((uint64_t{1} << port.getReadIdWidth()) *
-                                port.getConcurrentReadsPerId(),
-                            1);
-}
-
 /// The `MaxTrans` of a PULP axi_demux that admits at least `perId` requests per
 /// ID. Its ID counters are full at all ones, 2**clog2(MaxTrans) - 1, which is
 /// one short of a power of two.
@@ -900,13 +874,10 @@ pulpDWConverterSource(StringRef name, DWConverterOp converter, bool atops) {
   emitFaceBridge(os, downstream, "sub", 0, /*isManager=*/true, "mst_req",
                  "mst_resp", atops);
 
-  // PULP keeps a tracker per read it is reassembling, on the upstream side, so
-  // it needs one for every read the upstream port can have outstanding. A port
-  // that never reads still needs one, since the trackers form an array.
+  // PULP keeps a tracker per read ID it is converting.
   if (failed(emitPulpInstance(
           os, converter, "axi_dw_converter", "i_dw_converter",
-          {{"AxiMaxReads", Twine(mostReads(upstream)).str(),
-            /*derived=*/false},
+          {{"AxiMaxReads", Twine(converter.getMaxUniqueReadIds()).str()},
            {"AxiSlvPortDataWidth", Twine(upstreamData).str()},
            {"AxiMstPortDataWidth", Twine(downstreamData).str()},
            {"AxiAddrWidth", Twine(upstream.getAddrWidth()).str()},
@@ -960,26 +931,23 @@ pulpIWConverterSource(StringRef name, IWConverterOp converter, bool atops) {
   emitDualIdWrapper(os, name, "axi_iw_converter", upstream, /*numUpstream=*/1,
                     downstream, /*numDownstream=*/1, atops);
 
-  // checkPulpIWConverterSupported has established one ID width a side, which
-  // every ID in flight on that side may use.
-  std::string slvIds = Twine(uint64_t{1} << upstream.getWriteIdWidth()).str();
-  std::string mstIds = Twine(uint64_t{1} << downstream.getWriteIdWidth()).str();
+  // PULP remaps the IDs if they fit downstream, and otherwise serialises them
+  // onto every downstream ID, each queueing the requests of the upstream IDs it
+  // takes. checkPulpIWConverterSupported has established one ID width a side.
+  uint64_t uniqueIds = converter.getMaxUniqueIds();
+  uint64_t perId = converter.getConcurrentPerId();
+  uint64_t mstIds = uint64_t{1} << downstream.getWriteIdWidth();
+  uint64_t mstPerId = perId * llvm::divideCeil(uniqueIds, mstIds);
 
   if (failed(emitPulpInstance(
           os, converter, "axi_iw_converter", "i_iw_converter",
           {{"AxiSlvPortIdWidth", Twine(upstream.getWriteIdWidth()).str()},
            {"AxiMstPortIdWidth", Twine(downstream.getWriteIdWidth()).str()},
-           {"AxiSlvPortMaxUniqIds", slvIds, /*derived=*/false},
-           {"AxiSlvPortMaxTxnsPerId",
-            Twine(maxPerId(converter.getUpstream())).str(),
-            /*derived=*/false},
-           {"AxiSlvPortMaxTxns",
-            Twine(std::max(mostWrites(upstream), mostReads(upstream))).str(),
-            /*derived=*/false},
-           {"AxiMstPortMaxUniqIds", mstIds, /*derived=*/false},
-           {"AxiMstPortMaxTxnsPerId",
-            Twine(maxPerId(converter.getDownstream())).str(),
-            /*derived=*/false},
+           {"AxiSlvPortMaxUniqIds", Twine(uniqueIds).str()},
+           {"AxiSlvPortMaxTxnsPerId", Twine(perId).str()},
+           {"AxiSlvPortMaxTxns", pulpMaxTrans(converter.getConcurrentPerId())},
+           {"AxiMstPortMaxUniqIds", Twine(mstIds).str()},
+           {"AxiMstPortMaxTxnsPerId", Twine(mstPerId).str()},
            {"AxiAddrWidth", Twine(upstream.getAddrWidth()).str()},
            {"AxiDataWidth", Twine(upstream.getDataWidth()).str()},
            {"AxiUserWidth", Twine(pulpUserWidth(upstream)).str()},
@@ -1025,8 +993,7 @@ static FailureOr<std::string> pulpIDRemapSource(StringRef name, IDRemapOp remap,
           os, remap, "axi_id_remap", "i_id_remap",
           {{"AxiSlvPortIdWidth", Twine(upstream.getWriteIdWidth()).str()},
            {"AxiSlvPortMaxUniqIds", Twine(remap.getMaxUniqueIds()).str()},
-           {"AxiMaxTxnsPerId", Twine(maxPerId(remap.getUpstream())).str(),
-            /*derived=*/false},
+           {"AxiMaxTxnsPerId", Twine(remap.getConcurrentPerId()).str()},
            {"AxiMstPortIdWidth", Twine(downstream.getWriteIdWidth()).str()},
            {"slv_req_t", prefix + "slv_req_t"},
            {"slv_resp_t", prefix + "slv_resp_t"},
@@ -1085,10 +1052,8 @@ pulpBurstSplitterSource(StringRef name, BurstSplitterOp splitter, bool atops) {
 
   if (failed(emitPulpInstance(
           os, splitter, "axi_burst_splitter", "i_burst_splitter",
-          {{"MaxReadTxns", Twine(mostReads(upstream)).str(),
-            /*derived=*/false},
-           {"MaxWriteTxns", Twine(mostWrites(upstream)).str(),
-            /*derived=*/false},
+          {{"MaxReadTxns", Twine(splitter.getConcurrentReads()).str()},
+           {"MaxWriteTxns", Twine(splitter.getConcurrentWrites()).str()},
            {"AddrWidth", Twine(upstream.getAddrWidth()).str()},
            {"DataWidth", Twine(upstream.getDataWidth()).str()},
            {"IdWidth", Twine(idWidth).str()},
@@ -1150,18 +1115,16 @@ pulpBurstUnwrapperSource(StringRef name, BurstUnwrapperOp unwrapper,
                        {"  input  logic clk_i", "  input  logic rst_ni"},
                        atops);
 
-  if (failed(
-          emitPulpInstance(os, unwrapper, "axi_burst_unwrap", "i_burst_unwrap",
-                           {{"MaxReadTxns", Twine(mostReads(upstream)).str(),
-                             /*derived=*/false},
-                            {"MaxWriteTxns", Twine(mostWrites(upstream)).str(),
-                             /*derived=*/false},
-                            {"AddrWidth", Twine(upstream.getAddrWidth()).str()},
-                            {"DataWidth", Twine(upstream.getDataWidth()).str()},
-                            {"IdWidth", Twine(idWidth).str()},
-                            {"UserWidth", Twine(pulpUserWidth(upstream)).str()},
-                            {"axi_req_t", prefix + "req_t"},
-                            {"axi_resp_t", prefix + "resp_t"}})))
+  if (failed(emitPulpInstance(
+          os, unwrapper, "axi_burst_unwrap", "i_burst_unwrap",
+          {{"MaxReadTxns", Twine(unwrapper.getConcurrentReads()).str()},
+           {"MaxWriteTxns", Twine(unwrapper.getConcurrentWrites()).str()},
+           {"AddrWidth", Twine(upstream.getAddrWidth()).str()},
+           {"DataWidth", Twine(upstream.getDataWidth()).str()},
+           {"IdWidth", Twine(idWidth).str()},
+           {"UserWidth", Twine(pulpUserWidth(upstream)).str()},
+           {"axi_req_t", prefix + "req_t"},
+           {"axi_resp_t", prefix + "resp_t"}})))
     return failure();
   os << "    .clk_i      (clk_i),\n";
   os << "    .rst_ni     (rst_ni),\n";

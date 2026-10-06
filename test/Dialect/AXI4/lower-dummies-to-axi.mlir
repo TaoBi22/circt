@@ -174,7 +174,7 @@ hw.module @ConnectivityConfig(in %clk : !seq.clock, in %rst_ni : i1) {
 // CHECK-SAME:    out subordinate : !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
 hw.module @NarrowerSubordinateIds(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  // CHECK: %[[CONV:.+]] = axi4.id_width_converter %clk, %rst_ni, %manager : (!axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>) -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
+  // CHECK: %[[CONV:.+]] = axi4.id_width_converter %clk, %rst_ni, %manager max_unique_ids = 4, concurrent_per_id = 1 : (!axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>) -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
   // CHECK: hw.output %[[CONV]]
@@ -188,7 +188,7 @@ hw.module @NarrowerSubordinateIds(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @UnequalManagerIds(in %clk : !seq.clock, in %rst_ni : i1) {
   %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
-  // CHECK: %[[WIDENED:.+]] = axi4.id_width_converter %clk, %rst_ni, %debug : (!axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
+  // CHECK: %[[WIDENED:.+]] = axi4.id_width_converter %clk, %rst_ni, %debug max_unique_ids = 2, concurrent_per_id = 1 : (!axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
   // CHECK: axi4.xbar %clk, %rst_ni mgrs %core, %[[WIDENED]] upstream_concurrent_per_id 4
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
   %sub_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
@@ -204,7 +204,7 @@ hw.module @UnequalManagerIds(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @XbarPulpConfig(in %clk : !seq.clock, in %rst_ni : i1) {
   %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
-  // CHECK: axi4.id_width_converter %clk, %rst_ni, %debug :
+  // CHECK: axi4.id_width_converter %clk, %rst_ni, %debug max_unique_ids = 2, concurrent_per_id = 1 :
   // CHECK: axi4.xbar %clk, %rst_ni mgrs %core, %{{.+}} upstream_concurrent_per_id 4 {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"} :
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4 {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY", other = 1 : i32}
   %sub_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
@@ -223,7 +223,7 @@ hw.module @NarrowSubordinateBelowXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // CHECK: %[[XBAR:.+]] = axi4.xbar {{.*}} -> !axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
-  // CHECK: %[[CONV:.+]] = axi4.id_width_converter %clk, %rst_ni, %[[XBAR]] : (!axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
+  // CHECK: %[[CONV:.+]] = axi4.id_width_converter %clk, %rst_ni, %[[XBAR]] max_unique_ids = 8, concurrent_per_id = 1 : (!axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
   %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
   axi4.dummies.accesses %debug_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
@@ -233,15 +233,15 @@ hw.module @NarrowSubordinateBelowXbar(in %clk : !seq.clock, in %rst_ni : i1) {
 // -----
 
 // A converter bridges a manager and subordinate that disagree on their data
-// width, and the same bursts count more of the narrower beats. A port carries
-// the requests reaching it, so the subordinate's port holds the manager's 3
-// rather than the 4 it declares it can serve.
+// width, and the same bursts count more of the narrower beats. The converter
+// is sized for the manager's 3 read IDs rather than the 4 the subordinate
+// declares it can serve.
 // CHECK-LABEL: hw.module @NarrowerSubordinateData(
 // CHECK-SAME:    in %manager : !axi4.port<{{.*}} data_width = 64, {{.*}} burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
 // CHECK-SAME:    out subordinate : !axi4.port<{{.*}} data_width = 32, {{.*}} burst_specs = <<incr, len = 16>>{{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
 hw.module @NarrowerSubordinateData(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 3, outstanding_reads = 3
-  // CHECK: %[[CONV:.+]] = axi4.data_width_converter %clk, %rst_ni, %manager : (!axi4.port<{{.*}} data_width = 64, {{.*}} burst_specs = <<incr, len = 8>>{{.*}}) -> !axi4.port<{{.*}} data_width = 32, {{.*}} burst_specs = <<incr, len = 16>>{{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
+  // CHECK: %[[CONV:.+]] = axi4.data_width_converter %clk, %rst_ni, %manager max_unique_read_ids 3 : (!axi4.port<{{.*}} data_width = 64, {{.*}} burst_specs = <<incr, len = 8>>{{.*}}) -> !axi4.port<{{.*}} data_width = 32, {{.*}} burst_specs = <<incr, len = 16>>{{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>
   // CHECK: hw.output %[[CONV]]
@@ -258,10 +258,10 @@ hw.module @NarrowerSubordinateData(in %clk : !seq.clock, in %rst_ni : i1) {
 // USER: axi4.id_width_converter {{.*}} -> !axi4.port<{{[^>]*}} user_width = 4,
 hw.module @NarrowerManagerData(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
-  // CHECK: %[[WIDENED:.+]] = axi4.data_width_converter %clk, %rst_ni, %manager : (!axi4.port<{{.*}} data_width = 32, {{.*}} burst_specs = <<incr, len = 16>>{{.*}}) -> !axi4.port<{{.*}} data_width = 64, {{.*}} burst_specs = <<incr, len = 8>>
+  // CHECK: %[[WIDENED:.+]] = axi4.data_width_converter %clk, %rst_ni, %manager max_unique_read_ids 4 : (!axi4.port<{{.*}} data_width = 32, {{.*}} burst_specs = <<incr, len = 16>>{{.*}}) -> !axi4.port<{{.*}} data_width = 64, {{.*}} burst_specs = <<incr, len = 8>>
   // CHECK: %[[XBAR:.+]] = axi4.xbar %clk, %rst_ni mgrs %[[WIDENED]] upstream_concurrent_per_id 4
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
-  // CHECK: %[[CONV:.+]] = axi4.id_width_converter %clk, %rst_ni, %[[XBAR]] : (!axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}}) -> !axi4.port<{{.*}} write_id_width = 3, read_id_width = 3,
+  // CHECK: %[[CONV:.+]] = axi4.id_width_converter %clk, %rst_ni, %[[XBAR]] max_unique_ids = 4, concurrent_per_id = 1 : (!axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}}) -> !axi4.port<{{.*}} write_id_width = 3, read_id_width = 3,
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
   // CHECK: hw.output %[[CONV]]
@@ -277,7 +277,7 @@ hw.module @NarrowerSubordinateDataBelowXbar(in %clk : !seq.clock, in %rst_ni : i
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // CHECK: %[[XBAR:.+]] = axi4.xbar {{.*}} -> !axi4.port<{{.*}} data_width = 64, {{.*}} burst_specs = <<incr, len = 8>>
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
-  // CHECK: %[[CONV:.+]] = axi4.data_width_converter %clk, %rst_ni, %[[XBAR]]
+  // CHECK: %[[CONV:.+]] = axi4.data_width_converter %clk, %rst_ni, %[[XBAR]] max_unique_read_ids 4
   %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
   axi4.dummies.accesses %mgr_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>
   // CHECK: hw.output %[[CONV]]
@@ -293,7 +293,7 @@ hw.module @ClampedBursts(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
   // CHECK: %[[XBAR:.+]] = axi4.xbar {{.*}} -> !axi4.port<{{.*}} data_width = 32, {{.*}} burst_specs = <<incr, len = 256>>
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 32, upstream_concurrent_per_id = 4
-  // CHECK: axi4.data_width_converter %clk, %rst_ni, %[[XBAR]]
+  // CHECK: axi4.data_width_converter %clk, %rst_ni, %[[XBAR]] max_unique_read_ids 4
   %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 256>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   axi4.dummies.accesses %mgr_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 256>>>
 }
@@ -309,7 +309,7 @@ hw.module @MixedWidthCrossbars(in %clk : !seq.clock, in %rst_ni : i1) {
   %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // CHECK: %[[TOP:.+]] = axi4.xbar %clk, %rst_ni mgrs %core upstream_concurrent_per_id 4 {{.*}} -> !axi4.port<{{.*}} data_width = 64, {{.*}} burst_specs = <<incr, len = 8>>
   %top = axi4.dummies.xbar %clk, %rst_ni mgrs %core addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
-  // CHECK: %[[NARROWED:.+]] = axi4.data_width_converter %clk, %rst_ni, %[[TOP]] : (!axi4.port<{{.*}} data_width = 64, {{.*}} burst_specs = <<incr, len = 8>>{{.*}}) -> !axi4.port<{{.*}} data_width = 32, {{.*}} burst_specs = <<incr, len = 16>>
+  // CHECK: %[[NARROWED:.+]] = axi4.data_width_converter %clk, %rst_ni, %[[TOP]] max_unique_read_ids 4 : (!axi4.port<{{.*}} data_width = 64, {{.*}} burst_specs = <<incr, len = 8>>{{.*}}) -> !axi4.port<{{.*}} data_width = 32, {{.*}} burst_specs = <<incr, len = 16>>
   // CHECK: %[[BOTTOM:.+]] = axi4.xbar %clk, %rst_ni mgrs %[[NARROWED]] upstream_concurrent_per_id 4 {{.*}} -> !axi4.port<{{.*}} data_width = 32, {{.*}} burst_specs = <<incr, len = 16>>
   %bottom = axi4.dummies.xbar %clk, %rst_ni mgrs %top addr_width = 32, data_width = 32, upstream_concurrent_per_id = 4
   %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %bottom windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
@@ -345,7 +345,7 @@ hw.module @CutBeforeConverter(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // CHECK: %[[CUT:.+]] = axi4.cut %clk, %rst_ni, %manager : !axi4.port<{{.*}} data_width = 64,
   %cut = axi4.dummies.cut %clk, %rst_ni, %mgr
-  // CHECK: %[[CONV:.+]] = axi4.data_width_converter %clk, %rst_ni, %[[CUT]] : {{.*}} -> !axi4.port<{{.*}} data_width = 32,
+  // CHECK: %[[CONV:.+]] = axi4.data_width_converter %clk, %rst_ni, %[[CUT]] max_unique_read_ids 4 : {{.*}} -> !axi4.port<{{.*}} data_width = 32,
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %cut windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 32, outstanding_writes = 4, outstanding_reads = 4
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>
   // CHECK: hw.output %[[CONV]]
@@ -353,8 +353,8 @@ hw.module @CutBeforeConverter(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
-// A remapper below a crossbar compacts the IDs the crossbar widens, and holds
-// as many requests as it tracks IDs. It keeps its PULP config.
+// A remapper below a crossbar compacts the IDs the crossbar widens, and takes
+// the requests per ID it is given.
 // CHECK-LABEL: hw.module @RemapBelowXbar(
 // CHECK-SAME:    out mem : !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>)
 hw.module @RemapBelowXbar(in %clk : !seq.clock, in %rst_ni : i1) {
@@ -362,8 +362,8 @@ hw.module @RemapBelowXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %debug, %debug_access = axi4.dummies.ext_manager "debug" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // CHECK: %[[XBAR:.+]] = axi4.xbar %clk, %rst_ni mgrs %core, %debug upstream_concurrent_per_id 4
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
-  // CHECK: %[[REMAP:.+]] = axi4.id_remap %clk, %rst_ni, %[[XBAR]] max_unique_ids = 4 {PULP_CONFIG_AxiMaxTxnsPerId = 2 : i32} : (!axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
-  %remap = axi4.dummies.id_remap %clk, %rst_ni, %xbar max_unique_ids = 4 {PULP_CONFIG_AxiMaxTxnsPerId = 2 : i32, other = 1 : i32}
+  // CHECK: %[[REMAP:.+]] = axi4.id_remap %clk, %rst_ni, %[[XBAR]] max_unique_ids = 4, concurrent_per_id = 2 : (!axi4.port<{{.*}} write_id_width = 3, read_id_width = 3, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %xbar max_unique_ids = 4, concurrent_per_id = 2 {other = 1 : i32}
   %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %remap windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
   axi4.dummies.accesses %debug_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
@@ -378,9 +378,9 @@ hw.module @RemapBelowXbar(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @RemapIntoXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %dma, %dma_access = axi4.dummies.ext_manager "dma" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 16, outstanding_reads = 16
   %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  // CHECK: %[[REMAP:.+]] = axi4.id_remap %clk, %rst_ni, %dma max_unique_ids = 2 : {{.*}} -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
-  %remap = axi4.dummies.id_remap %clk, %rst_ni, %dma max_unique_ids = 2
-  // CHECK: %[[WIDENED:.+]] = axi4.id_width_converter %clk, %rst_ni, %[[REMAP]] : {{.*}} -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2,
+  // CHECK: %[[REMAP:.+]] = axi4.id_remap %clk, %rst_ni, %dma max_unique_ids = 2, concurrent_per_id = 4 : {{.*}} -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %dma max_unique_ids = 2, concurrent_per_id = 4
+  // CHECK: %[[WIDENED:.+]] = axi4.id_width_converter %clk, %rst_ni, %[[REMAP]] max_unique_ids = 2, concurrent_per_id = 1 : {{.*}} -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2,
   // CHECK: axi4.xbar %clk, %rst_ni mgrs %[[WIDENED]], %core upstream_concurrent_per_id 4
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %remap, %core addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
   %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
@@ -395,8 +395,8 @@ hw.module @CutsAroundRemap(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8
   // CHECK: %[[ABOVE:.+]] = axi4.cut %clk, %rst_ni, %manager
   %above = axi4.dummies.cut %clk, %rst_ni, %mgr
-  // CHECK: %[[REMAP:.+]] = axi4.id_remap %clk, %rst_ni, %[[ABOVE]] max_unique_ids = 4
-  %remap = axi4.dummies.id_remap %clk, %rst_ni, %above max_unique_ids = 4
+  // CHECK: %[[REMAP:.+]] = axi4.id_remap %clk, %rst_ni, %[[ABOVE]] max_unique_ids = 4, concurrent_per_id = 4
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %above max_unique_ids = 4, concurrent_per_id = 4
   // CHECK: %[[BELOW:.+]] = axi4.cut %clk, %rst_ni, %[[REMAP]]
   %below = axi4.dummies.cut %clk, %rst_ni, %remap
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %below windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
@@ -411,8 +411,8 @@ hw.module @CutsAroundRemap(in %clk : !seq.clock, in %rst_ni : i1) {
 // CHECK-LABEL: hw.module @RemapPastUpstreamIds(
 hw.module @RemapPastUpstreamIds(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
-  // CHECK: axi4.id_remap %clk, %rst_ni, %manager max_unique_ids = 2 : {{.*}} -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1,
-  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 8
+  // CHECK: axi4.id_remap %clk, %rst_ni, %manager max_unique_ids = 2, concurrent_per_id = 4 : {{.*}} -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1,
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 8, concurrent_per_id = 4
   %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %remap windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
   axi4.dummies.accesses %mgr_access -> %sub_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>
 }

@@ -20,8 +20,8 @@
 // CHECK-SAME:   assign sub0_aw = '{id: mst_req.aw.id,
 
 // CHECK-SAME:   axi_burst_splitter #(\0A
-// CHECK-SAME:     .MaxReadTxns  (32),\0A
-// CHECK-SAME:     .MaxWriteTxns (64),\0A
+// CHECK-SAME:     .MaxReadTxns  (2),\0A
+// CHECK-SAME:     .MaxWriteTxns (4),\0A
 // CHECK-SAME:     .AddrWidth    (32),\0A
 // CHECK-SAME:     .DataWidth    (64),\0A
 // CHECK-SAME:     .IdWidth      (4),\0A
@@ -37,6 +37,6 @@
 // CHECK:         hw.instance "burst_splitter0" @axi_burst_splitter_a32_d64_i4_usr0(
 hw.module @BurstSplitter(in %clk : !seq.clock, in %rst_ni : i1,
                          in %upstream : !burstty, out downstream : !beats) {
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!burstty) -> !beats
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 2 : (!burstty) -> !beats
   hw.output %split : !beats
 }

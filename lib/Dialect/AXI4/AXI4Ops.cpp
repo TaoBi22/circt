@@ -137,6 +137,18 @@ void axi4::mergePulpConfig(Operation *op, ArrayRef<NamedAttribute> config,
   });
 }
 
+void axi4::mergeBudgets(Operation *op, Operation *prev,
+                        PatternRewriter &rewriter) {
+  rewriter.modifyOpInPlace(op, [&] {
+    for (StringAttr name : op->getName().getAttributeNames()) {
+      auto budget = op->getAttrOfType<IntegerAttr>(name);
+      auto prevBudget = prev->getAttrOfType<IntegerAttr>(name);
+      if (budget && prevBudget && prevBudget.getValue().ult(budget.getValue()))
+        op->setAttr(name, prevBudget);
+    }
+  });
+}
+
 NamedAttrList
 axi4::getAttrsWithoutDownstream(Operation *op,
                                 const llvm::SmallBitVector &dropped) {
@@ -278,6 +290,15 @@ static LogicalResult verifyPerId(Operation *op, const Twine &portDesc,
   return success();
 }
 
+/// Verify that each of an op's request budgets `attrs` admits at least one
+/// request.
+static LogicalResult verifyBudgets(Operation *op, ArrayRef<StringRef> attrs) {
+  for (StringRef name : attrs)
+    if (op->getAttrOfType<IntegerAttr>(name).getValue().isZero())
+      return op->emitOpError() << "'" << name << "' must be at least 1";
+  return success();
+}
+
 /// The writes and reads per ID `port` carries.
 static std::pair<uint64_t, uint64_t> perIdOf(PortType port) {
   return {port.getConcurrentWritesPerId(), port.getConcurrentReadsPerId()};
@@ -290,8 +311,8 @@ LogicalResult XbarOp::verify() {
     return emitOpError("must have at least one upstream port");
   if (downstream.empty())
     return emitOpError("must have at least one downstream port");
-  if (getUpstreamConcurrentPerId() < 1)
-    return emitOpError("'upstream_concurrent_per_id' must be at least 1");
+  if (failed(verifyBudgets(*this, {"upstream_concurrent_per_id"})))
+    return failure();
 
   // Make sure all upstream ports agree on widths
   auto upstreamTy = cast<PortType>(upstream.front().getType());
@@ -370,6 +391,8 @@ static std::optional<uint32_t> convertLen(uint32_t len, uint32_t from,
 }
 
 LogicalResult DWConverterOp::verify() {
+  if (failed(verifyBudgets(*this, {"max_unique_read_ids"})))
+    return failure();
   auto upstream = cast<PortType>(getUpstream().getType());
   auto downstream = cast<PortType>(getDownstream().getType());
   uint32_t width = downstream.getDataWidth();
@@ -379,9 +402,16 @@ LogicalResult DWConverterOp::verify() {
                                "downstream port", upstream, "upstream port")))
     return failure();
 
-  // Window addresses and requests per ID are unchanged
-  if (failed(verifyPerId(*this, "downstream port", downstream,
-                         perIdOf(upstream), "the upstream port can issue")))
+  // Window addresses and requests per ID are unchanged, except that a
+  // conversion converts one read per ID at a time
+  bool converts = upstream.getDataWidth() != width;
+  if (failed(verifyPerId(
+          *this, "downstream port", downstream,
+          {upstream.getConcurrentWritesPerId(),
+           converts ? std::min(upstream.getConcurrentReadsPerId(), 1u)
+                    : upstream.getConcurrentReadsPerId()},
+          "the upstream port can issue, converting one read per ID at a "
+          "time")))
     return failure();
   return verifyWindowsConvert(
       *this, upstream, downstream,
@@ -415,6 +445,15 @@ LogicalResult DWConverterOp::verify() {
 LogicalResult IWConverterOp::verify() {
   auto upstream = cast<PortType>(getUpstream().getType());
   auto downstream = cast<PortType>(getDownstream().getType());
+  if (failed(verifyBudgets(*this, {"max_unique_ids", "concurrent_per_id"})))
+    return failure();
+  for (const WidthField &field : ArrayRef(kWidths).drop_front(kNumSharedWidths))
+    if (getMaxUniqueIds() > (uint64_t{1} << (upstream.*field.get)()))
+      return emitOpError() << "'max_unique_ids' (" << getMaxUniqueIds()
+                           << ") must be at most the "
+                           << (uint64_t{1} << (upstream.*field.get)())
+                           << " IDs the upstream port's '" << field.name
+                           << "' gives";
 
   // A conversion changes the ID widths, and leaves every other width alone
   if (failed(verifyWidthsMatch(
@@ -422,23 +461,26 @@ LogicalResult IWConverterOp::verify() {
           "downstream port", upstream, "upstream port")))
     return failure();
 
-  // Narrowing merges up to 2**(the bits dropped) upstream IDs onto each
-  // downstream one, depending on how many are in flight.
+  // Narrowing tracks up to the budget per upstream ID, and merges up to
+  // 2**(the bits dropped) of them onto each downstream one, depending on how
+  // many are in flight. Widening tracks nothing.
   auto verifyMerged = [&](StringRef field, StringRef noun, uint64_t perId,
                           uint32_t fromWidth, uint64_t merged,
                           uint32_t toWidth) -> LogicalResult {
-    uint64_t most =
-        fromWidth > toWidth ? perId << (fromWidth - toWidth) : perId;
-    if (perId <= merged && merged <= most)
+    bool narrows = fromWidth > toWidth;
+    uint64_t least =
+        narrows ? std::min<uint64_t>(perId, getConcurrentPerId()) : perId;
+    uint64_t most = narrows ? perId << (fromWidth - toWidth) : perId;
+    if (least <= merged && merged <= most)
       return success();
     auto diag = emitOpError() << "downstream port's '" << field << "' ("
                               << merged << ") must be ";
-    if (perId == most)
-      return diag << "the " << perId << " " << noun
+    if (least == most)
+      return diag << "the " << least << " " << noun
                   << " per ID the upstream port can issue";
-    return diag << "between the " << perId << " and " << most << " " << noun
+    return diag << "between the " << least << " and " << most << " " << noun
                 << " per ID the upstream port can issue, as its IDs merge "
-                   "onto the downstream ones";
+                   "onto the downstream ones within the converter's budget";
   };
   if (failed(verifyMerged("concurrent_writes_per_id", "writes",
                           upstream.getConcurrentWritesPerId(),
@@ -468,8 +510,8 @@ LogicalResult IDRemapOp::verify() {
   auto downstream = cast<PortType>(getDownstream().getType());
   uint64_t uniqueIds = getMaxUniqueIds();
 
-  if (uniqueIds < 1)
-    return emitOpError("'max_unique_ids' must be at least 1");
+  if (failed(verifyBudgets(*this, {"max_unique_ids", "concurrent_per_id"})))
+    return failure();
   for (const WidthField &field : ArrayRef(kWidths).drop_front(kNumSharedWidths))
     for (auto [port, desc] :
          {std::pair(upstream, "upstream"), std::pair(downstream, "downstream")})
@@ -485,7 +527,9 @@ LogicalResult IDRemapOp::verify() {
     return failure();
 
   if (failed(verifyPerId(*this, "downstream port", downstream,
-                         perIdOf(upstream), "the upstream port can issue")))
+                         capPerId(perIdOf(upstream), getConcurrentPerId()),
+                         "the upstream port can issue within the remapper's "
+                         "budget")))
     return failure();
 
   return verifyWindowsConvert(
@@ -499,6 +543,8 @@ LogicalResult IDRemapOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult BurstSplitterOp::verify() {
+  if (failed(verifyBudgets(*this, {"concurrent_writes", "concurrent_reads"})))
+    return failure();
   auto upstream = cast<PortType>(getUpstream().getType());
   auto downstream = cast<PortType>(getDownstream().getType());
 
@@ -507,8 +553,13 @@ LogicalResult BurstSplitterOp::verify() {
                                upstream, "upstream port")))
     return failure();
 
-  if (failed(verifyPerId(*this, "downstream port", downstream,
-                         perIdOf(upstream), "the upstream port can issue")))
+  if (failed(verifyPerId(
+          *this, "downstream port", downstream,
+          {std::min<uint64_t>(upstream.getConcurrentWritesPerId(),
+                              getConcurrentWrites()),
+           std::min<uint64_t>(upstream.getConcurrentReadsPerId(),
+                              getConcurrentReads())},
+          "the upstream port can issue within the splitter's budget")))
     return failure();
 
   // A split re-lengths, it does not re-address, and each upstream burst becomes
@@ -529,6 +580,8 @@ LogicalResult BurstSplitterOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult BurstUnwrapperOp::verify() {
+  if (failed(verifyBudgets(*this, {"concurrent_writes", "concurrent_reads"})))
+    return failure();
   auto upstream = cast<PortType>(getUpstream().getType());
   auto downstream = cast<PortType>(getDownstream().getType());
 
@@ -537,8 +590,13 @@ LogicalResult BurstUnwrapperOp::verify() {
                                upstream, "upstream port")))
     return failure();
 
-  if (failed(verifyPerId(*this, "downstream port", downstream,
-                         perIdOf(upstream), "the upstream port can issue")))
+  if (failed(verifyPerId(
+          *this, "downstream port", downstream,
+          {std::min<uint64_t>(upstream.getConcurrentWritesPerId(),
+                              getConcurrentWrites()),
+           std::min<uint64_t>(upstream.getConcurrentReadsPerId(),
+                              getConcurrentReads())},
+          "the upstream port can issue within the unwrapper's budget")))
     return failure();
 
   // An unwrap re-kinds, it does not re-address or re-length, and a burst that
@@ -563,8 +621,8 @@ LogicalResult DemuxOp::verify() {
   ValueRange downstream = getDownstream();
   if (downstream.empty())
     return emitOpError("must have at least one downstream port");
-  if (getUpstreamConcurrentPerId() < 1)
-    return emitOpError("'upstream_concurrent_per_id' must be at least 1");
+  if (failed(verifyBudgets(*this, {"upstream_concurrent_per_id"})))
+    return failure();
 
   // A demux routes, it does not re-width or re-tag
   for (auto [i, value] : llvm::enumerate(downstream))
@@ -697,8 +755,8 @@ LogicalResult DummiesExtSubordinateOp::verify() {
 LogicalResult DummiesXbarOp::verify() {
   if (getUpstream().empty())
     return emitOpError("must have at least one upstream port");
-  if (getUpstreamConcurrentPerId() < 1)
-    return emitOpError("'upstream_concurrent_per_id' must be at least 1");
+  if (failed(verifyBudgets(*this, {"upstream_concurrent_per_id"})))
+    return failure();
 
   auto emitError = [&]() { return emitOpError(); };
   return verifyPortWidths(emitError, "", getAddrWidth(), getDataWidth());
@@ -709,9 +767,7 @@ LogicalResult DummiesXbarOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult DummiesIDRemapOp::verify() {
-  if (getMaxUniqueIds() < 1)
-    return emitOpError("'max_unique_ids' must be at least 1");
-  return success();
+  return verifyBudgets(*this, {"max_unique_ids", "concurrent_per_id"});
 }
 
 //===----------------------------------------------------------------------===//

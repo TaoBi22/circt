@@ -30,15 +30,17 @@ hw.module.extern @Subordinate(in %axi : !narrow_ids)
 // CHECK-SAME:   assign slv_req[0].aw = '{id: mgr0_aw.id,
 // CHECK-SAME:   assign sub0_aw = '{id: mst_req[0].aw.id,
 
-// PULP sizes its tables from the IDs each side has, and the transactions per ID
-// each keeps in flight. The 16 upstream IDs outnumber the 4 the downstream side
-// has, so PULP serialises rather than remaps them.
+// The 8 upstream IDs the converter tracks outnumber the 4 the downstream side
+// has, so PULP serialises rather than remaps them: two upstream IDs share each
+// downstream one, whose queue takes the requests of both. The serialiser's
+// per-ID counters stop one short of a power of two, so PULP is asked for one
+// more.
 // CHECK-SAME:   axi_iw_converter #(\0A
 // CHECK-SAME:     .AxiSlvPortIdWidth      (4),\0A
 // CHECK-SAME:     .AxiMstPortIdWidth      (2),\0A
-// CHECK-SAME:     .AxiSlvPortMaxUniqIds   (16),\0A
-// CHECK-SAME:     .AxiSlvPortMaxTxnsPerId (6),\0A
-// CHECK-SAME:     .AxiSlvPortMaxTxns      (96),\0A
+// CHECK-SAME:     .AxiSlvPortMaxUniqIds   (8),\0A
+// CHECK-SAME:     .AxiSlvPortMaxTxnsPerId (3),\0A
+// CHECK-SAME:     .AxiSlvPortMaxTxns      (4),\0A
 // CHECK-SAME:     .AxiMstPortMaxUniqIds   (4),\0A
 // CHECK-SAME:     .AxiMstPortMaxTxnsPerId (6),\0A
 // CHECK-SAME:     .AxiAddrWidth           (32),\0A
@@ -54,7 +56,7 @@ hw.module.extern @Subordinate(in %axi : !narrow_ids)
 // CHECK:         hw.instance "iw_converter0" @axi_iw_converter_a32_d64_i4to2_usr0(
 hw.module @Narrowing(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !wide_ids)
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %m : (!wide_ids) -> !narrow_ids
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %m max_unique_ids = 8, concurrent_per_id = 3 : (!wide_ids) -> !narrow_ids
   hw.instance "sub" @Subordinate(axi: %iwc: !narrow_ids) -> ()
 }
 
@@ -74,6 +76,6 @@ hw.module.extern @Subordinate(in %axi : !wide_ids)
 // CHECK-SAME:     .AxiMstPortIdWidth      (4),\0A
 hw.module @Widening(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !narrow_ids)
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %m : (!narrow_ids) -> !wide_ids
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %m max_unique_ids = 4, concurrent_per_id = 4 : (!narrow_ids) -> !wide_ids
   hw.instance "sub" @Subordinate(axi: %iwc: !wide_ids) -> ()
 }

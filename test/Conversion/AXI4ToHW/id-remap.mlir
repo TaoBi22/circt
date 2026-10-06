@@ -30,7 +30,7 @@ hw.module @Remapping(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %mgr.axi_aw:
   // CHECK-SAME: sub0_awready: %sub.axi_awready: i1
-  %remap = axi4.id_remap %clk, %rst_ni, %m max_unique_ids = 4 : (!wide_ids) -> !narrow_ids
+  %remap = axi4.id_remap %clk, %rst_ni, %m max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !narrow_ids
 
   // CHECK: hw.instance "sub" @Subordinate(
   // CHECK-SAME: axi_aw: %id_remap0.sub0_aw:
@@ -38,6 +38,6 @@ hw.module @Remapping(in %clk : !seq.clock, in %rst_ni : i1) {
 
   %m2 = hw.instance "mgr2" @Manager(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1) -> (axi: !wide_ids)
   // CHECK: hw.instance "id_remap1" @axi_id_remap_a32_d64_i4to2_u2_usr0(
-  %small = axi4.id_remap %clk, %rst_ni, %m2 max_unique_ids = 2 : (!wide_ids) -> !fewer_ids
+  %small = axi4.id_remap %clk, %rst_ni, %m2 max_unique_ids = 2, concurrent_per_id = 4 : (!wide_ids) -> !fewer_ids
   hw.instance "small" @SmallSubordinate(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1, axi: %small: !fewer_ids) -> ()
 }

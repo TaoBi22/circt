@@ -62,8 +62,9 @@ def LowerAXI4DummiesToAXI : Pass<"lower-axi4-dummies-to-axi", "mlir::ModuleOp"> 
     Rewrites a network described with the `axi4.dummies` operations into the
     AXI4 dialect, inferring the parameterisation they leave out: the access
     windows of each manager from the accesses it declares, the ID widths from
-    the outstanding request counts, and the placement of the width converters
-    needed where an endpoint and the interconnect it connects to disagree.
+    the outstanding request counts, and the placement and sizing of the width
+    converters needed where an endpoint and the interconnect it connects to
+    disagree.
 
     The external endpoints become ports of the module the network is described
     in, so that module must not be instantiated.

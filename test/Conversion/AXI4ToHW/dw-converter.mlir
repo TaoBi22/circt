@@ -1,7 +1,7 @@
 // RUN: circt-opt %s --lower-axi4-to-hw --split-input-file | FileCheck %s --implicit-check-not=axi4.
 
 !wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 
 hw.module.extern @Manager(in %clk : !seq.clock, in %rst_ni : i1, out axi : !wide)
 hw.module.extern @Subordinate(in %clk : !seq.clock, in %rst_ni : i1, in %axi : !thin)
@@ -25,7 +25,7 @@ hw.module @Narrowing(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-SAME: clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1
   // CHECK-SAME: mgr0_aw: %mgr.axi_aw:
   // CHECK-SAME: sub0_awready: %sub.axi_awready: i1
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %m : (!wide) -> !thin
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %m max_unique_read_ids 4 : (!wide) -> !thin
 
   // CHECK: hw.instance "sub" @Subordinate(
   // CHECK-SAME: axi_aw: %dw_converter0.sub0_aw:
@@ -34,7 +34,7 @@ hw.module @Narrowing(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 
 hw.module.extern @Manager(in %clk : !seq.clock, in %rst_ni : i1, out axi : !port)
 hw.module.extern @Subordinate(in %clk : !seq.clock, in %rst_ni : i1, in %axi : !port)
@@ -50,6 +50,6 @@ hw.module @SameShapeAsACut(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: hw.instance "cut0" @axi_cut_a32_d64_i4_usr0(
   %cut = axi4.cut %clk, %rst_ni, %m : !port
   // CHECK: hw.instance "dw_converter0" @axi_dw_converter_a32_d64to64_i4_usr0(
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %cut : (!port) -> !port
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %cut max_unique_read_ids 4 : (!port) -> !port
   hw.instance "sub" @Subordinate(clk: %clk: !seq.clock, rst_ni: %rst_ni: i1, axi: %dwc: !port) -> ()
 }

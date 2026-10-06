@@ -267,64 +267,64 @@ hw.module @ConvertingCdc(in %upstream_clk : !seq.clock,
 hw.module @ReaddressingConverter(in %clk : !seq.clock, in %rst_ni : i1,
                                  in %upstream : !wide) {
   // expected-error @below {{'axi4.data_width_converter' op downstream port's 'addr_width' (16) must match upstream port's (32)}}
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!wide) -> !narrow_addr
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!wide) -> !narrow_addr
 }
 
 // -----
 
 !wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-!split = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x7ff, burst_specs = <<fixed, len = 8>>>, <base = 0x800, last = 0xfff, burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!split = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x7ff, burst_specs = <<fixed, len = 8>>>, <base = 0x800, last = 0xfff, burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 
 hw.module @SplittingConverter(in %clk : !seq.clock, in %rst_ni : i1,
                               in %upstream : !wide) {
   // expected-error @below {{'axi4.data_width_converter' op upstream and downstream windows must cover the same addresses}}
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!wide) -> !split
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!wide) -> !split
 }
 
 // -----
 
 !wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-!moved = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!moved = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 
 hw.module @MovingConverter(in %clk : !seq.clock, in %rst_ni : i1,
                            in %upstream : !wide) {
   // expected-error @below {{'axi4.data_width_converter' op upstream and downstream windows must cover the same addresses}}
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!wide) -> !moved
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!wide) -> !moved
 }
 
 // -----
 
 // A single 32-bit beat cannot be carried in whole 64-bit beats
 !thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 1>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 1>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 1>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 
 hw.module @IndivisibleBurst(in %clk : !seq.clock, in %rst_ni : i1,
                             in %upstream : !thin) {
   // expected-error @below {{'axi4.data_width_converter' op upstream burst #axi4.burst_spec<fixed, len = 1> does not divide into whole 64-bit beats}}
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!thin) -> !wide
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!thin) -> !wide
 }
 
 // -----
 
 // A 16-beat wrap would need 32 beats at half the width, which AXI4 cannot express
 !wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 
 hw.module @UnrepresentableBurst(in %clk : !seq.clock, in %rst_ni : i1,
                                 in %upstream : !wide) {
   // expected-error @below {{'axi4.data_width_converter' op upstream burst #axi4.burst_spec<wrap, len = 16> has no 32-bit equivalent: 'wrap' burst 'len' must be 2, 4, 8, or 16, got 32}}
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!wide) -> !thin
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!wide) -> !thin
 }
 
 // -----
 
 !wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-!unscaled = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!unscaled = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 
 hw.module @UnscaledBurst(in %clk : !seq.clock, in %rst_ni : i1,
                          in %upstream : !wide) {
   // expected-error @below {{'axi4.data_width_converter' op downstream window must support at least #axi4.burst_set<<incr, len = 8>> (the upstream's bursts in beats of 32 bits), but supports #axi4.burst_set<<incr, len = 4>>}}
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!wide) -> !unscaled
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!wide) -> !unscaled
 }
 
 // -----
@@ -336,7 +336,7 @@ hw.module @UnscaledBurst(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @RecountingConverter(in %clk : !seq.clock, in %rst_ni : i1,
                                in %upstream : !wide) {
   // expected-error @below {{'axi4.data_width_converter' op downstream port's 'concurrent_writes_per_id' (8) must be the 4 writes per ID the upstream port can issue}}
-  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!wide) -> !recounted
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4 : (!wide) -> !recounted
 }
 
 // -----
@@ -349,7 +349,7 @@ hw.module @RecountingConverter(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @RewidthingIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
                                  in %upstream : !wide_ids) {
   // expected-error @below {{'axi4.id_width_converter' op downstream port's 'data_width' (32) must match upstream port's (64)}}
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !thin_data
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !thin_data
 }
 
 // -----
@@ -360,7 +360,7 @@ hw.module @RewidthingIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @MovingIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
                              in %upstream : !wide_ids) {
   // expected-error @below {{'axi4.id_width_converter' op upstream and downstream windows must cover the same addresses}}
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !moved_ids
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !moved_ids
 }
 
 // -----
@@ -373,7 +373,7 @@ hw.module @MovingIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @NarrowingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
                              in %upstream : !bursty) {
   // expected-error @below {{'axi4.burst_splitter' op downstream port's 'data_width' (32) must match upstream port's (64)}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !narrow
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!bursty) -> !narrow
 }
 
 // -----
@@ -384,7 +384,7 @@ hw.module @NarrowingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @MovingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
                           in %upstream : !bursty) {
   // expected-error @below {{'axi4.burst_splitter' op upstream and downstream windows must cover the same addresses}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !moved
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!bursty) -> !moved
 }
 
 // -----
@@ -397,7 +397,7 @@ hw.module @MovingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @SplitStillWrapping(in %clk : !seq.clock, in %rst_ni : i1,
                               in %upstream : !wrapping) {
   // expected-error @below {{'axi4.burst_splitter' op downstream window must support at least #axi4.burst_set<<incr, len = 1>> (the upstream's bursts split into single beats), but supports #axi4.burst_set<<wrap, len = 2>>}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!wrapping) -> !still_wrapping
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!wrapping) -> !still_wrapping
 }
 
 // -----
@@ -409,20 +409,7 @@ hw.module @SplitStillWrapping(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @RecountingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
                               in %upstream : !bursty) {
   // expected-error @below {{'axi4.burst_splitter' op downstream port's 'concurrent_writes_per_id' (16) must be the 4 writes per ID the upstream port can issue}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !recounted
-}
-
-
-// -----
-
-// A split reuses the upstream tags, so its beats are still the same requests
-!bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
-!recounted = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, concurrent_writes_per_id = 16, concurrent_reads_per_id = 4>
-
-hw.module @RecountingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
-                              in %upstream : !bursty) {
-  // expected-error @below {{'axi4.burst_splitter' op downstream port's 'concurrent_writes_per_id' (16) must be the 4 writes per ID the upstream port can issue}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !recounted
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!bursty) -> !recounted
 }
 
 
@@ -435,7 +422,7 @@ hw.module @RecountingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @RecountingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
                               in %upstream : !bursty) {
   // expected-error @below {{'axi4.burst_splitter' op downstream port's 'concurrent_writes_per_id' (16) must be the 4 writes per ID the upstream port can issue}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !recounted
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!bursty) -> !recounted
 }
 
 
@@ -448,7 +435,7 @@ hw.module @RecountingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @RecountingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
                               in %upstream : !bursty) {
   // expected-error @below {{'axi4.burst_splitter' op downstream port's 'concurrent_writes_per_id' (16) must be the 4 writes per ID the upstream port can issue}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !recounted
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!bursty) -> !recounted
 }
 
 
@@ -461,7 +448,20 @@ hw.module @RecountingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @RecountingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
                               in %upstream : !bursty) {
   // expected-error @below {{'axi4.burst_splitter' op downstream port's 'concurrent_writes_per_id' (16) must be the 4 writes per ID the upstream port can issue}}
-  %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !recounted
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!bursty) -> !recounted
+}
+
+
+// -----
+
+// A split reuses the upstream tags, so its beats are still the same requests
+!bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!recounted = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, concurrent_writes_per_id = 16, concurrent_reads_per_id = 4>
+
+hw.module @RecountingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
+                              in %upstream : !bursty) {
+  // expected-error @below {{'axi4.burst_splitter' op downstream port's 'concurrent_writes_per_id' (16) must be the 4 writes per ID the upstream port can issue}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!bursty) -> !recounted
 }
 
 // -----
@@ -491,7 +491,7 @@ hw.module @DemuxTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1, in %upst
 hw.module @RewidthingUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
                                in %upstream : !wrapping) {
   // expected-error @below {{'axi4.burst_unwrapper' op downstream port's 'data_width' (32) must match upstream port's (64)}}
-  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !narrow_data
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!wrapping) -> !narrow_data
 }
 
 // -----
@@ -502,7 +502,7 @@ hw.module @RewidthingUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @MovingUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
                            in %upstream : !wrapping) {
   // expected-error @below {{'axi4.burst_unwrapper' op upstream and downstream windows must cover the same addresses}}
-  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !moved
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!wrapping) -> !moved
 }
 
 // -----
@@ -513,7 +513,7 @@ hw.module @MovingUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @StillWrapping(in %clk : !seq.clock, in %rst_ni : i1,
                          in %upstream : !wrapping) {
   // expected-error @below {{'axi4.burst_unwrapper' op downstream window must support at least #axi4.burst_set<<incr, len = 4>> (the upstream's wrapping bursts as incrementing ones), but supports #axi4.burst_set<<wrap, len = 4>>}}
-  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !still_wrapping
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!wrapping) -> !still_wrapping
 }
 
 // -----
@@ -704,8 +704,8 @@ hw.module @UndersizedMuxPort(in %clk : !seq.clock, in %rst_ni : i1,
 
 hw.module @UndercountedIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
                                 in %upstream : !wide_ids) {
-  // expected-error @below {{'axi4.id_width_converter' op downstream port's 'concurrent_writes_per_id' (2) must be between the 8 and 32 writes per ID the upstream port can issue, as its IDs merge onto the downstream ones}}
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !undercounted
+  // expected-error @below {{'axi4.id_width_converter' op downstream port's 'concurrent_writes_per_id' (2) must be between the 8 and 32 writes per ID the upstream port can issue, as its IDs merge onto the downstream ones within the converter's budget}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 8 : (!wide_ids) -> !undercounted
 }
 
 
@@ -718,8 +718,8 @@ hw.module @UndercountedIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
 
 hw.module @UndercountedIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
                                 in %upstream : !wide_ids) {
-  // expected-error @below {{'axi4.id_width_converter' op downstream port's 'concurrent_writes_per_id' (2) must be between the 8 and 32 writes per ID the upstream port can issue, as its IDs merge onto the downstream ones}}
-  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !undercounted
+  // expected-error @below {{'axi4.id_width_converter' op downstream port's 'concurrent_writes_per_id' (2) must be between the 8 and 32 writes per ID the upstream port can issue, as its IDs merge onto the downstream ones within the converter's budget}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 8 : (!wide_ids) -> !undercounted
 }
 
 
@@ -732,7 +732,7 @@ hw.module @UndercountedIdConverter(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @RecountingUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
                                in %upstream : !wrapping) {
   // expected-error @below {{'axi4.burst_unwrapper' op downstream port's 'concurrent_writes_per_id' (8) must be the 4 writes per ID the upstream port can issue}}
-  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapping) -> !recounted
+  %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream concurrent_writes 4 concurrent_reads 4 : (!wrapping) -> !recounted
 }
 
 // -----
@@ -873,7 +873,7 @@ hw.module @ReversedDummiesAccess(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @RemapTrackingNothing(in %clk : !seq.clock, in %rst_ni : i1,
                                 in %upstream : !wide_ids) {
   // expected-error @below {{'axi4.id_remap' op 'max_unique_ids' must be at least 1}}
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 0 : (!wide_ids) -> !no_ids
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 0, concurrent_per_id = 4 : (!wide_ids) -> !no_ids
 }
 
 // -----
@@ -884,7 +884,7 @@ hw.module @RemapTrackingNothing(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @RemapPastUpstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
                                 in %upstream : !few_ids) {
   // expected-error @below {{'axi4.id_remap' op 'max_unique_ids' (4) must be at most the 2 IDs the upstream port's 'write_id_width' gives}}
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!few_ids) -> !more_ids
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!few_ids) -> !more_ids
 }
 
 // -----
@@ -895,7 +895,7 @@ hw.module @RemapPastUpstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @RemapPastDownstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
                                   in %upstream : !wide_ids) {
   // expected-error @below {{'axi4.id_remap' op 'max_unique_ids' (4) must be at most the 2 IDs the downstream port's 'read_id_width' gives}}
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!wide_ids) -> !short_reads
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !short_reads
 }
 
 // -----
@@ -905,8 +905,8 @@ hw.module @RemapPastDownstreamIds(in %clk : !seq.clock, in %rst_ni : i1,
 
 hw.module @UndercountedIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
                             in %upstream : !wide_ids) {
-  // expected-error @below {{'axi4.id_remap' op downstream port's 'concurrent_writes_per_id' (2) must be the 8 writes per ID the upstream port can issue}}
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 3 : (!wide_ids) -> !undercounted
+  // expected-error @below {{'axi4.id_remap' op downstream port's 'concurrent_writes_per_id' (2) must be the 8 writes per ID the upstream port can issue within the remapper's budget}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 3, concurrent_per_id = 8 : (!wide_ids) -> !undercounted
 }
 
 // -----
@@ -917,7 +917,7 @@ hw.module @UndercountedIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @RewidthingIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
                              in %upstream : !wide_ids) {
   // expected-error @below {{'axi4.id_remap' op downstream port's 'data_width' (32) must match upstream port's (64)}}
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!wide_ids) -> !thin_data
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !thin_data
 }
 
 // -----
@@ -928,7 +928,7 @@ hw.module @RewidthingIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @MovingIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
                          in %upstream : !wide_ids) {
   // expected-error @below {{'axi4.id_remap' op upstream and downstream windows must cover the same addresses}}
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!wide_ids) -> !moved_ids
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!wide_ids) -> !moved_ids
 }
 
 // -----
@@ -936,7 +936,64 @@ hw.module @MovingIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @DummiesRemapTrackingNothing(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // expected-error @below {{'axi4.dummies.id_remap' op 'max_unique_ids' must be at least 1}}
-  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 0
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 0, concurrent_per_id = 4
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+hw.module @ConvertsNoReads(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !port) {
+  // expected-error @below {{'axi4.data_width_converter' op 'max_unique_read_ids' must be at least 1}}
+  %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 0 : (!port) -> !thin
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+hw.module @SplitsNoWrites(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !port) {
+  // expected-error @below {{'axi4.burst_splitter' op 'concurrent_writes' must be at least 1}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 0 concurrent_reads 4 : (!port) -> !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!narrow = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+hw.module @ConverterTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !port) {
+  // expected-error @below {{'axi4.id_width_converter' op 'concurrent_per_id' must be at least 1}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 0 : (!port) -> !narrow
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!narrow = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+hw.module @ConverterTracksPastUpstreamIds(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !port) {
+  // expected-error @below {{'axi4.id_width_converter' op 'max_unique_ids' (32) must be at most the 16 IDs the upstream port's 'write_id_width' gives}}
+  %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 32, concurrent_per_id = 4 : (!port) -> !narrow
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!narrow = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+hw.module @RemapTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !port) {
+  // expected-error @below {{'axi4.id_remap' op 'concurrent_per_id' must be at least 1}}
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 0 : (!port) -> !narrow
+}
+
+// -----
+
+hw.module @DummiesRemapTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.id_remap' op 'concurrent_per_id' must be at least 1}}
+  %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 4, concurrent_per_id = 0
 }
 
 // -----
@@ -957,4 +1014,14 @@ hw.module @XbarPastBudget(in %clk : !seq.clock, in %rst_ni : i1, in %mgr : !mgr)
 hw.module @DemuxPastBudget(in %clk : !seq.clock, in %rst_ni : i1, in %mgr : !mgr) {
   // expected-error @below {{'axi4.demux' op downstream port #0's 'concurrent_writes_per_id' (4) must be the 3 writes per ID the managers reaching it can issue within the demux's budget}}
   %sub = axi4.demux %clk, %rst_ni, %mgr upstream_concurrent_per_id 3 : (!mgr) -> !over
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!split = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+hw.module @SplitterPastBudget(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !port) {
+  // expected-error @below {{'axi4.burst_splitter' op downstream port's 'concurrent_writes_per_id' (4) must be the 2 writes per ID the upstream port can issue within the splitter's budget}}
+  %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 2 concurrent_reads 4 : (!port) -> !split
 }

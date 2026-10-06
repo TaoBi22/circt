@@ -64,6 +64,7 @@ fuseAdaptorPair(Op op, PatternRewriter &rewriter,
   rewriter.modifyOpInPlace(
       op, [&] { op.getUpstreamMutable().assign(prev.getUpstream()); });
   mergePulpConfig(op, *config, rewriter);
+  mergeBudgets(op, prev, rewriter);
   // Nothing here is `Pure`, so the adaptor left behind will not be dropped for
   // us.
   rewriter.eraseOp(prev);

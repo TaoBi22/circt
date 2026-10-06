@@ -52,9 +52,9 @@ hw.module @UnreachableBehindAdaptors(in %clk : !seq.clock, in %rst_ni : i1) {
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
   %cut = axi4.cut %clk, %rst_ni, %gap : !sub_gap
-  %converted = axi4.id_width_converter %clk, %rst_ni, %cut
+  %converted = axi4.id_width_converter %clk, %rst_ni, %cut max_unique_ids = 4, concurrent_per_id = 4
     : (!sub_gap) -> !sub_gap
-  %remapped = axi4.id_remap %clk, %rst_ni, %converted max_unique_ids = 4
+  %remapped = axi4.id_remap %clk, %rst_ni, %converted max_unique_ids = 4, concurrent_per_id = 4
     : (!sub_gap) -> !sub_gap
   axi4.abstract_subordinate %clk, %rst_ni, %remapped concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_gap
 }
@@ -120,7 +120,8 @@ hw.module @UnreachableDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
 
 // Check that adaptors fuse where canonicalization will not: through the cuts
 // and crossings in between, and without asking that the conversion invert
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 32>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 32>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
+!one_read = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
 !narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // Narrowing merges the IDs in flight, so this pair orders transactions the
@@ -130,9 +131,9 @@ hw.module @FuseDippingIdWidths(in %clk : !seq.clock, in %rst_ni : i1,
                                in %upstream : !mgr_lo) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.id_width_converter
-  %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream
+  %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4
     : (!mgr_lo) -> !narrow_ids
-  %wide = axi4.id_width_converter %clk, %rst_ni, %narrow
+  %wide = axi4.id_width_converter %clk, %rst_ni, %narrow max_unique_ids = 4, concurrent_per_id = 4
     : (!narrow_ids) -> !mgr_lo
   axi4.abstract_subordinate %clk, %rst_ni, %wide
     concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
@@ -141,44 +142,44 @@ hw.module @FuseDippingIdWidths(in %clk : !seq.clock, in %rst_ni : i1,
 // The cut stays where it was put, but now carries the wider port
 // CHECK-LABEL: hw.module @FuseAcrossCut
 hw.module @FuseAcrossCut(in %clk : !seq.clock, in %rst_ni : i1,
-                         in %upstream : !mgr_lo) {
+                         in %upstream : !one_read) {
   // CHECK-NEXT: %[[CUT:.+]] = axi4.cut %clk, %rst_ni, %upstream : !axi4.port<{{.*}}data_width = 64,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[CUT]]
   // CHECK-NOT: axi4.data_width_converter
-  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream
-    : (!mgr_lo) -> !thin
+  %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream max_unique_read_ids 4
+    : (!one_read) -> !thin
   %cut = axi4.cut %clk, %rst_ni, %narrow : !thin
-  %wide = axi4.data_width_converter %clk, %rst_ni, %cut : (!thin) -> !mgr_lo
+  %wide = axi4.data_width_converter %clk, %rst_ni, %cut max_unique_read_ids 4 : (!thin) -> !one_read
   axi4.abstract_subordinate %clk, %rst_ni, %wide
-    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !one_read
 }
 
 // A crossing keeps both its clock domains, and widens like a cut
 // CHECK-LABEL: hw.module @FuseAcrossCdc
 hw.module @FuseAcrossCdc(in %aclk : !seq.clock, in %bclk : !seq.clock,
-                         in %rst_ni : i1, in %upstream : !mgr_lo) {
+                         in %rst_ni : i1, in %upstream : !one_read) {
   // CHECK-NEXT: %[[CDC:.+]] = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream : !axi4.port<{{.*}}data_width = 64,
   // CHECK-NEXT: axi4.abstract_subordinate %bclk, %rst_ni, %[[CDC]]
   // CHECK-NOT: axi4.data_width_converter
-  %narrow = axi4.data_width_converter %aclk, %rst_ni, %upstream
-    : (!mgr_lo) -> !thin
+  %narrow = axi4.data_width_converter %aclk, %rst_ni, %upstream max_unique_read_ids 4
+    : (!one_read) -> !thin
   %cdc = axi4.cdc from %aclk to %bclk, %rst_ni, %narrow : !thin
-  %wide = axi4.data_width_converter %bclk, %rst_ni, %cdc : (!thin) -> !mgr_lo
+  %wide = axi4.data_width_converter %bclk, %rst_ni, %cdc max_unique_read_ids 4 : (!thin) -> !one_read
   axi4.abstract_subordinate %bclk, %rst_ni, %wide
-    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !one_read
 }
 
 // A chain of crossings crosses once, into the domain it ends up in
 // CHECK-LABEL: hw.module @FuseCrossingChain
 hw.module @FuseCrossingChain(in %aclk : !seq.clock, in %bclk : !seq.clock,
                              in %cclk : !seq.clock, in %rst_ni : i1,
-                             in %upstream : !mgr_lo) {
+                             in %upstream : !one_read) {
   // CHECK-NEXT: %[[CDC:.+]] = axi4.cdc from %aclk to %cclk, %rst_ni, %upstream
   // CHECK-NEXT: axi4.abstract_subordinate %cclk, %rst_ni, %[[CDC]]
-  %ab = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream : !mgr_lo
-  %bc = axi4.cdc from %bclk to %cclk, %rst_ni, %ab : !mgr_lo
+  %ab = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream : !one_read
+  %bc = axi4.cdc from %bclk to %cclk, %rst_ni, %ab : !one_read
   axi4.abstract_subordinate %cclk, %rst_ni, %bc
-    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !one_read
 }
 
 // A chain ending where it started crosses nothing
@@ -210,16 +211,17 @@ hw.module @CrossingsAcrossCut(in %aclk : !seq.clock, in %bclk : !seq.clock,
 
 !mid_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 3, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
-// A fused adaptor takes the PULP config of both adaptors
+// A fused adaptor takes the PULP config of both adaptors, and the smaller of
+// their budgets
 // CHECK-LABEL: hw.module @FusePulpConfig
 hw.module @FusePulpConfig(in %clk : !seq.clock, in %rst_ni : i1,
                           in %upstream : !mgr_lo) {
-  // CHECK-NEXT: %[[IW:.+]] = axi4.id_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_AxiMstPortMaxUniqIds = 2 : i32, PULP_CONFIG_AxiSlvPortMaxTxns = 8 : i32}
+  // CHECK-NEXT: %[[IW:.+]] = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 2 {PULP_CONFIG_A = 1 : i32, PULP_CONFIG_B = 2 : i32}
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[IW]]
-  %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream
-    {PULP_CONFIG_AxiSlvPortMaxTxns = 8 : i32} : (!mgr_lo) -> !narrow_ids
-  %mid = axi4.id_width_converter %clk, %rst_ni, %narrow
-    {PULP_CONFIG_AxiMstPortMaxUniqIds = 2 : i32} : (!narrow_ids) -> !mid_ids
+  %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream max_unique_ids = 8, concurrent_per_id = 2
+    {PULP_CONFIG_A = 1 : i32} : (!mgr_lo) -> !narrow_ids
+  %mid = axi4.id_width_converter %clk, %rst_ni, %narrow max_unique_ids = 4, concurrent_per_id = 3
+    {PULP_CONFIG_B = 2 : i32} : (!narrow_ids) -> !mid_ids
   axi4.abstract_subordinate %clk, %rst_ni, %mid
     concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mid_ids
 }
