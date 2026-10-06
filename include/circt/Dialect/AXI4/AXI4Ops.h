@@ -50,7 +50,8 @@ inline constexpr llvm::StringLiteral kPulpConfigPrefix("PULP_CONFIG_");
 inline constexpr llvm::StringLiteral kPulpAtopsAttr("pulp.atops");
 
 /// The attribute marking an `!axi4.port` module port as having the atomic
-/// operations reaching it filtered out by PULP's axi_atop_filter.
+/// operations reaching it filtered out by PULP's axi_atop_filter. A unit, or an
+/// i32 giving the most writes the filter lets run ahead of their data.
 inline constexpr llvm::StringLiteral kPulpAtopFilterAttr("pulp.atop_filter");
 
 /// The attributes of `op` configuring the PULP IP it is mapped onto.

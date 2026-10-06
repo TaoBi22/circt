@@ -1,8 +1,8 @@
 // RUN: circt-opt %s --lower-axi4-to-hw=pulp-mapping=true --split-input-file | FileCheck %s
 
-!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 2>
-!sub_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x7ff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 4>
-!sub_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x800, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 4>
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+!sub_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x7ff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+!sub_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x800, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
 
 hw.module.extern @Manager(out axi : !mgr)
 hw.module.extern @Low(in %axi : !sub_lo)
@@ -34,9 +34,10 @@ hw.module.extern @High(in %axi : !sub_hi)
 // CHECK-SAME:   NoSlvPorts:         2,\0A
 // CHECK-SAME:   NoMstPorts:         2,\0A
 
-// The outstanding counts come from the ports, per side
-// CHECK-SAME:   MaxSlvTrans:        4,\0A
-// CHECK-SAME:   MaxMstTrans:        8,\0A
+// Each manager's transactions per ID come from its port, and the writes
+// running ahead of their data take PULP's default
+// CHECK-SAME:   MaxSlvTrans:        8,\0A
+// CHECK-SAME:   MaxMstTrans:        4,\0A
 // CHECK-SAME:   NoAddrRules:        2,\0A
 
 // One rule per window of each downstream port, half open, indexed by port. The
@@ -68,8 +69,8 @@ hw.module @TwoToTwo(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // A port with no user field neither reads nor drives PULP's, which is still a
 // bit wide, so the crossbar side is tied off
-!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Manager(out axi : !mgr)
 hw.module.extern @Subordinate(in %axi : !sub)
@@ -88,8 +89,8 @@ hw.module @NoUser(in %clk : !seq.clock, in %rst_ni : i1) {
 // -----
 
 // With a user field both sides carry it, and PULP's atop is still tied off
-!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 3, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 3, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 3, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 3, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Manager(out axi : !mgr)
 hw.module.extern @Subordinate(in %axi : !sub)
@@ -109,8 +110,8 @@ hw.module @WithUser(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // A window reaching the top of the address space wraps to zero, which is how
 // PULP describes address windows that run to the end of the address space
-!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xffffffff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xffffffff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xffffffff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xffffffff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Manager(out axi : !mgr)
 hw.module.extern @Subordinate(in %axi : !sub)
@@ -127,8 +128,8 @@ hw.module @WholeSpace(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // An address width that is not 32 or 64 gets rules of its own width, and its
 // whole address space still wraps to zero
-!mgr = !axi4.port<addr_width = 48, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xffffffffffff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub = !axi4.port<addr_width = 48, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xffffffffffff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mgr = !axi4.port<addr_width = 48, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xffffffffffff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub = !axi4.port<addr_width = 48, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xffffffffffff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Manager(out axi : !mgr)
 hw.module.extern @Subordinate(in %axi : !sub)

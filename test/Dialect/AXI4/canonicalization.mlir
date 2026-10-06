@@ -5,7 +5,7 @@
 //===----------------------------------------------------------------------===//
 
 // Check that no-op adaptors are canonicalized away
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @IdentityDataWidthConverter
 hw.module @IdentityDataWidthConverter(in %clk : !seq.clock, in %rst_ni : i1,
@@ -13,7 +13,7 @@ hw.module @IdentityDataWidthConverter(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.data_width_converter
   %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!port) -> !port
-  axi4.abstract_subordinate %clk, %rst_ni, %dwc concurrent_writes 4 concurrent_reads 4 : !port
+  axi4.abstract_subordinate %clk, %rst_ni, %dwc concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
 // CHECK-LABEL: hw.module @IdentityIdWidthConverter
@@ -22,7 +22,7 @@ hw.module @IdentityIdWidthConverter(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.id_width_converter
   %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!port) -> !port
-  axi4.abstract_subordinate %clk, %rst_ni, %iwc concurrent_writes 4 concurrent_reads 4 : !port
+  axi4.abstract_subordinate %clk, %rst_ni, %iwc concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
 // CHECK-LABEL: hw.module @IdentityIdRemap
@@ -30,11 +30,20 @@ hw.module @IdentityIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
                            in %upstream : !port) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.id_remap
-  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!port) -> !port
-  axi4.abstract_subordinate %clk, %rst_ni, %remap concurrent_writes 4 concurrent_reads 4 : !port
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 16 : (!port) -> !port
+  axi4.abstract_subordinate %clk, %rst_ni, %remap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
-!beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+// A remapper tracking fewer IDs than the port has limits the IDs in flight
+// CHECK-LABEL: hw.module @LimitingIdRemap
+hw.module @LimitingIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
+                           in %upstream : !port) {
+  // CHECK-NEXT: axi4.id_remap
+  %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4 : (!port) -> !port
+  axi4.abstract_subordinate %clk, %rst_ni, %remap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
+}
+
+!beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @IdempotentBurstSplitter
 hw.module @IdempotentBurstSplitter(in %clk : !seq.clock, in %rst_ni : i1,
@@ -42,7 +51,7 @@ hw.module @IdempotentBurstSplitter(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.burst_splitter
   %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!beats) -> !beats
-  axi4.abstract_subordinate %clk, %rst_ni, %split concurrent_writes 4 concurrent_reads 4 : !beats
+  axi4.abstract_subordinate %clk, %rst_ni, %split concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !beats
 }
 
 // CHECK-LABEL: hw.module @IdempotentBurstUnwrapper
@@ -51,7 +60,7 @@ hw.module @IdempotentBurstUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.burst_unwrapper
   %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!port) -> !port
-  axi4.abstract_subordinate %clk, %rst_ni, %unwrapped concurrent_writes 4 concurrent_reads 4 : !port
+  axi4.abstract_subordinate %clk, %rst_ni, %unwrapped concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
 // CHECK-LABEL: hw.module @SameClockCdc
@@ -60,7 +69,7 @@ hw.module @SameClockCdc(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.cdc
   %cdc = axi4.cdc from %clk to %clk, %rst_ni, %upstream : !port
-  axi4.abstract_subordinate %clk, %rst_ni, %cdc concurrent_writes 4 concurrent_reads 4 : !port
+  axi4.abstract_subordinate %clk, %rst_ni, %cdc concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
 //===----------------------------------------------------------------------===//
@@ -69,8 +78,8 @@ hw.module @SameClockCdc(in %clk : !seq.clock, in %rst_ni : i1,
 
 // Check that chained adaptors fuse into one converting to the final type, and
 // that a fused pair restoring the original type then folds away entirely
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 32>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!thinner = !axi4.port<addr_width = 32, data_width = 16, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 64>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 32>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!thinner = !axi4.port<addr_width = 32, data_width = 16, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 64>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @ChainedDataWidthConverters
 hw.module @ChainedDataWidthConverters(in %clk : !seq.clock, in %rst_ni : i1,
@@ -79,7 +88,7 @@ hw.module @ChainedDataWidthConverters(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[FUSED]]
   %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream : (!port) -> !thin
   %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow : (!thin) -> !thinner
-  axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes 4 concurrent_reads 4 : !thinner
+  axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !thinner
 }
 
 // A fused adaptor takes the PULP config of both adaptors
@@ -90,7 +99,7 @@ hw.module @ChainedPulpConfig(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[FUSED]]
   %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_A = 1 : i32} : (!port) -> !thin
   %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow {PULP_CONFIG_B = 2 : i32} : (!thin) -> !thinner
-  axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes 4 concurrent_reads 4 : !thinner
+  axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !thinner
 }
 
 // Adaptors setting a PULP parameter to different values are not fused, so
@@ -103,7 +112,7 @@ hw.module @ChainedPulpConfigConflict(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[NARROWER]]
   %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream {PULP_CONFIG_A = 1 : i32} : (!port) -> !thin
   %narrower = axi4.data_width_converter %clk, %rst_ni, %narrow {PULP_CONFIG_A = 2 : i32} : (!thin) -> !thinner
-  axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes 4 concurrent_reads 4 : !thinner
+  axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !thinner
 }
 
 // CHECK-LABEL: hw.module @NarrowThenWidenData
@@ -113,7 +122,7 @@ hw.module @NarrowThenWidenData(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NOT: axi4.data_width_converter
   %narrow = axi4.data_width_converter %clk, %rst_ni, %upstream : (!port) -> !thin
   %wide = axi4.data_width_converter %clk, %rst_ni, %narrow : (!thin) -> !port
-  axi4.abstract_subordinate %clk, %rst_ni, %wide concurrent_writes 4 concurrent_reads 4 : !port
+  axi4.abstract_subordinate %clk, %rst_ni, %wide concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
 // CHECK-LABEL: hw.module @WidenThenNarrowData
@@ -123,10 +132,10 @@ hw.module @WidenThenNarrowData(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NOT: axi4.data_width_converter
   %wide = axi4.data_width_converter %clk, %rst_ni, %upstream : (!thin) -> !port
   %narrow = axi4.data_width_converter %clk, %rst_ni, %wide : (!port) -> !thin
-  axi4.abstract_subordinate %clk, %rst_ni, %narrow concurrent_writes 4 concurrent_reads 4 : !thin
+  axi4.abstract_subordinate %clk, %rst_ni, %narrow concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !thin
 }
 
-!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 6, read_id_width = 6, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 6, read_id_width = 6, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @WidenThenNarrowIds
 hw.module @WidenThenNarrowIds(in %clk : !seq.clock, in %rst_ni : i1,
@@ -135,10 +144,10 @@ hw.module @WidenThenNarrowIds(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NOT: axi4.id_width_converter
   %wide = axi4.id_width_converter %clk, %rst_ni, %upstream : (!port) -> !wide_ids
   %narrow = axi4.id_width_converter %clk, %rst_ni, %wide : (!wide_ids) -> !port
-  axi4.abstract_subordinate %clk, %rst_ni, %narrow concurrent_writes 4 concurrent_reads 4 : !port
+  axi4.abstract_subordinate %clk, %rst_ni, %narrow concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
-!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @ChainedIdWidthConverters
 hw.module @ChainedIdWidthConverters(in %clk : !seq.clock, in %rst_ni : i1,
@@ -147,7 +156,7 @@ hw.module @ChainedIdWidthConverters(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[FUSED]]
   %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !port
   %narrower = axi4.id_width_converter %clk, %rst_ni, %narrow : (!port) -> !narrow_ids
-  axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes 4 concurrent_reads 4 : !narrow_ids
+  axi4.abstract_subordinate %clk, %rst_ni, %narrower concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !narrow_ids
 }
 
 // Make sure a pair of ID width converters whose narrowest width is in the
@@ -160,7 +169,7 @@ hw.module @IdWidthConvertersDippingBelow(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[WIDE]]
   %narrow = axi4.id_width_converter %clk, %rst_ni, %upstream : (!port) -> !narrow_ids
   %wide = axi4.id_width_converter %clk, %rst_ni, %narrow : (!narrow_ids) -> !wide_ids
-  axi4.abstract_subordinate %clk, %rst_ni, %wide concurrent_writes 4 concurrent_reads 4 : !wide_ids
+  axi4.abstract_subordinate %clk, %rst_ni, %wide concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !wide_ids
 }
 
 //===----------------------------------------------------------------------===//
@@ -169,11 +178,11 @@ hw.module @IdWidthConvertersDippingBelow(in %clk : !seq.clock, in %rst_ni : i1,
 
 // Check that downstream ports nothing consumes and no manager can address are
 // dropped from the ops routing to them
-!mgr_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!mgr_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub_gap = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 0, outstanding_reads = 0>
+!mgr_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!mgr_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub_gap = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 0, concurrent_reads_per_id = 0>
 
 // CHECK-LABEL: hw.module @UnreachableDeadXbarPort
 hw.module @UnreachableDeadXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
@@ -184,8 +193,8 @@ hw.module @UnreachableDeadXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
 }
 
 // A dropped port's column goes from the crossbar's PULP connectivity
@@ -196,8 +205,8 @@ hw.module @UnreachableDeadConnectivity(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   %lo, %gap, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi {PULP_CONFIG_Connectivity = [[true, true, false], [false, false, true]]}
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_gap, !sub_hi)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
 }
 
 // We don't want to drop ports necessary for full coverage of upstream ports
@@ -209,7 +218,7 @@ hw.module @ReachableDeadXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
 }
 
 // CHECK-LABEL: hw.module @UnreachableLiveXbarPort
@@ -219,13 +228,13 @@ hw.module @UnreachableLiveXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
-  axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes 4 concurrent_reads 4 : !sub_gap
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_gap
 }
 
-!demuxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!demux_gap = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 0, outstanding_reads = 0>
+!demuxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!demux_gap = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 0, concurrent_reads_per_id = 0>
 
 // CHECK-LABEL: hw.module @UnreachableDeadDemuxPort
 hw.module @UnreachableDeadDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
@@ -234,8 +243,8 @@ hw.module @UnreachableDeadDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NOT: 0x4000
   %lo, %hi, %gap = axi4.demux %clk, %rst_ni, %upstream
     : (!demuxed) -> (!mgr_lo, !mgr_hi, !demux_gap)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !mgr_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !mgr_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_hi
 }
 
 //===----------------------------------------------------------------------===//
@@ -245,7 +254,7 @@ hw.module @UnreachableDeadDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
 // Check that routing ops with nothing left to route collapse, that a crossbar
 // with one manager becomes a demux, and that one with one subordinate becomes a
 // mux
-!sub_lo_untagged = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!sub_lo_untagged = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @OneToOneXbar
 hw.module @OneToOneXbar(in %clk : !seq.clock, in %rst_ni : i1) {
@@ -254,7 +263,7 @@ hw.module @OneToOneXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-NOT: axi4.xbar
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %sub = axi4.xbar %clk, %rst_ni mgrs %mgr : (!mgr_lo) -> (!sub_lo_untagged)
-  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes 4 concurrent_reads 4 : !sub_lo_untagged
+  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo_untagged
 }
 
 // CHECK-LABEL: hw.module @SingleManagerXbar
@@ -264,11 +273,11 @@ hw.module @SingleManagerXbar(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NOT: axi4.xbar
   %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %upstream
     : (!demuxed) -> (!mgr_lo, !mgr_hi)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !mgr_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !mgr_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_hi
 }
 
-!sub_both = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 8, outstanding_reads = 8>
+!sub_both = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @SingleSubordinateXbar
 hw.module @SingleSubordinateXbar(in %clk : !seq.clock, in %rst_ni : i1) {
@@ -278,7 +287,7 @@ hw.module @SingleSubordinateXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
     : (!mgr_lo, !mgr_hi) -> (!sub_both)
-  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes 4 concurrent_reads 4 : !sub_both
+  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_both
 }
 
 // A crossbar with PULP config is configuring axi_xbar, so it does not collapse
@@ -287,7 +296,7 @@ hw.module @ConfiguredOneToOneXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: axi4.xbar %clk, %rst_ni mgrs %{{.+}} {PULP_CONFIG_PipelineStages = 1 : i32}
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %sub = axi4.xbar %clk, %rst_ni mgrs %mgr {PULP_CONFIG_PipelineStages = 1 : i32} : (!mgr_lo) -> (!sub_lo_untagged)
-  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes 4 concurrent_reads 4 : !sub_lo_untagged
+  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo_untagged
 }
 
 // CHECK-LABEL: hw.module @ConfiguredSingleManagerXbar
@@ -297,8 +306,8 @@ hw.module @ConfiguredSingleManagerXbar(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NOT: axi4.demux
   %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %upstream {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
     : (!demuxed) -> (!mgr_lo, !mgr_hi)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !mgr_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !mgr_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_hi
 }
 
 // CHECK-LABEL: hw.module @ConfiguredSingleSubordinateXbar
@@ -309,7 +318,7 @@ hw.module @ConfiguredSingleSubordinateXbar(in %clk : !seq.clock, in %rst_ni : i1
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
     : (!mgr_lo, !mgr_hi) -> (!sub_both)
-  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes 4 concurrent_reads 4 : !sub_both
+  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_both
 }
 
 // CHECK-LABEL: hw.module @OneWayDemux
@@ -318,7 +327,7 @@ hw.module @OneWayDemux(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.demux
   %down = axi4.demux %clk, %rst_ni, %upstream : (!mgr_lo) -> (!mgr_lo)
-  axi4.abstract_subordinate %clk, %rst_ni, %down concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %down concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
 // CHECK-LABEL: hw.module @OneWayMux
@@ -327,11 +336,11 @@ hw.module @OneWayMux(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.mux
   %down = axi4.mux %clk, %rst_ni, %upstream : (!mgr_lo) -> (!mgr_lo)
-  axi4.abstract_subordinate %clk, %rst_ni, %down concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %down concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
 // A demux advertising a wider window than it is given still filters addresses
-!wider_window = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!wider_window = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @OneWayDemuxWideningWindow
 hw.module @OneWayDemuxWideningWindow(in %clk : !seq.clock, in %rst_ni : i1,
@@ -339,7 +348,7 @@ hw.module @OneWayDemuxWideningWindow(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: %[[DOWN:.+]] = axi4.demux %clk, %rst_ni, %upstream
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[DOWN]]
   %down = axi4.demux %clk, %rst_ni, %upstream : (!mgr_lo) -> (!wider_window)
-  axi4.abstract_subordinate %clk, %rst_ni, %down concurrent_writes 4 concurrent_reads 4 : !wider_window
+  axi4.abstract_subordinate %clk, %rst_ni, %down concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !wider_window
 }
 
 // A mux widening the ID width still tags, however little there is to arbitrate
@@ -349,5 +358,5 @@ hw.module @OneWayMuxWideningIds(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK-NEXT: %[[DOWN:.+]] = axi4.mux %clk, %rst_ni, %upstream
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[DOWN]]
   %down = axi4.mux %clk, %rst_ni, %upstream : (!mgr_lo) -> (!sub_lo)
-  axi4.abstract_subordinate %clk, %rst_ni, %down concurrent_writes 4 concurrent_reads 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %down concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
 }

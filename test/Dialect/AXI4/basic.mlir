@@ -71,16 +71,16 @@
 // Types
 //===----------------------------------------------------------------------===//
 
-// CHECK: !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-"test.port"() : () -> !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+// CHECK: !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+"test.port"() : () -> !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // Check with widest widths (and make sure ID width check doesn't overflow)
-// CHECK: !axi4.port<addr_width = 64, data_width = 1024, write_id_width = 32, read_id_width = 32, user_width = 8, windows = <<base = 0x0, last = 0xffffffffffffffff, burst_specs = <<incr, len = 256>>>>, outstanding_writes = 4294967295, outstanding_reads = 4294967295>
-"test.port"() : () -> !axi4.port<addr_width = 64, data_width = 1024, write_id_width = 32, read_id_width = 32, user_width = 8, windows = <<base = 0x0, last = 0xffffffffffffffff, burst_specs = <<incr, len = 256>>>>, outstanding_writes = 4294967295, outstanding_reads = 4294967295>
+// CHECK: !axi4.port<addr_width = 64, data_width = 1024, write_id_width = 32, read_id_width = 32, user_width = 8, windows = <<base = 0x0, last = 0xffffffffffffffff, burst_specs = <<incr, len = 256>>>>, concurrent_writes_per_id = 4294967295, concurrent_reads_per_id = 4294967295>
+"test.port"() : () -> !axi4.port<addr_width = 64, data_width = 1024, write_id_width = 32, read_id_width = 32, user_width = 8, windows = <<base = 0x0, last = 0xffffffffffffffff, burst_specs = <<incr, len = 256>>>>, concurrent_writes_per_id = 4294967295, concurrent_reads_per_id = 4294967295>
 
 // Check fields may be given in any order, and are printed in a canonical one
-// CHECK: !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-"test.port"() : () -> !axi4.port<outstanding_reads = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, data_width = 64, user_width = 0, addr_width = 32, outstanding_writes = 4, read_id_width = 4, write_id_width = 4>
+// CHECK: !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+"test.port"() : () -> !axi4.port<concurrent_reads_per_id = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, data_width = 64, user_width = 0, addr_width = 32, concurrent_writes_per_id = 4, read_id_width = 4, write_id_width = 4>
 
 // CHECK: !axi4.dummies.port
 "test.port"() : () -> !axi4.dummies.port
@@ -95,7 +95,7 @@
 // Operations
 //===----------------------------------------------------------------------===//
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // Typedefs for port channel structs
 !aw = !hw.struct<id: i5, addr: i32, len: i8, size: i3, burst: i2, lock: i1, cache: i4, prot: i3, qos: i4, region: i4, user: i4>
@@ -106,10 +106,10 @@
 
 // CHECK-LABEL: hw.module @AbstractEndpoints
 hw.module @AbstractEndpoints(in %clk : !seq.clock, in %rst_ni : i1) {
-  // CHECK: %[[MGR:.+]] = axi4.abstract_manager %clk, %rst_ni {a} : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: %[[MGR:.+]] = axi4.abstract_manager %clk, %rst_ni {a} : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %mgr = axi4.abstract_manager %clk, %rst_ni {a} : !port
-  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[MGR]] concurrent_writes 2 concurrent_reads 3 {b} : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-  axi4.abstract_subordinate %clk, %rst_ni, %mgr concurrent_writes 2 concurrent_reads 3 {b} : !port
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[MGR]] concurrent_writes_per_id 2 concurrent_reads_per_id 3 {b} : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+  axi4.abstract_subordinate %clk, %rst_ni, %mgr concurrent_writes_per_id 2 concurrent_reads_per_id 3 {b} : !port
 }
 
 // CHECK-LABEL: hw.module @Subordinate
@@ -119,7 +119,7 @@ hw.module @Subordinate(in %clk : !seq.clock, in %rst_ni : i1,
                        in %b_ready : i1,
                        in %ar : !ar, in %ar_valid : i1,
                        in %r_ready : i1) {
-  // CHECK: %port, %aw_ready, %w_ready, %b, %b_valid, %ar_ready, %r, %r_valid = axi4.channel_structs_to_port %clk, %rst_ni aw %aw, %aw_valid w %w, %w_valid b %b_ready ar %ar, %ar_valid r %r_ready : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: %port, %aw_ready, %w_ready, %b, %b_valid, %ar_ready, %r, %r_valid = axi4.channel_structs_to_port %clk, %rst_ni aw %aw, %aw_valid w %w, %w_valid b %b_ready ar %ar, %ar_valid r %r_ready : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %port, %aw_ready, %w_ready, %b, %b_valid, %ar_ready, %r, %r_valid =
     axi4.channel_structs_to_port %clk, %rst_ni
       aw %aw, %aw_valid w %w, %w_valid b %b_ready
@@ -132,20 +132,20 @@ hw.module @Manager(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port,
                    in %b : !b, in %b_valid : i1,
                    in %ar_ready : i1,
                    in %r : !r, in %r_valid : i1) {
-  // CHECK: %aw, %aw_valid, %w, %w_valid, %b_ready, %ar, %ar_valid, %r_ready = axi4.port_to_channel_structs %clk, %rst_ni, %port aw %aw_ready w %w_ready b %b, %b_valid ar %ar_ready r %r, %r_valid concurrent_writes 2 concurrent_reads 3 : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: %aw, %aw_valid, %w, %w_valid, %b_ready, %ar, %ar_valid, %r_ready = axi4.port_to_channel_structs %clk, %rst_ni, %port aw %aw_ready w %w_ready b %b, %b_valid ar %ar_ready r %r, %r_valid concurrent_writes_per_id 2 concurrent_reads_per_id 3 : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %aw, %aw_valid, %w, %w_valid, %b_ready, %ar, %ar_valid, %r_ready =
     axi4.port_to_channel_structs %clk, %rst_ni, %port
       aw %aw_ready w %w_ready b %b, %b_valid
       ar %ar_ready r %r, %r_valid
-      concurrent_writes 2 concurrent_reads 3 : !port
+      concurrent_writes_per_id 2 concurrent_reads_per_id 3 : !port
 }
 
 // Typedefs for two managers sharing three subordinates
-!mgr1 = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>, <base = 0x4000, last = 0x4fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!mgr2 = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
-!sub1 = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 6, outstanding_reads = 6>
-!sub2 = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub3 = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mgr1 = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>, <base = 0x4000, last = 0x4fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!mgr2 = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
+!sub1 = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub2 = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub3 = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @Crossbar
 hw.module @Crossbar(in %clk : !seq.clock, in %rst_ni : i1) {
@@ -153,21 +153,21 @@ hw.module @Crossbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr1 = axi4.abstract_manager %clk, %rst_ni : !mgr1
   // CHECK: %[[MGR2:.+]] = axi4.abstract_manager
   %mgr2 = axi4.abstract_manager %clk, %rst_ni : !mgr2
-  // CHECK: %[[XBAR:.+]]:3 = axi4.xbar %clk, %rst_ni mgrs %[[MGR1]], %[[MGR2]] : (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>, <base = 0x4000, last = 0x4fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>) -> (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 6, outstanding_reads = 6>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>)
+  // CHECK: %[[XBAR:.+]]:3 = axi4.xbar %clk, %rst_ni mgrs %[[MGR1]], %[[MGR2]] : (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>, <base = 0x4000, last = 0x4fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>) -> (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>)
   %sub1, %sub2, %sub3 = axi4.xbar %clk, %rst_ni mgrs %mgr1, %mgr2
     : (!mgr1, !mgr2) -> (!sub1, !sub2, !sub3)
-  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#0 concurrent_writes 6 concurrent_reads 6 :
-  axi4.abstract_subordinate %clk, %rst_ni, %sub1 concurrent_writes 6 concurrent_reads 6 : !sub1
-  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#1 concurrent_writes 4 concurrent_reads 4 :
-  axi4.abstract_subordinate %clk, %rst_ni, %sub2 concurrent_writes 4 concurrent_reads 4 : !sub2
-  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#2 concurrent_writes 4 concurrent_reads 4 :
-  axi4.abstract_subordinate %clk, %rst_ni, %sub3 concurrent_writes 4 concurrent_reads 4 : !sub3
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#0 concurrent_writes_per_id 6 concurrent_reads_per_id 6 :
+  axi4.abstract_subordinate %clk, %rst_ni, %sub1 concurrent_writes_per_id 6 concurrent_reads_per_id 6 : !sub1
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#1 concurrent_writes_per_id 4 concurrent_reads_per_id 4 :
+  axi4.abstract_subordinate %clk, %rst_ni, %sub2 concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub2
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#2 concurrent_writes_per_id 4 concurrent_reads_per_id 4 :
+  axi4.abstract_subordinate %clk, %rst_ni, %sub3 concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub3
 }
 
 // Typedefs for a manager whose window is split across two subordinates
-!split_mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
-!split_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
-!split_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
+!split_mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
+!split_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
+!split_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
 
 // Check a single manager needs no additional ID bits, and that its windows need
 // not line up with the downstream ones
@@ -175,17 +175,17 @@ hw.module @Crossbar(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @SplitWindow(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: %[[MGR:.+]] = axi4.abstract_manager
   %mgr = axi4.abstract_manager %clk, %rst_ni : !split_mgr
-  // CHECK: %[[XBAR:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %[[MGR]] : (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>) -> (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>)
+  // CHECK: %[[XBAR:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %[[MGR]] : (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>) -> (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>, !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>)
   %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr : (!split_mgr) -> (!split_lo, !split_hi)
-  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#0 concurrent_writes 2 concurrent_reads 2 :
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 2 concurrent_reads 2 : !split_lo
-  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#1 concurrent_writes 2 concurrent_reads 2 :
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 2 concurrent_reads 2 : !split_hi
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#0 concurrent_writes_per_id 2 concurrent_reads_per_id 2 :
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 2 concurrent_reads_per_id 2 : !split_lo
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]]#1 concurrent_writes_per_id 2 concurrent_reads_per_id 2 :
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 2 concurrent_reads_per_id 2 : !split_hi
 }
 
 // Typedefs for a manager whose subordinate takes longer bursts than it issues
-!short_mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
-!long_sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 2, outstanding_reads = 2>
+!short_mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
+!long_sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
 
 // Check a 'len' is a maximum, so a subordinate may take longer bursts than the
 // manager issues
@@ -195,34 +195,34 @@ hw.module @LongerBurstSubordinate(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr = axi4.abstract_manager %clk, %rst_ni : !short_mgr
   // CHECK: %[[XBAR:.+]] = axi4.xbar %clk, %rst_ni mgrs %[[MGR]]
   %sub = axi4.xbar %clk, %rst_ni mgrs %mgr : (!short_mgr) -> !long_sub
-  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]] concurrent_writes 2 concurrent_reads 2 :
-  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes 2 concurrent_reads 2 : !long_sub
+  // CHECK: axi4.abstract_subordinate %clk, %rst_ni, %[[XBAR]] concurrent_writes_per_id 2 concurrent_reads_per_id 2 :
+  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 2 concurrent_reads_per_id 2 : !long_sub
 }
 
 // CHECK-LABEL: hw.module @Cut
 hw.module @Cut(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !port) {
-  // CHECK: axi4.cut %clk, %rst_ni, %upstream : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: axi4.cut %clk, %rst_ni, %upstream : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %cut = axi4.cut %clk, %rst_ni, %upstream : !port
 }
 
 // CHECK-LABEL: hw.module @Cdc
 hw.module @Cdc(in %upstream_clk : !seq.clock, in %downstream_clk : !seq.clock,
                in %rst_ni : i1, in %upstream : !port) {
-  // CHECK: axi4.cdc from %upstream_clk to %downstream_clk, %rst_ni, %upstream : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: axi4.cdc from %upstream_clk to %downstream_clk, %rst_ni, %upstream : !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %cdc = axi4.cdc from %upstream_clk to %downstream_clk, %rst_ni, %upstream : !port
 }
 
-!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 8>, <incr, len = 32>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 8>, <incr, len = 32>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @DataWidthConverter
 hw.module @DataWidthConverter(in %clk : !seq.clock, in %rst_ni : i1,
                               in %upstream : !wide) {
-  // CHECK: axi4.data_width_converter %clk, %rst_ni, %upstream : (!axi4.port<addr_width = 32, data_width = 64, {{.*}} burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<addr_width = 32, data_width = 32, {{.*}} burst_specs = <<fixed, len = 8>, <incr, len = 32>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: axi4.data_width_converter %clk, %rst_ni, %upstream : (!axi4.port<addr_width = 32, data_width = 64, {{.*}} burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>) -> !axi4.port<addr_width = 32, data_width = 32, {{.*}} burst_specs = <<fixed, len = 8>, <incr, len = 32>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %dwc = axi4.data_width_converter %clk, %rst_ni, %upstream : (!wide) -> !thin
 }
 
-!longer_thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 16>, <incr, len = 64>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!longer_thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 16>, <incr, len = 64>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // Check a 'len' is a maximum, so the downstream may take longer bursts than the
 // conversion produces
@@ -235,82 +235,82 @@ hw.module @LongerBurstConverter(in %clk : !seq.clock, in %rst_ni : i1,
 
 // Typedefs for a converter narrowing the ID width, which leaves every other
 // width and the windows alone
-!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @IdWidthConverter
 hw.module @IdWidthConverter(in %clk : !seq.clock, in %rst_ni : i1,
                             in %upstream : !wide_ids) {
-  // CHECK: axi4.id_width_converter %clk, %rst_ni, %upstream : (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, {{.*}} outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: axi4.id_width_converter %clk, %rst_ni, %upstream : (!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, {{.*}} concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>) -> !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %iwc = axi4.id_width_converter %clk, %rst_ni, %upstream : (!wide_ids) -> !narrow_ids
 }
 
-// A remapper tracking 2 IDs holds only 2 of the 4 requests in flight
-!remapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 1, read_id_width = 1, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
+// A remapper tracking 2 IDs leaves the requests per ID as they are
+!remapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 1, read_id_width = 1, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @IdRemap
 hw.module @IdRemap(in %clk : !seq.clock, in %rst_ni : i1,
                    in %upstream : !wide_ids) {
-  // CHECK: axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 2 : (!axi4.port<{{.*}} write_id_width = 4, read_id_width = 4, {{.*}} outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} outstanding_writes = 2, outstanding_reads = 2>
+  // CHECK: axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 2 : (!axi4.port<{{.*}} write_id_width = 4, read_id_width = 4, {{.*}} concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>) -> !axi4.port<{{.*}} write_id_width = 1, read_id_width = 1, {{.*}} concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %remap = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 2 : (!wide_ids) -> !remapped
 }
 
 // Typedefs for a splitter, which keeps each burst's kind and takes it down to a
 // single beat
-!bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 1>, <incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!bursty = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!beats = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 1>, <incr, len = 1>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @BurstSplitter
 hw.module @BurstSplitter(in %clk : !seq.clock, in %rst_ni : i1,
                          in %upstream : !bursty) {
-  // CHECK: axi4.burst_splitter %clk, %rst_ni, %upstream : (!axi4.port<addr_width = 32, data_width = 64, {{.*}} burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<addr_width = 32, data_width = 64, {{.*}} burst_specs = <<fixed, len = 1>, <incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: axi4.burst_splitter %clk, %rst_ni, %upstream : (!axi4.port<addr_width = 32, data_width = 64, {{.*}} burst_specs = <<fixed, len = 4>, <incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>) -> !axi4.port<addr_width = 32, data_width = 64, {{.*}} burst_specs = <<fixed, len = 1>, <incr, len = 1>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!bursty) -> !beats
 }
 
 // Typedefs for splitting a wrapping burst, whose single beats increment - there
 // is nothing left to wrap
-!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!unwrapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!unwrapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 1>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @SplitWrappingBurst
 hw.module @SplitWrappingBurst(in %clk : !seq.clock, in %rst_ni : i1,
                               in %upstream : !wrapping) {
-  // CHECK: axi4.burst_splitter %clk, %rst_ni, %upstream : (!axi4.port<{{.*}} burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<{{.*}} burst_specs = <<incr, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: axi4.burst_splitter %clk, %rst_ni, %upstream : (!axi4.port<{{.*}} burst_specs = <<wrap, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>) -> !axi4.port<{{.*}} burst_specs = <<incr, len = 1>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %split = axi4.burst_splitter %clk, %rst_ni, %upstream : (!wrapping) -> !unwrapped
 }
 
-!wrapped_bursts = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!incr_bursts = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!wrapped_bursts = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <wrap, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!incr_bursts = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>, <incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @BurstUnwrapper
 hw.module @BurstUnwrapper(in %clk : !seq.clock, in %rst_ni : i1,
                           in %upstream : !wrapped_bursts) {
-  // CHECK: axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!axi4.port<{{.*}} burst_specs = <<fixed, len = 4>, <wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<{{.*}} burst_specs = <<fixed, len = 4>, <incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!axi4.port<{{.*}} burst_specs = <<fixed, len = 4>, <wrap, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>) -> !axi4.port<{{.*}} burst_specs = <<fixed, len = 4>, <incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %unwrapped = axi4.burst_unwrapper %clk, %rst_ni, %upstream : (!wrapped_bursts) -> !incr_bursts
 }
 
 // Typedefs for a demux fanning a port's window out to two downstream ports
-!demuxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!demux_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!demux_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!demuxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!demux_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!demux_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @Demux
 hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1,
                  in %upstream : !demuxed) {
-  // CHECK: axi4.demux %clk, %rst_ni, %upstream : (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>, !axi4.port<{{.*}} windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>)
+  // CHECK: axi4.demux %clk, %rst_ni, %upstream : (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>) -> (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>, !axi4.port<{{.*}} windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>)
   %lo, %hi = axi4.demux %clk, %rst_ni, %upstream : (!demuxed) -> (!demux_lo, !demux_hi)
 }
 
-!muxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+!muxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @Mux
 hw.module @Mux(in %clk : !seq.clock, in %rst_ni : i1,
                  in %upstream1 : !demux_lo, in %upstream2 : !demux_hi) {
-  // CHECK: axi4.mux %clk, %rst_ni, %upstream1, %upstream2 : (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>, !axi4.port<{{.*}} windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>) -> !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, {{.*}} windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+  // CHECK: axi4.mux %clk, %rst_ni, %upstream1, %upstream2 : (!axi4.port<{{.*}} windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>, !axi4.port<{{.*}} windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>) -> !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, {{.*}} windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %downstream = axi4.mux %clk, %rst_ni, %upstream1, %upstream2 : (!demux_lo, !demux_hi) -> (!muxed)
 }
 
-!mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK-LABEL: hw.module @ToMem(
 // CHECK-SAME:    out valid : i1, out addr : i32, out wdata : i64,
@@ -319,7 +319,7 @@ hw.module @ToMem(in %clk : !seq.clock, in %rst_ni : i1, in %port : !mem_port,
                  in %rvalid : i1, in %rdata : i64,
                  out valid : i1, out addr : i32, out wdata : i64,
                  out strb : i8, out we : i1) {
-  // CHECK: axi4.to_mem %clk, %rst_ni, %port read %rvalid, %rdata : !axi4.port<addr_width = 32, data_width = 64, {{.*}} outstanding_writes = 4, outstanding_reads = 4>
+  // CHECK: axi4.to_mem %clk, %rst_ni, %port read %rvalid, %rdata : !axi4.port<addr_width = 32, data_width = 64, {{.*}} concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
   %valid, %addr, %wdata, %strb, %we =
     axi4.to_mem %clk, %rst_ni, %port read %rvalid, %rdata : !mem_port
   hw.output %valid, %addr, %wdata, %strb, %we : i1, i32, i64, i8, i1

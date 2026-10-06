@@ -167,8 +167,12 @@ LogicalResult IWConverterOp::canonicalize(IWConverterOp op,
 //===----------------------------------------------------------------------===//
 
 LogicalResult IDRemapOp::canonicalize(IDRemapOp op, PatternRewriter &rewriter) {
-  // Equal types mean the upstream port never has more IDs in flight than the
-  // remapper tracks, so it never stalls.
+  // A remapper tracking every ID the upstream port has never stalls.
+  auto upstream = cast<PortType>(op.getUpstream().getType());
+  uint32_t idWidth =
+      std::max(upstream.getWriteIdWidth(), upstream.getReadIdWidth());
+  if (op.getMaxUniqueIds() < (uint64_t{1} << idWidth))
+    return rewriter.notifyMatchFailure(op, "remapper limits the IDs in flight");
   return eraseIdentity(op, op.getUpstream(), op.getDownstream(), rewriter);
 }
 

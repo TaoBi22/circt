@@ -86,21 +86,21 @@ static void emitDomainCrossing(Operation *op, Operation *other,
   diag.attachNote(other->getLoc()) << "connected operation here";
 }
 
-/// Report an endpoint that can handle fewer requests than the port reaching it
-/// can have concurrently outstanding - this is a warning since it will only
-/// impact throughput.
+/// Report an endpoint that can handle fewer requests per ID than the port
+/// reaching it can have concurrently outstanding - this is a warning since it
+/// will only impact throughput.
 static void warnBottleneck(Operation *op, TypedValue<PortType> port,
                            uint32_t writes, uint32_t reads) {
   PortType reaching = port.getType();
-  if (writes < reaching.getOutstandingWrites())
-    op->emitWarning() << "endpoint can handle fewer writes than the port "
-                         "reaching it can have concurrently outstanding ("
-                      << writes << " < " << reaching.getOutstandingWrites()
+  if (writes < reaching.getConcurrentWritesPerId())
+    op->emitWarning() << "endpoint can handle fewer writes per ID than the "
+                         "port reaching it can have concurrently outstanding ("
+                      << writes << " < " << reaching.getConcurrentWritesPerId()
                       << ")";
-  if (reads < reaching.getOutstandingReads())
-    op->emitWarning() << "endpoint can handle fewer reads than the port "
+  if (reads < reaching.getConcurrentReadsPerId())
+    op->emitWarning() << "endpoint can handle fewer reads per ID than the port "
                          "reaching it can have concurrently outstanding ("
-                      << reads << " < " << reaching.getOutstandingReads()
+                      << reads << " < " << reaching.getConcurrentReadsPerId()
                       << ")";
 }
 
@@ -172,12 +172,13 @@ void VerifyAXI4NetworksPass::runOnOperation() {
     TypeSwitch<Operation *>(op)
         .Case<AbstractSubordinateOp>([](AbstractSubordinateOp subordinate) {
           warnBottleneck(subordinate, subordinate.getUpstream(),
-                         subordinate.getConcurrentWrites(),
-                         subordinate.getConcurrentReads());
+                         subordinate.getConcurrentWritesPerId(),
+                         subordinate.getConcurrentReadsPerId());
         })
         .Case<PortToChannelStructsOp>([](PortToChannelStructsOp bridge) {
-          warnBottleneck(bridge, bridge.getPort(), bridge.getConcurrentWrites(),
-                         bridge.getConcurrentReads());
+          warnBottleneck(bridge, bridge.getPort(),
+                         bridge.getConcurrentWritesPerId(),
+                         bridge.getConcurrentReadsPerId());
         });
   });
 

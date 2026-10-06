@@ -79,22 +79,23 @@ def AbstractSubordinateOp : AXI4Op<"abstract_subordinate"> {
   let description = [{
     Models a subordinate endpoint with no concrete implementation, for abstract
     network modelling. Takes the upstream `!axi4.port` it responds to, and the
-    number of writes and reads it can handle concurrently.
+    number of writes and reads with any one ID it can handle concurrently.
 
     Example:
     ```mlir
     axi4.abstract_subordinate %clk, %rst_ni, %mgr
-      concurrent_writes 4 concurrent_reads 4 : !axi4.port<...>
+      concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !axi4.port<...>
     ```
   }];
 
   let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream,
-                       I32Attr:$concurrent_writes, I32Attr:$concurrent_reads);
+                       I32Attr:$concurrent_writes_per_id,
+                       I32Attr:$concurrent_reads_per_id);
 
   let assemblyFormat = [{
     $clock `,` $reset `,` $upstream
-      `concurrent_writes` $concurrent_writes
-      `concurrent_reads` $concurrent_reads
+      `concurrent_writes_per_id` $concurrent_writes_per_id
+      `concurrent_reads_per_id` $concurrent_reads_per_id
       attr-dict `:` qualified(type($upstream))
   }];
 }
@@ -143,9 +144,9 @@ def PortToChannelStructsOp : AXI4ChannelStructOp<"port_to_channel_structs"> {
   let description = [{
     Bridges from an `!axi4.port` to a HW dialect expression of an AXI4
     interface. Takes the port, the AW, W and AR channel readys, the B and R
-    payloads and valids, and the number of writes and reads the interface can
-    handle concurrently; returns the AW, W and AR payloads and valids, and the
-    B and R readys.
+    payloads and valids, and the number of writes and reads with any one ID the
+    interface can handle concurrently; returns the AW, W and AR payloads and
+    valids, and the B and R readys.
 
     Example:
     ```mlir
@@ -153,7 +154,7 @@ def PortToChannelStructsOp : AXI4ChannelStructOp<"port_to_channel_structs"> {
       axi4.port_to_channel_structs %clk, %rst_ni, %port
         aw %aw_ready w %w_ready b %b, %b_valid
         ar %ar_ready r %r, %r_valid
-        concurrent_writes 4 concurrent_reads 4
+        concurrent_writes_per_id 4 concurrent_reads_per_id 4
       : !axi4.port<...>
     ```
   }];
@@ -163,8 +164,8 @@ def PortToChannelStructsOp : AXI4ChannelStructOp<"port_to_channel_structs"> {
                        StructType:$b, I1:$b_valid,
                        I1:$ar_ready,
                        StructType:$r, I1:$r_valid,
-                       I32Attr:$concurrent_writes,
-                       I32Attr:$concurrent_reads);
+                       I32Attr:$concurrent_writes_per_id,
+                       I32Attr:$concurrent_reads_per_id);
   let results = (outs StructType:$aw, I1:$aw_valid,
                       StructType:$w, I1:$w_valid,
                       I1:$b_ready,
@@ -175,8 +176,8 @@ def PortToChannelStructsOp : AXI4ChannelStructOp<"port_to_channel_structs"> {
     $clock `,` $reset `,` $port
       `aw` $aw_ready `w` $w_ready `b` $b `,` $b_valid
       `ar` $ar_ready `r` $r `,` $r_valid
-      `concurrent_writes` $concurrent_writes
-      `concurrent_reads` $concurrent_reads
+      `concurrent_writes_per_id` $concurrent_writes_per_id
+      `concurrent_reads_per_id` $concurrent_reads_per_id
       attr-dict `:` qualified(type($port))
   }];
 }

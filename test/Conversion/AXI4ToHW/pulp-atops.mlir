@@ -1,9 +1,9 @@
 // RUN: circt-opt %s --lower-axi4-to-hw=pulp-mapping=true --split-input-file | FileCheck %s
 // RUN: circt-opt %s --lower-axi4-to-hw="pulp-mapping=true req-resp-ports=true" --split-input-file | FileCheck %s --check-prefix=STRUCT
 
-!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!mem = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
-!periph = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 8>
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!mem = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!periph = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Core(out axi : !mgr {pulp.atops})
 hw.module.extern @Dma(out axi : !mgr)
@@ -65,7 +65,7 @@ hw.module @Mixed(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // Marked ports of the module the network is described in carry atop across it
 // CHECK-LABEL: hw.module @Boundary(
@@ -87,7 +87,7 @@ hw.module @Boundary(in %clk : !seq.clock, in %rst_ni : i1, in %core : !port {pul
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // A demux atomics reach has AtopSupport enabled
 // CHECK:      sv.verbatim.source @axi_demux_1d_a32_d64_i4_usr0_atop.sv
@@ -99,7 +99,7 @@ hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1, in %core : !port {pulp.a
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // Config agreeing with whether atomics reach a component is allowed
 // CHECK:      sv.verbatim.source @axi_xbar_1u1d_a32_d64_i4_o4_usr0_atop.sv
@@ -111,7 +111,7 @@ hw.module @AgreeingConfig(in %clk : !seq.clock, in %rst_ni : i1, in %core : !por
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // Config can enable support for atomics where none reach
 // CHECK:      sv.verbatim.source @axi_demux_1d_a32_d64_i4_usr0.sv
@@ -123,9 +123,9 @@ hw.module @EnablingConfig(in %clk : !seq.clock, in %rst_ni : i1, in %core : !por
 
 // -----
 
-!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!mem = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!periph = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!mem = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!periph = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // A port marked to filter atomics out gets PULP's axi_atop_filter in front of
 // it, taking atop upstream and not passing it on
@@ -138,7 +138,7 @@ hw.module @EnablingConfig(in %clk : !seq.clock, in %rst_ni : i1, in %core : !por
 // CHECK-SAME:   region: mgr0_aw.region, atop: mgr0_aw_atop, user: '0};\0A
 // CHECK-SAME:   axi_atop_filter #(\0A
 // CHECK-SAME:     .AxiIdWidth      (4),\0A
-// CHECK-SAME:     .AxiMaxWriteTxns (4),\0A
+// CHECK-SAME:     .AxiMaxWriteTxns (8),\0A
 // CHECK-SAME:   ) i_atop_filter (\0A
 
 // It runs in the domain of the component driving the port
@@ -153,7 +153,22 @@ hw.module @Filter(in %clk : !seq.clock, in %rst_ni : i1, in %core : !mgr {pulp.a
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!mem = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!periph = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+// A filter marker's value bounds the writes the filter lets run ahead of their
+// data
+// CHECK:      sv.verbatim.source @axi_atop_filter_a32_d64_i4_usr0.sv
+// CHECK-SAME:     .AxiMaxWriteTxns (32),\0A
+hw.module @FilterBudget(in %clk : !seq.clock, in %rst_ni : i1, in %core : !mgr {pulp.atops}, out mem : !mem {pulp.atops}, out periph : !periph {pulp.atop_filter = 32 : i32}) {
+  %mem, %periph = axi4.demux %clk, %rst_ni, %core : (!mgr) -> (!mem, !periph)
+  hw.output %mem, %periph : !mem, !periph
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // A port marked to filter atomics out that none reach needs no filter
 // CHECK-LABEL: hw.module @Unfiltered(

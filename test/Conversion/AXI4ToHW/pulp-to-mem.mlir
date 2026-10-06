@@ -1,6 +1,6 @@
 // RUN: circt-opt %s --lower-axi4-to-hw=pulp-mapping=true | FileCheck %s
 
-!mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>, <fixed, len = 1>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mem_port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>, <fixed, len = 1>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // CHECK:       hw.module.extern @axi_to_mem_a32_d64_i4_usr0(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,

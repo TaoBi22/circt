@@ -2,8 +2,8 @@
 
 // Implicit check-nots ensure we drop all axi4 types & ops and all filler clocks
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!narrow = !axi4.port<addr_width = 16, data_width = 8, write_id_width = 1, read_id_width = 1, user_width = 0, windows = <<base = 0x0, last = 0xff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 2, outstanding_reads = 2>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 3, user_width = 4, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!narrow = !axi4.port<addr_width = 16, data_width = 8, write_id_width = 1, read_id_width = 1, user_width = 0, windows = <<base = 0x0, last = 0xff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
 
 // The external modules the components become are internal to the lowering, so
 // they keep a signal per channel

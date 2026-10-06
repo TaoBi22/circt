@@ -1,6 +1,6 @@
 // RUN: circt-opt %s --lower-axi4-to-hw=pulp-mapping=true --split-input-file | FileCheck %s
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Manager(out axi : !port)
 hw.module.extern @Subordinate(in %axi : !port)
@@ -62,7 +62,7 @@ hw.module @Cut(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // A port with no user field neither reads nor drives PULP's, which is still a
 // bit wide, so the cut side is tied off
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Manager(out axi : !port)
 hw.module.extern @Subordinate(in %axi : !port)
@@ -84,7 +84,7 @@ hw.module @NoUser(in %clk : !seq.clock, in %rst_ni : i1) {
 // -----
 
 // With a user field both sides carry it, and PULP's atop is still tied off
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 3, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 3, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Manager(out axi : !port)
 hw.module.extern @Subordinate(in %axi : !port)

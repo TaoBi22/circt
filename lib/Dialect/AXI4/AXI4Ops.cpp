@@ -233,44 +233,47 @@ static LogicalResult verifyWindowsRouted(Operation *op, PortType upstream,
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
-// Outstanding request helpers
+// Per-ID request helpers
 //===----------------------------------------------------------------------===//
 
-/// As many of `outstanding` requests as `idWidth` ID bits can tag.
-static uint64_t taggable(uint64_t outstanding, uint32_t idWidth) {
-  return std::min<uint64_t>(outstanding, uint64_t{1} << idWidth);
-}
-
-/// The outstanding writes and reads a routing op sends down `downstream`, from
-/// the `upstream` ports whose windows reach it.
-static std::pair<uint64_t, uint64_t>
-routingOutstandingBelow(ValueRange upstream, PortType downstream) {
+/// The writes and reads per ID a routing op sends down `downstream`, from the
+/// `upstream` ports whose windows reach it. Each manager's IDs stay distinct
+/// downstream, so this is the most any one of them issues.
+static std::pair<uint64_t, uint64_t> routingPerIdBelow(ValueRange upstream,
+                                                       PortType downstream) {
   uint64_t writes = 0, reads = 0;
   for (Value value : upstream) {
     auto manager = cast<PortType>(value.getType());
     if (!manager.getWindows().overlaps(downstream.getWindows()))
       continue;
-    writes += manager.getOutstandingWrites();
-    reads += manager.getOutstandingReads();
+    writes = std::max<uint64_t>(writes, manager.getConcurrentWritesPerId());
+    reads = std::max<uint64_t>(reads, manager.getConcurrentReadsPerId());
   }
   return {writes, reads};
 }
 
-/// Verify that `port` holds exactly the outstanding requests reaching it.
-static LogicalResult verifyOutstanding(Operation *op, const Twine &portDesc,
-                                       PortType port,
-                                       std::pair<uint64_t, uint64_t> reaching,
-                                       const Twine &sourceDesc) {
+/// Verify that `port` holds exactly the requests per ID reaching it.
+static LogicalResult verifyPerId(Operation *op, const Twine &portDesc,
+                                 PortType port,
+                                 std::pair<uint64_t, uint64_t> reaching,
+                                 const Twine &sourceDesc) {
   auto [writes, reads] = reaching;
-  if (port.getOutstandingWrites() != writes)
-    return op->emitOpError() << portDesc << "'s 'outstanding_writes' ("
-                             << port.getOutstandingWrites() << ") must be the "
-                             << writes << " writes " << sourceDesc;
-  if (port.getOutstandingReads() != reads)
-    return op->emitOpError() << portDesc << "'s 'outstanding_reads' ("
-                             << port.getOutstandingReads() << ") must be the "
-                             << reads << " reads " << sourceDesc;
+  if (port.getConcurrentWritesPerId() != writes)
+    return op->emitOpError()
+           << portDesc << "'s 'concurrent_writes_per_id' ("
+           << port.getConcurrentWritesPerId() << ") must be the " << writes
+           << " writes per ID " << sourceDesc;
+  if (port.getConcurrentReadsPerId() != reads)
+    return op->emitOpError()
+           << portDesc << "'s 'concurrent_reads_per_id' ("
+           << port.getConcurrentReadsPerId() << ") must be the " << reads
+           << " reads per ID " << sourceDesc;
   return success();
+}
+
+/// The writes and reads per ID `port` carries.
+static std::pair<uint64_t, uint64_t> perIdOf(PortType port) {
+  return {port.getConcurrentWritesPerId(), port.getConcurrentReadsPerId()};
 }
 
 LogicalResult XbarOp::verify() {
@@ -326,10 +329,9 @@ LogicalResult XbarOp::verify() {
   // checked first.
   for (auto [i, value] : llvm::enumerate(downstream)) {
     auto downstreamTy = cast<PortType>(value.getType());
-    if (failed(verifyOutstanding(
-            *this, "downstream port #" + Twine(i), downstreamTy,
-            routingOutstandingBelow(upstream, downstreamTy),
-            "the managers reaching it can issue")))
+    if (failed(verifyPerId(*this, "downstream port #" + Twine(i), downstreamTy,
+                           routingPerIdBelow(upstream, downstreamTy),
+                           "the managers reaching it can issue")))
       return failure();
   }
 
@@ -366,11 +368,9 @@ LogicalResult DWConverterOp::verify() {
                                "downstream port", upstream, "upstream port")))
     return failure();
 
-  // Window addresses and outstanding requests are unchanged
-  if (failed(verifyOutstanding(
-          *this, "downstream port", downstream,
-          {upstream.getOutstandingWrites(), upstream.getOutstandingReads()},
-          "the upstream port can issue")))
+  // Window addresses and requests per ID are unchanged
+  if (failed(verifyPerId(*this, "downstream port", downstream,
+                         perIdOf(upstream), "the upstream port can issue")))
     return failure();
   return verifyWindowsConvert(
       *this, upstream, downstream,
@@ -411,13 +411,33 @@ LogicalResult IWConverterOp::verify() {
           "downstream port", upstream, "upstream port")))
     return failure();
 
-  if (failed(verifyOutstanding(
-          *this, "downstream port", downstream,
-          {taggable(upstream.getOutstandingWrites(),
-                    downstream.getWriteIdWidth()),
-           taggable(upstream.getOutstandingReads(),
-                    downstream.getReadIdWidth())},
-          "the upstream port can issue with the downstream IDs to tag them")))
+  // Narrowing merges up to 2**(the bits dropped) upstream IDs onto each
+  // downstream one, depending on how many are in flight.
+  auto verifyMerged = [&](StringRef field, StringRef noun, uint64_t perId,
+                          uint32_t fromWidth, uint64_t merged,
+                          uint32_t toWidth) -> LogicalResult {
+    uint64_t most =
+        fromWidth > toWidth ? perId << (fromWidth - toWidth) : perId;
+    if (perId <= merged && merged <= most)
+      return success();
+    auto diag = emitOpError() << "downstream port's '" << field << "' ("
+                              << merged << ") must be ";
+    if (perId == most)
+      return diag << "the " << perId << " " << noun
+                  << " per ID the upstream port can issue";
+    return diag << "between the " << perId << " and " << most << " " << noun
+                << " per ID the upstream port can issue, as its IDs merge "
+                   "onto the downstream ones";
+  };
+  if (failed(verifyMerged("concurrent_writes_per_id", "writes",
+                          upstream.getConcurrentWritesPerId(),
+                          upstream.getWriteIdWidth(),
+                          downstream.getConcurrentWritesPerId(),
+                          downstream.getWriteIdWidth())) ||
+      failed(verifyMerged(
+          "concurrent_reads_per_id", "reads",
+          upstream.getConcurrentReadsPerId(), upstream.getReadIdWidth(),
+          downstream.getConcurrentReadsPerId(), downstream.getReadIdWidth())))
     return failure();
 
   // A conversion re-tags, it does not re-address, and leaves each burst as it
@@ -453,11 +473,8 @@ LogicalResult IDRemapOp::verify() {
           "downstream port", upstream, "upstream port")))
     return failure();
 
-  if (failed(verifyOutstanding(
-          *this, "downstream port", downstream,
-          {std::min<uint64_t>(upstream.getOutstandingWrites(), uniqueIds),
-           std::min<uint64_t>(upstream.getOutstandingReads(), uniqueIds)},
-          "the upstream port can issue with its distinct IDs tracked")))
+  if (failed(verifyPerId(*this, "downstream port", downstream,
+                         perIdOf(upstream), "the upstream port can issue")))
     return failure();
 
   return verifyWindowsConvert(
@@ -479,10 +496,8 @@ LogicalResult BurstSplitterOp::verify() {
                                upstream, "upstream port")))
     return failure();
 
-  if (failed(verifyOutstanding(
-          *this, "downstream port", downstream,
-          {upstream.getOutstandingWrites(), upstream.getOutstandingReads()},
-          "the upstream port can issue")))
+  if (failed(verifyPerId(*this, "downstream port", downstream,
+                         perIdOf(upstream), "the upstream port can issue")))
     return failure();
 
   // A split re-lengths, it does not re-address, and each upstream burst becomes
@@ -511,10 +526,8 @@ LogicalResult BurstUnwrapperOp::verify() {
                                upstream, "upstream port")))
     return failure();
 
-  if (failed(verifyOutstanding(
-          *this, "downstream port", downstream,
-          {upstream.getOutstandingWrites(), upstream.getOutstandingReads()},
-          "the upstream port can issue")))
+  if (failed(verifyPerId(*this, "downstream port", downstream,
+                         perIdOf(upstream), "the upstream port can issue")))
     return failure();
 
   // An unwrap re-kinds, it does not re-address or re-length, and a burst that
@@ -557,10 +570,9 @@ LogicalResult DemuxOp::verify() {
   // checked first.
   for (auto [i, value] : llvm::enumerate(downstream)) {
     auto downstreamTy = cast<PortType>(value.getType());
-    if (failed(verifyOutstanding(
-            *this, "downstream port #" + Twine(i), downstreamTy,
-            routingOutstandingBelow(upstreamValue, downstreamTy),
-            "the managers reaching it can issue")))
+    if (failed(verifyPerId(*this, "downstream port #" + Twine(i), downstreamTy,
+                           routingPerIdBelow(upstreamValue, downstreamTy),
+                           "the managers reaching it can issue")))
       return failure();
   }
 
@@ -613,9 +625,9 @@ LogicalResult MuxOp::verify() {
 
   // Which managers reach the port follows from the windows, so this needs them
   // checked first.
-  return verifyOutstanding(*this, "downstream port", downstreamTy,
-                           routingOutstandingBelow(upstream, downstreamTy),
-                           "the managers reaching it can issue");
+  return verifyPerId(*this, "downstream port", downstreamTy,
+                     routingPerIdBelow(upstream, downstreamTy),
+                     "the managers reaching it can issue");
 }
 
 //===----------------------------------------------------------------------===//

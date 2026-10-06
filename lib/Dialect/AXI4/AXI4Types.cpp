@@ -52,8 +52,8 @@ LogicalResult PortType::verify(function_ref<InFlightDiagnostic()> emitError,
                                uint32_t addr_width, uint32_t data_width,
                                uint32_t write_id_width, uint32_t read_id_width,
                                uint32_t user_width, WindowSetAttr windows,
-                               uint32_t outstanding_writes,
-                               uint32_t outstanding_reads) {
+                               uint32_t concurrent_writes_per_id,
+                               uint32_t concurrent_reads_per_id) {
   if (failed(verifyPortWidths(emitError, "port ", addr_width, data_width)) ||
       failed(verifyWindowsFit(emitError, "port ", addr_width,
                               windows.getWindows())))
@@ -64,17 +64,6 @@ LogicalResult PortType::verify(function_ref<InFlightDiagnostic()> emitError,
   if (read_id_width > 32)
     return emitError() << "port 'read_id_width' must be at most 32, got "
                        << read_id_width;
-  // Bounds computed in 64 bits to avoid 32-bit overflow if ID widths are 32.
-  if (outstanding_writes > (uint64_t{1} << write_id_width))
-    return emitError() << "port 'outstanding_writes' must be at most "
-                       << (uint64_t{1} << write_id_width)
-                       << " for a 'write_id_width' of " << write_id_width
-                       << ", got " << outstanding_writes;
-  if (outstanding_reads > (uint64_t{1} << read_id_width))
-    return emitError() << "port 'outstanding_reads' must be at most "
-                       << (uint64_t{1} << read_id_width)
-                       << " for a 'read_id_width' of " << read_id_width
-                       << ", got " << outstanding_reads;
   return success();
 }
 

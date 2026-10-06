@@ -1,7 +1,7 @@
 // RUN: circt-opt %s --lower-axi4-to-hw=pulp-mapping=true | FileCheck %s
 
-!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 2>
-!unwrapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 2>
+!wrapping = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<wrap, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+!unwrapped = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
 
 // CHECK:       hw.module.extern @axi_burst_unwrapper_a32_d64_i4_usr0(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
@@ -22,8 +22,8 @@
 
 // The transaction counts come from the upstream port, per direction
 // CHECK-SAME:   axi_burst_unwrap #(\0A
-// CHECK-SAME:     .MaxReadTxns  (2),\0A
-// CHECK-SAME:     .MaxWriteTxns (4),\0A
+// CHECK-SAME:     .MaxReadTxns  (32),\0A
+// CHECK-SAME:     .MaxWriteTxns (64),\0A
 // CHECK-SAME:     .AddrWidth    (32),\0A
 // CHECK-SAME:     .DataWidth    (64),\0A
 // CHECK-SAME:     .IdWidth      (4),\0A

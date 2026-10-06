@@ -1,17 +1,17 @@
 // RUN: circt-opt %s --lower-axi4-to-hw --split-input-file --verify-diagnostics
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module @AbstractNetwork(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.abstract_manager' op models an endpoint with no RTL, so cannot be lowered}}
   %mgr = axi4.abstract_manager %clk, %rst_ni : !port
   // expected-error @below {{'axi4.abstract_subordinate' op models an endpoint with no RTL, so cannot be lowered}}
-  axi4.abstract_subordinate %clk, %rst_ni, %mgr concurrent_writes 4 concurrent_reads 4 : !port
+  axi4.abstract_subordinate %clk, %rst_ni, %mgr concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Manager(out axi : !port)
 
@@ -22,7 +22,7 @@ hw.module @DanglingResult() {
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // expected-error @below {{AXI4 port has no uses, so cannot be lowered}}
 hw.module @DanglingArgument(in %p : !port) {
@@ -30,7 +30,7 @@ hw.module @DanglingArgument(in %p : !port) {
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // expected-warning @below {{lowering AXI4 port 'axi' changes the ports of this module; its implementation must match the new port list}}
 hw.module.extern @Manager(out axi : !port)
@@ -50,7 +50,7 @@ hw.module @Externs() {
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module @ClockCrossing(in %clk_a : !seq.clock, in %clk_b : !seq.clock, in %rst_ni : i1) {
   // expected-note @below {{connected operation here}}
@@ -60,12 +60,12 @@ hw.module @ClockCrossing(in %clk_a : !seq.clock, in %clk_b : !seq.clock, in %rst
   // expected-error @below {{'axi4.port_to_channel_structs' op is in a different clock domain to the 'axi4.channel_structs_to_port' connected to it}}
   %aw, %aw_valid, %w, %w_valid, %b_ready, %ar, %ar_valid, %r_ready = axi4.port_to_channel_structs %clk_b, %rst_ni, %port
       aw %aw_ready w %w_ready b %b, %b_valid
-      ar %ar_ready r %r, %r_valid concurrent_writes 4 concurrent_reads 4 : !port
+      ar %ar_ready r %r, %r_valid concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }
 
 // -----
 
-!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module @ResetCrossing(in %clk : !seq.clock, in %rst_a : i1, in %rst_b : i1) {
   // expected-note @below {{connected operation here}}
@@ -75,5 +75,5 @@ hw.module @ResetCrossing(in %clk : !seq.clock, in %rst_a : i1, in %rst_b : i1) {
   // expected-error @below {{'axi4.port_to_channel_structs' op is in a different reset domain to the 'axi4.channel_structs_to_port' connected to it}}
   %aw, %aw_valid, %w, %w_valid, %b_ready, %ar, %ar_valid, %r_ready = axi4.port_to_channel_structs %clk, %rst_b, %port
       aw %aw_ready w %w_ready b %b, %b_valid
-      ar %ar_ready r %r, %r_valid concurrent_writes 4 concurrent_reads 4 : !port
+      ar %ar_ready r %r, %r_valid concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !port
 }

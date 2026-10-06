@@ -1,7 +1,7 @@
 // RUN: circt-opt %s --lower-axi4-to-hw=pulp-mapping=true --split-input-file | FileCheck %s
 
-!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 6>
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, outstanding_writes = 4, outstanding_reads = 6>
+!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 6>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 6>
 
 hw.module.extern @Manager(out axi : !wide)
 hw.module.extern @Subordinate(in %axi : !thin)
@@ -40,7 +40,7 @@ hw.module.extern @Subordinate(in %axi : !thin)
 // CHECK-SAME:   axi_dw_converter #(\0A
 // The tracker count comes from the reads the upstream port can have
 // outstanding
-// CHECK-SAME:     .AxiMaxReads         (6),\0A
+// CHECK-SAME:     .AxiMaxReads         (96),\0A
 // CHECK-SAME:     .AxiSlvPortDataWidth (64),\0A
 // CHECK-SAME:     .AxiMstPortDataWidth (32),\0A
 // CHECK-SAME:     .AxiAddrWidth        (32),\0A
@@ -60,8 +60,8 @@ hw.module @Narrowing(in %clk : !seq.clock, in %rst_ni : i1) {
 // -----
 
 // Widening is the same wrapper with the two data widths the other way round
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 8>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!wide = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Manager(out axi : !thin)
 hw.module.extern @Subordinate(in %axi : !wide)

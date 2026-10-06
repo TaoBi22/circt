@@ -6,7 +6,7 @@
 // rewrites of the network leave them alone
 // CHECK-LABEL: hw.module @Atomics(
 // CHECK-SAME:    in %core : !axi4.port<{{.*}}> {pulp.atops}, in %dma :
-// CHECK-SAME:    outstanding_reads = 4>, out mem :
+// CHECK-SAME:    concurrent_reads_per_id = 1>, out mem :
 // CHECK-SAME:    > {pulp.atops}, out periph :
 // CHECK-SAME:    > {pulp.atop_filter})
 

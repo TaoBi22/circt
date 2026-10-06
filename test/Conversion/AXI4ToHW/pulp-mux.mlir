@@ -1,8 +1,8 @@
 // RUN: circt-opt %s --lower-axi4-to-hw=pulp-mapping=true | FileCheck %s
 
-!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 2>
-!hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 2>
-!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 8, outstanding_reads = 4>
+!lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+!hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
 
 // CHECK:       hw.module.extern @axi_mux_2u_a32_d64_i4_o5_usr0(
 // CHECK-SAME:    in %clk_i : !seq.clock, in %rst_ni : i1,
@@ -37,7 +37,7 @@
 // CHECK-SAME:     .slv_aw_chan_t (axi_mux_2u_a32_d64_i4_o5_usr0_slv_aw_chan_t),\0A
 // CHECK-SAME:     .mst_resp_t    (axi_mux_2u_a32_d64_i4_o5_usr0_mst_resp_t),\0A
 // CHECK-SAME:     .NoSlvPorts    (2),\0A
-// CHECK-SAME:     .MaxWTrans     (4),\0A
+// CHECK-SAME:     .MaxWTrans     (8),\0A
 // CHECK-SAME:     .FallThrough   (1'b0)\0A
 // CHECK-SAME:   ) i_mux (\0A
 // CHECK-SAME:     .test_i      (1'b0),\0A

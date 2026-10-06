@@ -166,8 +166,8 @@ inferWindows(DummiesExtManagerOp manager,
 
 /// Warn where a subordinate can hold fewer outstanding requests than the
 /// managers reaching it can issue (this can't be caught post-lowering)
-static void warnBottleneck(DummiesExtSubordinateOp subordinate, uint32_t writes,
-                           uint32_t reads) {
+static void warnBottleneck(DummiesExtSubordinateOp subordinate, uint64_t writes,
+                           uint64_t reads) {
   if (subordinate.getOutstandingWrites() < writes)
     subordinate.emitWarning()
         << "can hold fewer outstanding writes than the managers reaching it "
@@ -191,36 +191,40 @@ static LogicalResult checkSubordinate(DummiesExtSubordinateOp subordinate,
   return success();
 }
 
-/// As many of `outstanding` requests as `idWidth` ID bits can tag.
-static uint32_t taggableOutstanding(uint32_t outstanding, uint32_t idWidth) {
-  return static_cast<uint32_t>(
-      std::min<uint64_t>(outstanding, uint64_t{1} << idWidth));
+/// The requests per ID left once `perId` per ID on `fromWidth` ID bits are
+/// merged onto `toWidth` ID bits.
+static uint32_t mergedPerId(uint32_t perId, uint32_t fromWidth,
+                            uint32_t toWidth) {
+  if (toWidth >= fromWidth)
+    return perId;
+  return perId << (fromWidth - toWidth);
 }
 
-/// The port type a subordinate presents over `windows`, carrying the `writes`
-/// and `reads` reaching it, with ID widths wide enough to tag every request it
-/// can hold.
+/// The port type a subordinate presents over `windows` to a connection
+/// carrying `driven`, with ID widths wide enough to tag every request it can
+/// hold.
 static PortType getSubordinatePortType(DummiesExtSubordinateOp subordinate,
                                        uint32_t userWidth,
-                                       WindowSetAttr windows, uint32_t writes,
-                                       uint32_t reads) {
+                                       WindowSetAttr windows, PortType driven) {
   uint32_t writeIdWidth =
       llvm::Log2_64_Ceil(subordinate.getOutstandingWrites());
   uint32_t readIdWidth = llvm::Log2_64_Ceil(subordinate.getOutstandingReads());
   return PortType::get(subordinate.getContext(), subordinate.getAddrWidth(),
                        subordinate.getDataWidth(), writeIdWidth, readIdWidth,
                        userWidth, windows,
-                       taggableOutstanding(writes, writeIdWidth),
-                       taggableOutstanding(reads, readIdWidth));
+                       mergedPerId(driven.getConcurrentWritesPerId(),
+                                   driven.getWriteIdWidth(), writeIdWidth),
+                       mergedPerId(driven.getConcurrentReadsPerId(),
+                                   driven.getReadIdWidth(), readIdWidth));
 }
 
 /// The same port type with different ID widths.
 static PortType getPortTypeWithIdWidths(PortType port, uint32_t writeIdWidth,
                                         uint32_t readIdWidth) {
-  return PortType::get(port.getContext(), port.getAddrWidth(),
-                       port.getDataWidth(), writeIdWidth, readIdWidth,
-                       port.getUserWidth(), port.getWindows(),
-                       port.getOutstandingWrites(), port.getOutstandingReads());
+  return PortType::get(
+      port.getContext(), port.getAddrWidth(), port.getDataWidth(), writeIdWidth,
+      readIdWidth, port.getUserWidth(), port.getWindows(),
+      port.getConcurrentWritesPerId(), port.getConcurrentReadsPerId());
 }
 
 /// The same port type with a different data width, which its bursts are
@@ -231,10 +235,10 @@ getPortTypeWithDataWidth(Operation *op, PortType port, uint32_t dataWidth) {
       convertWindows(op, port.getWindows(), port.getDataWidth(), dataWidth);
   if (failed(windows))
     return failure();
-  return PortType::get(port.getContext(), port.getAddrWidth(), dataWidth,
-                       port.getWriteIdWidth(), port.getReadIdWidth(),
-                       port.getUserWidth(), *windows,
-                       port.getOutstandingWrites(), port.getOutstandingReads());
+  return PortType::get(
+      port.getContext(), port.getAddrWidth(), dataWidth, port.getWriteIdWidth(),
+      port.getReadIdWidth(), port.getUserWidth(), *windows,
+      port.getConcurrentWritesPerId(), port.getConcurrentReadsPerId());
 }
 
 /// Whether a converter has to bridge a port to a connection carrying these
@@ -446,8 +450,10 @@ private:
   DenseMap<Operation *, uint32_t> uniqueIds;
   /// The write and read ID widths each manager, crossbar and remapper drives.
   DenseMap<Operation *, std::pair<uint32_t, uint32_t>> idWidths;
-  /// The writes and reads each connection carries.
-  DenseMap<OpOperand *, std::pair<uint32_t, uint32_t>> counts;
+  /// The writes and reads per ID each connection carries.
+  DenseMap<OpOperand *, std::pair<uint32_t, uint32_t>> perIds;
+  /// The writes and reads each connection carries across all its IDs.
+  DenseMap<OpOperand *, std::pair<uint64_t, uint64_t>> totals;
   /// The port type each connection carries, and the one its consumer needs
   /// where a converter has to bridge the two.
   DenseMap<OpOperand *, PortType> types;
@@ -692,47 +698,65 @@ void NetworkLowering::clampUniqueIds() {
   }
 }
 
-/// Give every connection the writes and reads it carries. A crossbar's
-/// downstream port carries what the managers that can address it issue there,
-/// and a remapper's no more than it tracks IDs. Around a loop the counts depend
-/// on each other, so starting from none it repeats until none changes. Counts
-/// only grow, and the remapper on every loop caps them, so it ends.
+/// Give every connection the writes and reads it carries, per ID and in
+/// total. A crossbar's downstream port carries what the managers that can
+/// address it issue there, each keeping its IDs apart, and a remapper's no more
+/// in total than it tracks IDs for. Around a loop the counts depend on each
+/// other, so starting from none it repeats until none changes. Counts only
+/// grow, per ID to no more than a manager issues and in total to no more than
+/// the remapper on every loop tracks, so it ends.
 void NetworkLowering::inferCounts() {
-  for (DummiesExtManagerOp manager : managers)
-    counts[outgoingConnections(manager.getPort()).front()] = {
-        manager.getOutstandingWrites(), manager.getOutstandingReads()};
+  // Each of a manager's requests can carry an ID of its own.
+  for (DummiesExtManagerOp manager : managers) {
+    OpOperand *connection = outgoingConnections(manager.getPort()).front();
+    perIds[connection] = {1, 1};
+    totals[connection] = {manager.getOutstandingWrites(),
+                          manager.getOutstandingReads()};
+  }
 
   bool changed = true;
   while (changed) {
     changed = false;
     auto update = [&](OpOperand *connection,
-                      std::pair<uint32_t, uint32_t> carried) {
-      auto [it, inserted] = counts.try_emplace(connection, carried);
-      if (!inserted && it->second == carried)
+                      std::pair<uint32_t, uint32_t> perId,
+                      std::pair<uint64_t, uint64_t> total) {
+      auto [perIdIt, newPerId] = perIds.try_emplace(connection, perId);
+      auto [totalIt, newTotal] = totals.try_emplace(connection, total);
+      if (!newPerId && !newTotal && perIdIt->second == perId &&
+          totalIt->second == total)
         return;
-      it->second = carried;
+      perIdIt->second = perId;
+      totalIt->second = total;
       changed = true;
     };
 
     for (DummiesXbarOp xbar : xbars) {
       for (OpOperand *connection : outgoingConnections(xbar.getDownstream())) {
-        uint32_t writes = 0, reads = 0;
+        uint32_t writesPerId = 0, readsPerId = 0;
+        uint64_t writes = 0, reads = 0;
         for (OpOperand *above : incomingConnections(xbar)) {
           if (!windows[above].overlaps(windows[connection]))
             continue;
-          auto [aboveWrites, aboveReads] = counts.lookup(above);
+          auto [aboveWritesPerId, aboveReadsPerId] = perIds.lookup(above);
+          auto [aboveWrites, aboveReads] = totals.lookup(above);
+          writesPerId = std::max(writesPerId, aboveWritesPerId);
+          readsPerId = std::max(readsPerId, aboveReadsPerId);
           writes += aboveWrites;
           reads += aboveReads;
         }
-        update(connection, {writes, reads});
+        update(connection, {writesPerId, readsPerId}, {writes, reads});
       }
     }
 
     for (DummiesIDRemapOp remap : remaps) {
-      auto [writes, reads] = counts.lookup(incomingConnections(remap).front());
+      OpOperand *upstream = incomingConnections(remap).front();
+      auto [writesPerId, readsPerId] = perIds.lookup(upstream);
+      auto [writes, reads] = totals.lookup(upstream);
+      uint64_t ids = uniqueIds[remap];
       update(outgoingConnections(remap.getDownstream()).front(),
-             {std::min(writes, uniqueIds[remap]),
-              std::min(reads, uniqueIds[remap])});
+             {writesPerId, readsPerId},
+             {std::min(writes, ids * writesPerId),
+              std::min(reads, ids * readsPerId)});
     }
   }
 }
@@ -749,7 +773,7 @@ PortType NetworkLowering::getRemapType(DummiesIDRemapOp remap) {
   if (!reaching)
     reaching = getRemapType(cast<DummiesIDRemapOp>(producerOf(upstream)));
   auto [writeIdWidth, readIdWidth] = idWidths[remap];
-  auto [writes, reads] = counts[connection];
+  auto [writes, reads] = perIds[connection];
   PortType driven = PortType::get(
       module.getContext(), reaching.getAddrWidth(), reaching.getDataWidth(),
       writeIdWidth, readIdWidth, userWidth, windows[connection], writes, reads);
@@ -768,8 +792,8 @@ LogicalResult NetworkLowering::adaptToSubordinate(OpOperand *connection,
     return success();
   if (failed(checkSubordinate(subordinate, source, driven.getAddrWidth())))
     return failure();
-  warnBottleneck(subordinate, driven.getOutstandingWrites(),
-                 driven.getOutstandingReads());
+  auto [writes, reads] = totals[connection];
+  warnBottleneck(subordinate, writes, reads);
 
   // It serves the bursts driven in beats of its own data width.
   FailureOr<WindowSetAttr> served =
@@ -777,9 +801,8 @@ LogicalResult NetworkLowering::adaptToSubordinate(OpOperand *connection,
                      subordinate.getDataWidth());
   if (failed(served))
     return failure();
-  PortType port = getSubordinatePortType(subordinate, userWidth, *served,
-                                         driven.getOutstandingWrites(),
-                                         driven.getOutstandingReads());
+  PortType port =
+      getSubordinatePortType(subordinate, userWidth, *served, driven);
   if (needsConverter(port, driven.getDataWidth(), driven.getWriteIdWidth(),
                      driven.getReadIdWidth()))
     adapted.insert({connection, port});
@@ -834,16 +857,16 @@ LogicalResult NetworkLowering::inferTypes() {
     OpOperand *connection = outgoingConnections(manager.getPort()).front();
     auto [writeIdWidth, readIdWidth] = idWidths[manager];
     types.insert(
-        {connection, PortType::get(module.getContext(), manager.getAddrWidth(),
-                                   manager.getDataWidth(), writeIdWidth,
-                                   readIdWidth, userWidth, windows[connection],
-                                   manager.getOutstandingWrites(),
-                                   manager.getOutstandingReads())});
+        {connection,
+         PortType::get(module.getContext(), manager.getAddrWidth(),
+                       manager.getDataWidth(), writeIdWidth, readIdWidth,
+                       userWidth, windows[connection], perIds[connection].first,
+                       perIds[connection].second)});
   }
   for (DummiesXbarOp xbar : xbars) {
     auto [writeIdWidth, readIdWidth] = idWidths[xbar];
     for (OpOperand *connection : outgoingConnections(xbar.getDownstream())) {
-      auto [writes, reads] = counts[connection];
+      auto [writes, reads] = perIds[connection];
       types.insert(
           {connection,
            PortType::get(module.getContext(), xbar.getAddrWidth(),
@@ -949,8 +972,8 @@ void NetworkLowering::drive(OpOperand *connection, Value port) {
           PortType::get(needed.getContext(), needed.getAddrWidth(),
                         needed.getDataWidth(), driven.getWriteIdWidth(),
                         driven.getReadIdWidth(), needed.getUserWidth(),
-                        needed.getWindows(), driven.getOutstandingWrites(),
-                        driven.getOutstandingReads()),
+                        needed.getWindows(), driven.getConcurrentWritesPerId(),
+                        driven.getConcurrentReadsPerId()),
           clock, reset, port);
     if (driven.getWriteIdWidth() != needed.getWriteIdWidth() ||
         driven.getReadIdWidth() != needed.getReadIdWidth())

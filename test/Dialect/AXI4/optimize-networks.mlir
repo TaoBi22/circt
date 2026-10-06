@@ -1,10 +1,10 @@
 // RUN: circt-opt %s --optimize-axi4-networks --verify-diagnostics | FileCheck %s
 
-!mgr_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!mgr_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!sub_gap = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 0, outstanding_reads = 0>
+!mgr_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!mgr_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!sub_gap = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 0, concurrent_reads_per_id = 0>
 
 // An abstract subordinate no manager addresses goes, along with the port
 // routing to it
@@ -18,9 +18,9 @@ hw.module @UnreachableSubordinate(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-remark @below {{removed downstream port #2, which no upstream manager addresses}}
   %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
-  axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes 4 concurrent_reads 4 : !sub_gap
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_gap
 }
 
 // A removed port's column goes from the crossbar's PULP connectivity
@@ -32,9 +32,9 @@ hw.module @UnreachableConnectivity(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-remark @below {{removed downstream port #1, which no upstream manager addresses}}
   %lo, %gap, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi {PULP_CONFIG_Connectivity = [[true, true, false], [false, false, true]]}
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_gap, !sub_hi)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes 4 concurrent_reads 4 : !sub_gap
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_gap
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
 }
 
 // The adaptors downstream of it go too
@@ -49,14 +49,14 @@ hw.module @UnreachableBehindAdaptors(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-remark @below {{removed downstream port #2, which no upstream manager addresses}}
   %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
   %cut = axi4.cut %clk, %rst_ni, %gap : !sub_gap
   %converted = axi4.id_width_converter %clk, %rst_ni, %cut
     : (!sub_gap) -> !sub_gap
   %remapped = axi4.id_remap %clk, %rst_ni, %converted max_unique_ids = 4
     : (!sub_gap) -> !sub_gap
-  axi4.abstract_subordinate %clk, %rst_ni, %remapped concurrent_writes 4 concurrent_reads 4 : !sub_gap
+  axi4.abstract_subordinate %clk, %rst_ni, %remapped concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_gap
 }
 
 // A reachable port is left alone however little it is used
@@ -67,8 +67,8 @@ hw.module @ReachableSubordinate(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
 }
 
 // A bridge driving live HW logic is reported rather than removed
@@ -87,19 +87,19 @@ hw.module @UnreachableLiveBridge(in %clk : !seq.clock, in %rst_ni : i1,
   // expected-warning @below {{downstream port #2 is not addressed by any upstream manager}}
   %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !sub_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !sub_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
   // expected-note @+2 {{connected to this operation, which the pass will not remove}}
   %aw, %aw_valid, %w, %w_valid, %b_ready, %ar, %ar_valid, %r_ready =
     axi4.port_to_channel_structs %clk, %rst_ni, %gap
       aw %aw_ready w %w_ready b %b, %b_valid
       ar %ar_ready r %r, %r_valid
- concurrent_writes 4 concurrent_reads 4    : !sub_gap
+ concurrent_writes_per_id 4 concurrent_reads_per_id 4    : !sub_gap
   hw.output %aw_valid : i1
 }
 
-!demuxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!demux_gap = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 0, outstanding_reads = 0>
+!demuxed = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!demux_gap = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x4000, last = 0x4fff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 0, concurrent_reads_per_id = 0>
 
 // CHECK-LABEL: hw.module @UnreachableDemuxPort
 hw.module @UnreachableDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
@@ -109,9 +109,9 @@ hw.module @UnreachableDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
   // expected-remark @below {{removed downstream port #2, which no upstream manager addresses}}
   %lo, %hi, %gap = axi4.demux %clk, %rst_ni, %upstream
     : (!demuxed) -> (!mgr_lo, !mgr_hi, !demux_gap)
-  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes 4 concurrent_reads 4 : !mgr_lo
-  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes 4 concurrent_reads 4 : !mgr_hi
-  axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes 4 concurrent_reads 4 : !demux_gap
+  axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
+  axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_hi
+  axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !demux_gap
 }
 
 //===----------------------------------------------------------------------===//
@@ -120,8 +120,8 @@ hw.module @UnreachableDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
 
 // Check that adaptors fuse where canonicalization will not: through the cuts
 // and crossings in between, and without asking that the conversion invert
-!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 32>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!thin = !axi4.port<addr_width = 32, data_width = 32, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 32>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // Narrowing merges the IDs in flight, so this pair orders transactions the
 // fused one leaves free - the same data still arrives
@@ -135,7 +135,7 @@ hw.module @FuseDippingIdWidths(in %clk : !seq.clock, in %rst_ni : i1,
   %wide = axi4.id_width_converter %clk, %rst_ni, %narrow
     : (!narrow_ids) -> !mgr_lo
   axi4.abstract_subordinate %clk, %rst_ni, %wide
-    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
 // The cut stays where it was put, but now carries the wider port
@@ -150,7 +150,7 @@ hw.module @FuseAcrossCut(in %clk : !seq.clock, in %rst_ni : i1,
   %cut = axi4.cut %clk, %rst_ni, %narrow : !thin
   %wide = axi4.data_width_converter %clk, %rst_ni, %cut : (!thin) -> !mgr_lo
   axi4.abstract_subordinate %clk, %rst_ni, %wide
-    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
 // A crossing keeps both its clock domains, and widens like a cut
@@ -165,7 +165,7 @@ hw.module @FuseAcrossCdc(in %aclk : !seq.clock, in %bclk : !seq.clock,
   %cdc = axi4.cdc from %aclk to %bclk, %rst_ni, %narrow : !thin
   %wide = axi4.data_width_converter %bclk, %rst_ni, %cdc : (!thin) -> !mgr_lo
   axi4.abstract_subordinate %bclk, %rst_ni, %wide
-    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
 // A chain of crossings crosses once, into the domain it ends up in
@@ -178,7 +178,7 @@ hw.module @FuseCrossingChain(in %aclk : !seq.clock, in %bclk : !seq.clock,
   %ab = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream : !mgr_lo
   %bc = axi4.cdc from %bclk to %cclk, %rst_ni, %ab : !mgr_lo
   axi4.abstract_subordinate %cclk, %rst_ni, %bc
-    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
 // A chain ending where it started crosses nothing
@@ -190,7 +190,7 @@ hw.module @FuseCrossingRoundTrip(in %aclk : !seq.clock, in %bclk : !seq.clock,
   %ab = axi4.cdc from %aclk to %bclk, %rst_ni, %upstream : !mgr_lo
   %ba = axi4.cdc from %bclk to %aclk, %rst_ni, %ab : !mgr_lo
   axi4.abstract_subordinate %aclk, %rst_ni, %ba
-    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
 // Fusing across the cut would carry it into the upstream domain
@@ -205,10 +205,10 @@ hw.module @CrossingsAcrossCut(in %aclk : !seq.clock, in %bclk : !seq.clock,
   %cut = axi4.cut %bclk, %rst_ni, %ab : !mgr_lo
   %bc = axi4.cdc from %bclk to %cclk, %rst_ni, %cut : !mgr_lo
   axi4.abstract_subordinate %cclk, %rst_ni, %bc
-    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
-!mid_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 3, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!mid_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 3, read_id_width = 3, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 // A fused adaptor takes the PULP config of both adaptors
 // CHECK-LABEL: hw.module @FusePulpConfig
@@ -221,7 +221,7 @@ hw.module @FusePulpConfig(in %clk : !seq.clock, in %rst_ni : i1,
   %mid = axi4.id_width_converter %clk, %rst_ni, %narrow
     {PULP_CONFIG_AxiMstPortMaxUniqIds = 2 : i32} : (!narrow_ids) -> !mid_ids
   axi4.abstract_subordinate %clk, %rst_ni, %mid
-    concurrent_writes 4 concurrent_reads 4 : !mid_ids
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mid_ids
 }
 
 // A fused crossing takes the PULP config of both crossings
@@ -236,7 +236,7 @@ hw.module @FuseCrossingPulpConfig(in %aclk : !seq.clock, in %bclk : !seq.clock,
   %bc = axi4.cdc from %bclk to %cclk, %rst_ni, %ab
     {PULP_CONFIG_SyncStages = 3 : i32} : !mgr_lo
   axi4.abstract_subordinate %cclk, %rst_ni, %bc
-    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
 // Crossings setting a PULP parameter to different values are not fused, so
@@ -253,7 +253,7 @@ hw.module @PulpConfigConflict(in %aclk : !seq.clock, in %bclk : !seq.clock,
   %bc = axi4.cdc from %bclk to %cclk, %rst_ni, %ab
     {PULP_CONFIG_LogDepth = 3 : i32} : !mgr_lo
   axi4.abstract_subordinate %cclk, %rst_ni, %bc
-    concurrent_writes 4 concurrent_reads 4 : !mgr_lo
+    concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
 // Logic outside the network is left alone, dead or not

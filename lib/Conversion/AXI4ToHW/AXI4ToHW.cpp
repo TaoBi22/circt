@@ -22,8 +22,8 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 namespace circt {
@@ -491,30 +491,37 @@ enum class AtopExit { Accept, Filter, Reject };
 struct AtopPaths {
   /// The components they cross, which carry `atop` along them
   DenseSet<Operation *> components;
-  /// The ports out of the network they reach that filter atomics out
-  llvm::SetVector<OpOperand *> filtered;
+  /// The ports out of the network they reach that filter atomics out, with
+  /// their filter markers
+  llvm::MapVector<OpOperand *, Attribute> filtered;
 };
 } // namespace
+
+/// The filter marker on `port`, if it has one.
+static Attribute getAtopFilter(const hw::PortInfo &port) {
+  return port.attrs ? port.attrs.get(kPulpAtopFilterAttr) : Attribute();
+}
 
 /// What the port a use carries out of the network does with atomics.
 static AtopExit getAtopExit(const hw::PortInfo &port) {
   if (carriesAtops(port))
     return AtopExit::Accept;
-  if (port.attrs && port.attrs.get(kPulpAtopFilterAttr))
+  if (getAtopFilter(port))
     return AtopExit::Filter;
   return AtopExit::Reject;
 }
 
-/// A description of the port `use` carries out of the network, and what it
-/// does with atomics.
-static std::pair<std::string, AtopExit> describeExit(OpOperand &use,
-                                                     SymbolTable &symbols) {
+/// A description of the port `use` carries out of the network, what it does
+/// with atomics, and its filter marker if it has one.
+static std::tuple<std::string, AtopExit, Attribute>
+describeExit(OpOperand &use, SymbolTable &symbols) {
   Operation *user = use.getOwner();
   if (auto output = dyn_cast<hw::OutputOp>(user)) {
     auto hwModule = cast<hw::HWModuleLike>(output->getParentOp());
     hw::PortInfo port = hw::ModulePortInfo(hwModule.getPortList())
                             .atOutput(use.getOperandNumber());
-    return {("output port '" + port.getName() + "'").str(), getAtopExit(port)};
+    return {("output port '" + port.getName() + "'").str(), getAtopExit(port),
+            getAtopFilter(port)};
   }
   if (auto instance = dyn_cast<hw::InstanceOp>(user)) {
     auto target = symbols.lookup<hw::HWModuleLike>(
@@ -524,9 +531,10 @@ static std::pair<std::string, AtopExit> describeExit(OpOperand &use,
     return {("port '" + port.getName() + "' of instance '" +
              instance.getInstanceName() + "'")
                 .str(),
-            getAtopExit(port)};
+            getAtopExit(port), getAtopFilter(port)};
   }
-  return {("'" + user->getName().getStringRef() + "'").str(), AtopExit::Reject};
+  return {("'" + user->getName().getStringRef() + "'").str(), AtopExit::Reject,
+          Attribute()};
 }
 
 /// The paths from the ports marked as carrying atomics, or failure if one
@@ -546,11 +554,24 @@ static FailureOr<AtopPaths> findAtopPaths(ModuleOp module) {
   };
 
   for (auto mod : module.getOps<hw::HWModuleLike>())
-    for (const hw::PortInfo &port : mod.getPortList())
-      if (carriesAtops(port) && port.attrs.get(kPulpAtopFilterAttr))
-        return mlir::emitError(port.loc ? Location(port.loc) : mod.getLoc())
+    for (const hw::PortInfo &port : mod.getPortList()) {
+      Attribute filter = getAtopFilter(port);
+      if (!filter)
+        continue;
+      Location loc = port.loc ? Location(port.loc) : mod.getLoc();
+      if (carriesAtops(port))
+        return mlir::emitError(loc)
                << "port '" << port.getName() << "' is marked both '"
                << kPulpAtopsAttr << "' and '" << kPulpAtopFilterAttr << "'";
+      auto writes = dyn_cast<IntegerAttr>(filter);
+      if (!isa<UnitAttr>(filter) &&
+          !(writes && writes.getType().isSignlessInteger(32) &&
+            writes.getInt() >= 1))
+        return mlir::emitError(loc)
+               << "port '" << port.getName() << "' has a '"
+               << kPulpAtopFilterAttr
+               << "' that is neither a unit nor a positive i32";
+    }
 
   SymbolTable symbols(module);
   for (auto hwModule : module.getOps<hw::HWModuleOp>()) {
@@ -608,7 +629,7 @@ static FailureOr<AtopPaths> findAtopPaths(ModuleOp module) {
         continue;
       }
 
-      auto [exit, kind] = describeExit(use, symbols);
+      auto [exit, kind, filter] = describeExit(use, symbols);
       if (kind == AtopExit::Reject)
         return reject(mlir::emitError(user->getLoc())
                       << "atomics reach " << exit << ", which is marked "
@@ -624,7 +645,7 @@ static FailureOr<AtopPaths> findAtopPaths(ModuleOp module) {
                         << kPulpAtopFilterAttr
                         << "', but no component drives it to take a clock and "
                            "reset for the filter from");
-        paths.filtered.insert(&use);
+        paths.filtered.insert({&use, filter});
       }
     }
   }
@@ -686,7 +707,7 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
     return shape;
   };
 
-  for (OpOperand *use : atopPaths.filtered) {
+  for (auto [use, filter] : atopPaths.filtered) {
     Value port = use->get();
     auto type = cast<PortType>(port.getType());
     if (failed(checkPulpAtopFilterSupported(use->getOwner()->getLoc(), type)))
@@ -710,10 +731,12 @@ static LogicalResult lowerComponents(ModuleOp module, bool pulpMapping,
     FailureOr<hw::HWModuleExternOp> shape = getShape(
         StringAttr::get(context,
                         "axi_atop_filter_" + portShape(type) + userShape(type)),
-        ports, DictionaryAttr::get(context),
+        ports,
+        DictionaryAttr::get(context,
+                            b.getNamedAttr(kPulpAtopFilterAttr, filter)),
         [](const hw::ModulePort &port) { return port.name == "mgr0"; },
         [&](hw::HWModuleExternOp shape) {
-          return attachPulpAtopFilterSource(b, shape, type);
+          return attachPulpAtopFilterSource(b, shape, type, filter);
         });
     if (failed(shape))
       return failure();
@@ -932,13 +955,13 @@ static LogicalResult annihilateBridges(ModuleOp module, FillerDomain &filler,
 // Port conversion
 //===----------------------------------------------------------------------===//
 
-/// The number of outstanding writes/reads that can concurrently be in flight
-/// down `port`.
+/// The number of writes/reads per ID that can concurrently be in flight down
+/// `port`.
 static SmallVector<NamedAttribute, 2> concurrency(Builder &b, PortType port) {
-  return {b.getNamedAttr("concurrent_writes",
-                         b.getI32IntegerAttr(port.getOutstandingWrites())),
-          b.getNamedAttr("concurrent_reads",
-                         b.getI32IntegerAttr(port.getOutstandingReads()))};
+  return {b.getNamedAttr("concurrent_writes_per_id",
+                         b.getI32IntegerAttr(port.getConcurrentWritesPerId())),
+          b.getNamedAttr("concurrent_reads_per_id",
+                         b.getI32IntegerAttr(port.getConcurrentReadsPerId()))};
 }
 
 namespace {

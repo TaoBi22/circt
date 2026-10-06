@@ -1,7 +1,7 @@
 // RUN: circt-opt %s --lower-axi4-to-hw=pulp-mapping=true --split-input-file | FileCheck %s
 
-!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 6>
-!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 6>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 6>
 
 hw.module.extern @Manager(out axi : !wide_ids)
 hw.module.extern @Subordinate(in %axi : !narrow_ids)
@@ -30,17 +30,17 @@ hw.module.extern @Subordinate(in %axi : !narrow_ids)
 // CHECK-SAME:   assign slv_req[0].aw = '{id: mgr0_aw.id,
 // CHECK-SAME:   assign sub0_aw = '{id: mst_req[0].aw.id,
 
-// PULP sizes its tables from the transactions each side keeps in flight. The 6
-// unique upstream IDs outnumber the 4 the downstream side has, so PULP
-// serialises rather than remaps them.
+// PULP sizes its tables from the IDs each side has, and the transactions per ID
+// each keeps in flight. The 16 upstream IDs outnumber the 4 the downstream side
+// has, so PULP serialises rather than remaps them.
 // CHECK-SAME:   axi_iw_converter #(\0A
 // CHECK-SAME:     .AxiSlvPortIdWidth      (4),\0A
 // CHECK-SAME:     .AxiMstPortIdWidth      (2),\0A
-// CHECK-SAME:     .AxiSlvPortMaxUniqIds   (6),\0A
+// CHECK-SAME:     .AxiSlvPortMaxUniqIds   (16),\0A
 // CHECK-SAME:     .AxiSlvPortMaxTxnsPerId (6),\0A
-// CHECK-SAME:     .AxiSlvPortMaxTxns      (6),\0A
+// CHECK-SAME:     .AxiSlvPortMaxTxns      (96),\0A
 // CHECK-SAME:     .AxiMstPortMaxUniqIds   (4),\0A
-// CHECK-SAME:     .AxiMstPortMaxTxnsPerId (4),\0A
+// CHECK-SAME:     .AxiMstPortMaxTxnsPerId (6),\0A
 // CHECK-SAME:     .AxiAddrWidth           (32),\0A
 // CHECK-SAME:     .AxiDataWidth           (64),\0A
 // CHECK-SAME:     .AxiUserWidth           (1),\0A
@@ -61,8 +61,8 @@ hw.module @Narrowing(in %clk : !seq.clock, in %rst_ni : i1) {
 // -----
 
 // Widening is the same wrapper with the two ID widths the other way round
-!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
-!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, outstanding_writes = 4, outstanding_reads = 4>
+!narrow_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+!wide_ids = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module.extern @Manager(out axi : !narrow_ids)
 hw.module.extern @Subordinate(in %axi : !wide_ids)

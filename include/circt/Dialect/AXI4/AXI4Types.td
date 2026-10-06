@@ -25,16 +25,16 @@ def PortType : AXI4TypeDef<"Port"> {
   let description = [{
     The primary interface passed between endpoints and interconnect primitives.
     Carries the address, data, write/read ID and user widths, the access windows
-    the port supports, and the maximum outstanding writes and reads, e.g.
+    the port supports, and the maximum writes and reads in flight with any one
+    ID, e.g.
     `!axi4.port<addr_width = 32, data_width = 64, write_id_width = 4,
     read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff,
-    burst_specs = <<fixed, len = 4>>>>, outstanding_writes = 4,
-    outstanding_reads = 4>`.
+    burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4,
+    concurrent_reads_per_id = 4>`.
 
     The fields may be given in any order. AXI4 permits address widths up to 64
     bits, data widths that are a power of two between 8 and 1024, and ID widths
-    up to 32 bits. The outstanding request counts must not exceed the number of
-    distinct IDs available.
+    up to 32 bits.
   }];
 
   let parameters = (ins "uint32_t":$addr_width,
@@ -43,8 +43,8 @@ def PortType : AXI4TypeDef<"Port"> {
                         "uint32_t":$read_id_width,
                         "uint32_t":$user_width,
                         "::circt::axi4::WindowSetAttr":$windows,
-                        "uint32_t":$outstanding_writes,
-                        "uint32_t":$outstanding_reads);
+                        "uint32_t":$concurrent_writes_per_id,
+                        "uint32_t":$concurrent_reads_per_id);
 
   let assemblyFormat = "`<` struct(params) `>`";
 

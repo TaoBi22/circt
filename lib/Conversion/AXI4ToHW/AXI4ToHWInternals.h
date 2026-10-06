@@ -60,10 +60,12 @@ mlir::LogicalResult checkPulpAtopFilterSupported(mlir::Location loc,
                                                  axi4::PortType port);
 
 /// Attach a PULP wrapper around axi_atop_filter, filtering the atomics out of
-/// `port`, to `shape`, the external module the filter is lowered to.
+/// `port`, to `shape`, the external module the filter is lowered to. `filter`
+/// is the port's filter marker.
 mlir::LogicalResult attachPulpAtopFilterSource(mlir::ImplicitLocOpBuilder &b,
                                                hw::HWModuleExternOp shape,
-                                               axi4::PortType port);
+                                               axi4::PortType port,
+                                               mlir::Attribute filter);
 
 } // namespace AXI4ToHW
 } // namespace circt

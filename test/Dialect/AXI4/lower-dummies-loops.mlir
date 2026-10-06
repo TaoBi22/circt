@@ -8,21 +8,21 @@
 // coming back through a crossbar, so the quadrant sends only a cluster's own
 // memory down to it, and a cluster sends everything else up.
 // CHECK-LABEL: hw.module @QuadrantLoops(
-// CHECK-SAME:    out soc_out : !axi4.port<{{.*}} write_id_width = 5, {{.*}} outstanding_writes = 8, outstanding_reads = 8> {pulp.atops})
+// CHECK-SAME:    out soc_out : !axi4.port<{{.*}} write_id_width = 5, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1> {pulp.atops})
 
 // Each upstream port is connected only to the downstream ports its accesses
 // are routed through, so no cluster is connected back down to itself
 // CHECK:       %[[Q:.+]]:3 = axi4.xbar %clk, %rst_ni mgrs %soc, %{{.+}}#1, %{{.+}}#1 {PULP_CONFIG_Connectivity = {{\[}}[false, true, true], [true, true, false], [true, false, true]]}
-// CHECK-SAME:    -> (!axi4.port<{{.*}}>, !axi4.port<{{.*}} write_id_width = 5, {{.*}} windows = <<base = 0x10040000, last = 0x1005ffff, {{.*}}>>>>, outstanding_writes = 12, {{.*}}>, !axi4.port<{{.*}} write_id_width = 5, {{.*}} windows = <<base = 0x10000000, last = 0x1001ffff, {{.*}}>>>>, outstanding_writes = 12, {{.*}}>)
+// CHECK-SAME:    -> (!axi4.port<{{.*}}>, !axi4.port<{{.*}} write_id_width = 5, {{.*}} windows = <<base = 0x10040000, last = 0x1005ffff, {{.*}}>>>>, concurrent_writes_per_id = 1, {{.*}}>, !axi4.port<{{.*}} write_id_width = 5, {{.*}} windows = <<base = 0x10000000, last = 0x1001ffff, {{.*}}>>>>, concurrent_writes_per_id = 1, {{.*}}>)
 
 // The remappers compact the quadrant's IDs, so the IDs stop growing around the
 // loop
-// CHECK:       %[[DOWN0:.+]] = axi4.id_remap %clk, %rst_ni, %[[Q]]#2 max_unique_ids = 4 : (!axi4.port<{{.*}} write_id_width = 5, {{.*}}>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} outstanding_writes = 4, outstanding_reads = 4>
+// CHECK:       %[[DOWN0:.+]] = axi4.id_remap %clk, %rst_ni, %[[Q]]#2 max_unique_ids = 4 : (!axi4.port<{{.*}} write_id_width = 5, {{.*}}>) -> !axi4.port<{{.*}} write_id_width = 2, read_id_width = 2, {{.*}} concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
 // CHECK:       %[[DOWN1:.+]] = axi4.id_remap %clk, %rst_ni, %[[Q]]#1 max_unique_ids = 4
 
 // A cluster sends the other cluster's memory and the rest of the SoC up
 // CHECK:       %[[C0:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %core0, %[[DOWN0]] {PULP_CONFIG_Connectivity = {{\[}}[true, true], [true, false]]}
-// CHECK-SAME:    -> (!axi4.port<{{.*}} write_id_width = 3, {{.*}} windows = <<base = 0x10000000, last = 0x1001ffff, {{.*}}>>>>, outstanding_writes = 8, {{.*}}>, !axi4.port<{{.*}} write_id_width = 3, {{.*}} windows = <<base = 0x0, last = 0xfffffff, {{.*}}>>>, <base = 0x10040000, last = 0x1005ffff, {{.*}}>>>, <base = 0x10080000, last = 0xffffffffffff, {{.*}}>>>>, outstanding_writes = 4, {{.*}}>)
+// CHECK-SAME:    -> (!axi4.port<{{.*}} write_id_width = 3, {{.*}} windows = <<base = 0x10000000, last = 0x1001ffff, {{.*}}>>>>, concurrent_writes_per_id = 1, {{.*}}>, !axi4.port<{{.*}} write_id_width = 3, {{.*}} windows = <<base = 0x0, last = 0xfffffff, {{.*}}>>>, <base = 0x10040000, last = 0x1005ffff, {{.*}}>>>, <base = 0x10080000, last = 0xffffffffffff, {{.*}}>>>>, concurrent_writes_per_id = 1, {{.*}}>)
 // CHECK:       %[[C1:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %core1, %[[DOWN1]]
 // CHECK:       hw.output %[[C0]]#0, %[[C1]]#0, %[[Q]]#0
 
@@ -66,11 +66,11 @@ hw.module @QuadrantLoops(in %clk : !seq.clock, in %rst_ni : i1) {
 // CHECK:         %[[WIDENED:.+]] = axi4.id_width_converter %clk, %rst_ni, %m_inter : {{.*}} -> !axi4.port<{{.*}} write_id_width = 3,
 // CHECK:         %[[INTER:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %[[WIDENED]], %{{.+}} {
 // CHECK-SAME:      -> (!axi4.port<{{.*}} write_id_width = 4, {{.*}}>, !axi4.port<{{.*}} write_id_width = 4,
-// CHECK:         %[[UP:.+]] = axi4.id_remap %clk, %rst_ni, %[[INTER]]#1 max_unique_ids = 4 : (!axi4.port<{{.*}} write_id_width = 4, {{.*}}>) -> !axi4.port<{{.*}} write_id_width = 2, {{.*}} outstanding_writes = 4,
+// CHECK:         %[[UP:.+]] = axi4.id_remap %clk, %rst_ni, %[[INTER]]#1 max_unique_ids = 4 : (!axi4.port<{{.*}} write_id_width = 4, {{.*}}>) -> !axi4.port<{{.*}} write_id_width = 2, {{.*}} concurrent_writes_per_id = 1,
 // CHECK:         %[[UP_CUT:.+]] = axi4.cut %clk, %rst_ni, %[[UP]]
 // CHECK:         %[[WIDE:.+]]:2 = axi4.xbar %clk, %rst_ni mgrs %m_wide, %[[UP_CUT]] {
 // CHECK-SAME:      -> (!axi4.port<{{.*}} write_id_width = 3, {{.*}}>, !axi4.port<{{.*}} write_id_width = 3,
-// CHECK:         %[[DOWN:.+]] = axi4.id_remap %clk, %rst_ni, %[[WIDE]]#1 max_unique_ids = 8 : (!axi4.port<{{.*}} write_id_width = 3, {{.*}}>) -> !axi4.port<{{.*}} write_id_width = 3, {{.*}} outstanding_writes = 4,
+// CHECK:         %[[DOWN:.+]] = axi4.id_remap %clk, %rst_ni, %[[WIDE]]#1 max_unique_ids = 8 : (!axi4.port<{{.*}} write_id_width = 3, {{.*}}>) -> !axi4.port<{{.*}} write_id_width = 3, {{.*}} concurrent_writes_per_id = 1,
 // CHECK:         %[[DOWN_CUT:.+]] = axi4.cut %clk, %rst_ni, %[[DOWN]]
 // CHECK:         hw.output %[[INTER]]#0, %[[WIDE]]#0
 // PULP-LABEL: hw.module @SocLoop(
