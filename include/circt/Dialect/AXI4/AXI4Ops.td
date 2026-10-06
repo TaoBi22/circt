@@ -528,26 +528,35 @@ def DummiesExtManagerOp : AXI4DummiesOp<"ext_manager",
     declare the subordinates it accesses. The name, if given, names the port
     the manager connects to once lowered.
 
+    The manager can have writes and reads with up to `outstanding_write_ids`
+    and `outstanding_read_ids` different IDs in flight at once, and up to
+    `concurrent_writes_per_id` and `concurrent_reads_per_id` with any one ID.
+
     Example:
     ```mlir
     %mgr, %access = axi4.dummies.ext_manager "core" %clk, %rst_ni
-      addr_width = 32, data_width = 64, outstanding_writes = 4,
-      outstanding_reads = 4
+      addr_width = 32, data_width = 64, outstanding_write_ids = 4,
+      outstanding_read_ids = 4, concurrent_writes_per_id = 2,
+      concurrent_reads_per_id = 2
     ```
   }];
 
   let arguments = (ins ClockType:$clock, I1:$reset,
                        OptionalAttr<StrAttr>:$name, I32Attr:$addr_width,
-                       I32Attr:$data_width, I32Attr:$outstanding_writes,
-                       I32Attr:$outstanding_reads);
+                       I32Attr:$data_width, I32Attr:$outstanding_write_ids,
+                       I32Attr:$outstanding_read_ids,
+                       I32Attr:$concurrent_writes_per_id,
+                       I32Attr:$concurrent_reads_per_id);
   let results = (outs DummiesPortType:$port,
                       DummiesManagerAccessType:$access);
 
   let assemblyFormat = [{
     ($name^)? $clock `,` $reset `addr_width` `=` $addr_width `,`
       `data_width` `=` $data_width `,`
-      `outstanding_writes` `=` $outstanding_writes `,`
-      `outstanding_reads` `=` $outstanding_reads attr-dict
+      `outstanding_write_ids` `=` $outstanding_write_ids `,`
+      `outstanding_read_ids` `=` $outstanding_read_ids `,`
+      `concurrent_writes_per_id` `=` $concurrent_writes_per_id `,`
+      `concurrent_reads_per_id` `=` $concurrent_reads_per_id attr-dict
   }];
 
   let hasVerifier = 1;
@@ -562,12 +571,18 @@ def DummiesExtSubordinateOp : AXI4DummiesOp<"ext_subordinate"> {
     managers that access it. The name, if given, names the port the subordinate
     connects to once lowered.
 
+    The subordinate can hold writes and reads with up to
+    `outstanding_write_ids` and `outstanding_read_ids` different IDs at once,
+    and up to `concurrent_writes_per_id` and `concurrent_reads_per_id` with any
+    one ID.
+
     Example:
     ```mlir
     %access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %mgr
       windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>
-      addr_width = 32, data_width = 64, outstanding_writes = 4,
-      outstanding_reads = 4
+      addr_width = 32, data_width = 64, outstanding_write_ids = 4,
+      outstanding_read_ids = 4, concurrent_writes_per_id = 2,
+      concurrent_reads_per_id = 2
     ```
   }];
 
@@ -575,15 +590,19 @@ def DummiesExtSubordinateOp : AXI4DummiesOp<"ext_subordinate"> {
                        DummiesPortType:$upstream, OptionalAttr<StrAttr>:$name,
                        WindowSetAttr:$windows,
                        I32Attr:$addr_width, I32Attr:$data_width,
-                       I32Attr:$outstanding_writes,
-                       I32Attr:$outstanding_reads);
+                       I32Attr:$outstanding_write_ids,
+                       I32Attr:$outstanding_read_ids,
+                       I32Attr:$concurrent_writes_per_id,
+                       I32Attr:$concurrent_reads_per_id);
   let results = (outs DummiesSubordinateAccessType:$access);
 
   let assemblyFormat = [{
     ($name^)? $clock `,` $reset `,` $upstream `windows` $windows
       `addr_width` `=` $addr_width `,` `data_width` `=` $data_width `,`
-      `outstanding_writes` `=` $outstanding_writes `,`
-      `outstanding_reads` `=` $outstanding_reads attr-dict
+      `outstanding_write_ids` `=` $outstanding_write_ids `,`
+      `outstanding_read_ids` `=` $outstanding_read_ids `,`
+      `concurrent_writes_per_id` `=` $concurrent_writes_per_id `,`
+      `concurrent_reads_per_id` `=` $concurrent_reads_per_id attr-dict
   }];
 
   let hasVerifier = 1;

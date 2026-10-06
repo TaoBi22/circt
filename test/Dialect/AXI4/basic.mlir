@@ -327,24 +327,24 @@ hw.module @ToMem(in %clk : !seq.clock, in %rst_ni : i1, in %port : !mem_port,
 
 // CHECK-LABEL: hw.module @DummiesExtEndpoints
 hw.module @DummiesExtEndpoints(in %clk : !seq.clock, in %rst_ni : i1) {
-  // CHECK: %[[MGR:.+]], %[[MGR_ACCESS:.+]] = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {a}
-  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {a}
-  // CHECK: %{{.+}} = axi4.dummies.ext_subordinate %clk, %rst_ni, %[[MGR]] windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {b}
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {b}
+  // CHECK: %[[MGR:.+]], %[[MGR_ACCESS:.+]] = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1 {a}
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1 {a}
+  // CHECK: %{{.+}} = axi4.dummies.ext_subordinate %clk, %rst_ni, %[[MGR]] windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1 {b}
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x2000, last = 0x2fff, burst_specs = <<fixed, len = 4>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1 {b}
 }
 
 // CHECK-LABEL: hw.module @DummiesXbar
 hw.module @DummiesXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: %{{.+}}, %[[CORE_ACCESS:.+]] = axi4.dummies.ext_manager
-  %core, %core_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %core, %core_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // CHECK: %{{.+}}, %[[DEBUG_ACCESS:.+]] = axi4.dummies.ext_manager
-  %debug, %debug_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
+  %debug, %debug_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 2, outstanding_read_ids = 2, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // CHECK: %[[XBAR:.+]] = axi4.dummies.xbar %clk, %rst_ni mgrs %{{.+}}, %{{.+}} addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4 {a}
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4 {a}
   // CHECK: %[[MEM_ACCESS:.+]] = axi4.dummies.ext_subordinate %clk, %rst_ni, %[[XBAR]] windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>
-  %mem_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mem_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // CHECK: %[[PERIPH_ACCESS:.+]] = axi4.dummies.ext_subordinate %clk, %rst_ni, %[[XBAR]] windows <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>>
-  %periph_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>> addr_width = 32, data_width = 64, outstanding_writes = 2, outstanding_reads = 2
+  %periph_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %xbar windows <<base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 2, outstanding_read_ids = 2, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // CHECK: axi4.dummies.accesses %[[CORE_ACCESS]] -> %[[MEM_ACCESS]] with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> {a}
   axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>> {a}
   // CHECK: axi4.dummies.accesses %[[CORE_ACCESS]] -> %[[PERIPH_ACCESS]] with <base = 0x1000, last = 0x1fff, burst_specs = <<fixed, len = 4>>>
@@ -355,28 +355,28 @@ hw.module @DummiesXbar(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // CHECK-LABEL: hw.module @NamedDummiesEndpoints
 hw.module @NamedDummiesEndpoints(in %clk : !seq.clock, in %rst_ni : i1) {
-  // CHECK: %[[MGR:.+]], %{{.+}} = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  %mgr, %mgr_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  // CHECK: axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %[[MGR]] windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  %sub_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // CHECK: %[[MGR:.+]], %{{.+}} = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
+  %mgr, %mgr_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
+  // CHECK: axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %[[MGR]] windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
+  %sub_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
 }
 
 // CHECK-LABEL: hw.module @DummiesCut
 hw.module @DummiesCut(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: %[[MGR:.+]], %{{.+}} = axi4.dummies.ext_manager
-  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // CHECK: %[[CUT:.+]] = axi4.dummies.cut %clk, %rst_ni, %[[MGR]] {a}
   %cut = axi4.dummies.cut %clk, %rst_ni, %mgr {a}
   // CHECK: axi4.dummies.ext_subordinate %clk, %rst_ni, %[[CUT]]
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %cut windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %cut windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
 }
 
 // CHECK-LABEL: hw.module @DummiesIdRemap
 hw.module @DummiesIdRemap(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: %[[MGR:.+]], %{{.+}} = axi4.dummies.ext_manager
-  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // CHECK: %[[REMAP:.+]] = axi4.dummies.id_remap %clk, %rst_ni, %[[MGR]] max_unique_ids = 2, concurrent_per_id = 4 {a}
   %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 2, concurrent_per_id = 4 {a}
   // CHECK: axi4.dummies.ext_subordinate %clk, %rst_ni, %[[REMAP]]
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %remap windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %remap windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
 }

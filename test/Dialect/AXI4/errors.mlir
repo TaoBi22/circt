@@ -781,44 +781,44 @@ hw.module @AddressSizedMemStrobe(in %clk : !seq.clock, in %rst_ni : i1,
 
 hw.module @WideDummiesManagerAddress(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.dummies.ext_manager' op 'addr_width' must be at most 64, got 65}}
-  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 65, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 65, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
 }
 
 // -----
 
 hw.module @UnalignedDummiesManagerData(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.dummies.ext_manager' op 'data_width' must be a power of two between 8 and 1024, got 48}}
-  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 48, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 48, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
 }
 
 // -----
 
 hw.module @NoDummiesManagerWrites(in %clk : !seq.clock, in %rst_ni : i1) {
-  // expected-error @below {{'axi4.dummies.ext_manager' op 'outstanding_writes' must be at least 1}}
-  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 0, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.ext_manager' op 'outstanding_write_ids' must be at least 1}}
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 0, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
 }
 
 // -----
 
 hw.module @NoDummiesSubordinateReads(in %clk : !seq.clock, in %rst_ni : i1) {
-  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  // expected-error @below {{'axi4.dummies.ext_subordinate' op 'outstanding_reads' must be at least 1}}
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 0
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
+  // expected-error @below {{'axi4.dummies.ext_subordinate' op 'outstanding_read_ids' must be at least 1}}
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 0, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
 }
 
 // -----
 
 hw.module @WideDummiesSubordinateWindow(in %clk : !seq.clock, in %rst_ni : i1) {
-  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // expected-error @below {{'axi4.dummies.ext_subordinate' op window #axi4.window<base = 0x100000000, last = 0x100000fff, burst_specs = <<incr, len = 16>>> does not fit in an 'addr_width' of 32}}
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x100000000, last = 0x100000fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>, <base = 0x100000000, last = 0x100000fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
 }
 
 // -----
 
 hw.module @WideDummiesAccess(in %clk : !seq.clock, in %rst_ni : i1) {
-  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // expected-error @below {{'axi4.dummies.accesses' op window #axi4.window<base = 0x0, last = 0x100000fff, burst_specs = <<incr, len = 16>>> does not fit in an 'addr_width' of 32}}
   axi4.dummies.accesses %access -> %sub_access with <base = 0x0, last = 0x100000fff, burst_specs = <<incr, len = 16>>>
 }
@@ -827,9 +827,9 @@ hw.module @WideDummiesAccess(in %clk : !seq.clock, in %rst_ni : i1) {
 
 hw.module @FannedOutDummiesManager(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.dummies.ext_manager' op port result must have at most one use; route through an xbar to fan out to multiple endpoints}}
-  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  %sub_access2 = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
+  %sub_access2 = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
 }
 
 // -----
@@ -842,7 +842,7 @@ hw.module @NoDummiesManagers(in %clk : !seq.clock, in %rst_ni : i1) {
 // -----
 
 hw.module @DummiesXbarTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1) {
-  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // expected-error @below {{'axi4.dummies.xbar' op 'upstream_concurrent_per_id' must be at least 1}}
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64, upstream_concurrent_per_id = 0
 }
@@ -850,7 +850,7 @@ hw.module @DummiesXbarTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1) {
 // -----
 
 hw.module @UnalignedDummiesXbarData(in %clk : !seq.clock, in %rst_ni : i1) {
-  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // expected-error @below {{'axi4.dummies.xbar' op 'data_width' must be a power of two between 8 and 1024, got 48}}
   %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 48, upstream_concurrent_per_id = 4
 }
@@ -859,8 +859,8 @@ hw.module @UnalignedDummiesXbarData(in %clk : !seq.clock, in %rst_ni : i1) {
 
 // Ensure manager and subordinate accesses can't be interchanged
 hw.module @ReversedDummiesAccess(in %clk : !seq.clock, in %rst_ni : i1) {
-  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
+  %sub_access = axi4.dummies.ext_subordinate %clk, %rst_ni, %mgr windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // expected-error @below {{'axi4.dummies.accesses' op operand #0 must be a handle on a dummies manager's accesses, but got '!axi4.dummies.subordinate_access'}}
   "axi4.dummies.accesses"(%sub_access, %mgr_access) {window = #axi4.window<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>} : (!axi4.dummies.subordinate_access, !axi4.dummies.manager_access) -> ()
 }
@@ -934,7 +934,7 @@ hw.module @MovingIdRemap(in %clk : !seq.clock, in %rst_ni : i1,
 // -----
 
 hw.module @DummiesRemapTrackingNothing(in %clk : !seq.clock, in %rst_ni : i1) {
-  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // expected-error @below {{'axi4.dummies.id_remap' op 'max_unique_ids' must be at least 1}}
   %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 0, concurrent_per_id = 4
 }
@@ -991,7 +991,7 @@ hw.module @RemapTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1, in %upst
 // -----
 
 hw.module @DummiesRemapTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1) {
-  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1
   // expected-error @below {{'axi4.dummies.id_remap' op 'concurrent_per_id' must be at least 1}}
   %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 4, concurrent_per_id = 0
 }
@@ -1024,4 +1024,11 @@ hw.module @DemuxPastBudget(in %clk : !seq.clock, in %rst_ni : i1, in %mgr : !mgr
 hw.module @SplitterPastBudget(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !port) {
   // expected-error @below {{'axi4.burst_splitter' op downstream port's 'concurrent_writes_per_id' (4) must be the 2 writes per ID the upstream port can issue within the splitter's budget}}
   %split = axi4.burst_splitter %clk, %rst_ni, %upstream concurrent_writes 2 concurrent_reads 4 : (!port) -> !split
+}
+
+// -----
+
+hw.module @ManagerIssuesNoneOfAnId(in %clk : !seq.clock, in %rst_ni : i1) {
+  // expected-error @below {{'axi4.dummies.ext_manager' op 'concurrent_reads_per_id' must be at least 1}}
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_write_ids = 4, outstanding_read_ids = 4, concurrent_writes_per_id = 1, concurrent_reads_per_id = 0
 }

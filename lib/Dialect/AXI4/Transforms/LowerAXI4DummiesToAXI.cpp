@@ -164,20 +164,26 @@ inferWindows(DummiesExtManagerOp manager,
   return WindowSetAttr::get(manager.getContext(), windows);
 }
 
-/// Warn where a subordinate can hold fewer outstanding requests than the
-/// managers reaching it can issue (this can't be caught post-lowering)
-static void warnBottleneck(DummiesExtSubordinateOp subordinate, uint64_t writes,
-                           uint64_t reads) {
-  if (subordinate.getOutstandingWrites() < writes)
-    subordinate.emitWarning()
-        << "can hold fewer outstanding writes than the managers reaching it "
-           "can issue ("
-        << subordinate.getOutstandingWrites() << " < " << writes << ")";
-  if (subordinate.getOutstandingReads() < reads)
-    subordinate.emitWarning()
-        << "can hold fewer outstanding reads than the managers reaching it can "
-           "issue ("
-        << subordinate.getOutstandingReads() << " < " << reads << ")";
+/// Warn where a subordinate can hold requests with fewer IDs, or fewer per ID,
+/// than reach it through the port it presents, `presented`, which merges `ids`
+/// onto its own IDs where they are narrower (this can't be caught
+/// post-lowering)
+static void warnBottleneck(DummiesExtSubordinateOp subordinate,
+                           std::pair<uint64_t, uint64_t> ids,
+                           PortType presented) {
+  auto warn = [&](StringRef what, uint64_t held, uint64_t reaching) {
+    if (held < reaching)
+      subordinate.emitWarning() << "can " << what << " than reach it (" << held
+                                << " < " << reaching << ")";
+  };
+  warn("track fewer write IDs", subordinate.getOutstandingWriteIds(),
+       std::min(ids.first, uint64_t{1} << presented.getWriteIdWidth()));
+  warn("track fewer read IDs", subordinate.getOutstandingReadIds(),
+       std::min(ids.second, uint64_t{1} << presented.getReadIdWidth()));
+  warn("hold fewer writes per ID", subordinate.getConcurrentWritesPerId(),
+       presented.getConcurrentWritesPerId());
+  warn("hold fewer reads per ID", subordinate.getConcurrentReadsPerId(),
+       presented.getConcurrentReadsPerId());
 }
 
 /// Check a subordinate agrees with whatever reaches it on its address width,
@@ -206,6 +212,13 @@ static uint32_t mergedPerId(uint32_t perId, uint32_t fromWidth,
   return perId << (fromWidth - toWidth);
 }
 
+/// The reads per ID left once a data width converter between `fromWidth` and
+/// `toWidth` bits, if one is needed, has converted them one per ID at a time.
+static uint32_t convertedReads(uint32_t reads, uint32_t fromWidth,
+                               uint32_t toWidth) {
+  return fromWidth == toWidth ? reads : std::min(reads, 1u);
+}
+
 /// The port type a subordinate presents over `windows` to a connection
 /// carrying `driven`, with ID widths wide enough to tag every request it can
 /// hold.
@@ -213,15 +226,18 @@ static PortType getSubordinatePortType(DummiesExtSubordinateOp subordinate,
                                        uint32_t userWidth,
                                        WindowSetAttr windows, PortType driven) {
   uint32_t writeIdWidth =
-      llvm::Log2_64_Ceil(subordinate.getOutstandingWrites());
-  uint32_t readIdWidth = llvm::Log2_64_Ceil(subordinate.getOutstandingReads());
-  return PortType::get(subordinate.getContext(), subordinate.getAddrWidth(),
-                       subordinate.getDataWidth(), writeIdWidth, readIdWidth,
-                       userWidth, windows,
-                       mergedPerId(driven.getConcurrentWritesPerId(),
-                                   driven.getWriteIdWidth(), writeIdWidth),
-                       mergedPerId(driven.getConcurrentReadsPerId(),
-                                   driven.getReadIdWidth(), readIdWidth));
+      llvm::Log2_64_Ceil(subordinate.getOutstandingWriteIds());
+  uint32_t readIdWidth =
+      llvm::Log2_64_Ceil(subordinate.getOutstandingReadIds());
+  return PortType::get(
+      subordinate.getContext(), subordinate.getAddrWidth(),
+      subordinate.getDataWidth(), writeIdWidth, readIdWidth, userWidth, windows,
+      mergedPerId(driven.getConcurrentWritesPerId(), driven.getWriteIdWidth(),
+                  writeIdWidth),
+      mergedPerId(convertedReads(driven.getConcurrentReadsPerId(),
+                                 driven.getDataWidth(),
+                                 subordinate.getDataWidth()),
+                  driven.getReadIdWidth(), readIdWidth));
 }
 
 /// The same port type with different ID widths.
@@ -241,10 +257,12 @@ getPortTypeWithDataWidth(Operation *op, PortType port, uint32_t dataWidth) {
       convertWindows(op, port.getWindows(), port.getDataWidth(), dataWidth);
   if (failed(windows))
     return failure();
-  return PortType::get(
-      port.getContext(), port.getAddrWidth(), dataWidth, port.getWriteIdWidth(),
-      port.getReadIdWidth(), port.getUserWidth(), *windows,
-      port.getConcurrentWritesPerId(), port.getConcurrentReadsPerId());
+  return PortType::get(port.getContext(), port.getAddrWidth(), dataWidth,
+                       port.getWriteIdWidth(), port.getReadIdWidth(),
+                       port.getUserWidth(), *windows,
+                       port.getConcurrentWritesPerId(),
+                       convertedReads(port.getConcurrentReadsPerId(),
+                                      port.getDataWidth(), dataWidth));
 }
 
 /// Whether a converter has to bridge a port to a connection carrying these
@@ -374,6 +392,17 @@ static Operation *producerOf(OpOperand *connection) {
   return port.getDefiningOp();
 }
 
+/// The data width a connection is driven with. A remapper passes on the one
+/// reaching it.
+static uint32_t dataWidthOf(OpOperand *connection) {
+  return TypeSwitch<Operation *, uint32_t>(producerOf(connection))
+      .Case<DummiesExtManagerOp, DummiesXbarOp>(
+          [](auto producer) { return producer.getDataWidth(); })
+      .Case<DummiesIDRemapOp>([](DummiesIDRemapOp remap) {
+        return dataWidthOf(incomingConnections(remap).front());
+      });
+}
+
 /// Whether a cut or remapper is fed only through other cuts and remappers,
 /// around a cycle.
 static bool isOnAdaptorCycle(Operation *op) {
@@ -426,7 +455,6 @@ private:
   LogicalResult inferIdWidths();
   void clampUniqueIds();
   void inferCounts();
-  std::pair<uint64_t, uint64_t> requests(OpOperand *connection);
   PortType getRemapType(DummiesIDRemapOp remap);
   LogicalResult adaptToSubordinate(OpOperand *connection, PortType driven,
                                    const Twine &source);
@@ -641,11 +669,11 @@ LogicalResult NetworkLowering::inferConnectionWindows() {
 /// connection were cut, and any loop left over has no remapper on it.
 LogicalResult NetworkLowering::inferIdWidths() {
   idWidths.clear();
-  // An endpoint needs enough ID bits to tag every request it can have
+  // An endpoint needs enough ID bits to tell apart every ID it can have
   // outstanding.
   for (DummiesExtManagerOp manager : managers)
-    idWidths[manager] = {llvm::Log2_64_Ceil(manager.getOutstandingWrites()),
-                         llvm::Log2_64_Ceil(manager.getOutstandingReads())};
+    idWidths[manager] = {llvm::Log2_64_Ceil(manager.getOutstandingWriteIds()),
+                         llvm::Log2_64_Ceil(manager.getOutstandingReadIds())};
   for (DummiesIDRemapOp remap : remaps) {
     uint32_t idWidth = llvm::Log2_64_Ceil(uniqueIds[remap]);
     idWidths[remap] = {idWidth, idWidth};
@@ -707,18 +735,20 @@ void NetworkLowering::clampUniqueIds() {
 
 /// Give every connection the IDs it carries, and the writes and reads per ID.
 /// A crossbar's downstream port carries what the managers that can address it
-/// issue there, each keeping its IDs apart, and a remapper's no more IDs than
-/// it tracks. Around a loop the counts depend on each other, so starting from
-/// none it repeats until none changes. Counts only grow, per ID to no more than
-/// a manager issues and in IDs to no more than the remapper on every loop
-/// tracks, so it ends.
+/// issue there, each keeping its IDs apart, and no more per ID than its budget,
+/// and a remapper's no more IDs than it tracks or per ID than its budget. A
+/// data width converter in front of a crossbar converts one read per ID at a
+/// time. Around a loop the counts depend
+/// on each other, so starting from none it repeats until none changes. Counts
+/// only grow, per ID to no more than a manager issues and in IDs to no more
+/// than the remapper on every loop tracks, so it ends.
 void NetworkLowering::inferCounts() {
-  // Each of a manager's requests can carry an ID of its own.
   for (DummiesExtManagerOp manager : managers) {
     OpOperand *connection = outgoingConnections(manager.getPort()).front();
-    perIds[connection] = {1, 1};
-    ids[connection] = {manager.getOutstandingWrites(),
-                       manager.getOutstandingReads()};
+    perIds[connection] = {manager.getConcurrentWritesPerId(),
+                          manager.getConcurrentReadsPerId()};
+    ids[connection] = {manager.getOutstandingWriteIds(),
+                       manager.getOutstandingReadIds()};
   }
 
   bool changed = true;
@@ -747,30 +777,30 @@ void NetworkLowering::inferCounts() {
           auto [aboveWritesPerId, aboveReadsPerId] = perIds.lookup(above);
           auto [aboveWriteIds, aboveReadIds] = ids.lookup(above);
           writesPerId = std::max(writesPerId, aboveWritesPerId);
-          readsPerId = std::max(readsPerId, aboveReadsPerId);
+          readsPerId = std::max(
+              readsPerId, convertedReads(aboveReadsPerId, dataWidthOf(above),
+                                         xbar.getDataWidth()));
           writeIds += aboveWriteIds;
           readIds += aboveReadIds;
         }
-        update(connection, {writesPerId, readsPerId}, {writeIds, readIds});
+        uint32_t budget = xbar.getUpstreamConcurrentPerId();
+        update(connection,
+               {std::min(writesPerId, budget), std::min(readsPerId, budget)},
+               {writeIds, readIds});
       }
     }
 
     for (DummiesIDRemapOp remap : remaps) {
       OpOperand *upstream = incomingConnections(remap).front();
       auto [writeIds, readIds] = ids.lookup(upstream);
+      auto [writesPerId, readsPerId] = perIds.lookup(upstream);
       uint64_t tracked = uniqueIds[remap];
+      uint32_t budget = remap.getConcurrentPerId();
       update(outgoingConnections(remap.getDownstream()).front(),
-             perIds.lookup(upstream),
+             {std::min(writesPerId, budget), std::min(readsPerId, budget)},
              {std::min(writeIds, tracked), std::min(readIds, tracked)});
     }
   }
-}
-
-/// The writes and reads a connection carries across all its IDs.
-std::pair<uint64_t, uint64_t> NetworkLowering::requests(OpOperand *connection) {
-  auto [writeIds, readIds] = ids.lookup(connection);
-  auto [writesPerId, readsPerId] = perIds.lookup(connection);
-  return {writeIds * writesPerId, readIds * readsPerId};
 }
 
 /// The port type a remapper drives: the one reaching it, with the IDs and
@@ -795,7 +825,7 @@ PortType NetworkLowering::getRemapType(DummiesIDRemapOp remap) {
 
 /// Adapt a connection carrying `driven` straight to the subordinate consuming
 /// it, if one does. The subordinate presents a port of its own: its own data
-/// width, and its own ID widths, log2 of the requests it can hold.
+/// width, and its own ID widths, log2 of the IDs it can hold.
 LogicalResult NetworkLowering::adaptToSubordinate(OpOperand *connection,
                                                   PortType driven,
                                                   const Twine &source) {
@@ -804,8 +834,6 @@ LogicalResult NetworkLowering::adaptToSubordinate(OpOperand *connection,
     return success();
   if (failed(checkSubordinate(subordinate, source, driven.getAddrWidth())))
     return failure();
-  auto [writes, reads] = requests(connection);
-  warnBottleneck(subordinate, writes, reads);
 
   // It serves the bursts driven in beats of its own data width.
   FailureOr<WindowSetAttr> served =
@@ -815,6 +843,7 @@ LogicalResult NetworkLowering::adaptToSubordinate(OpOperand *connection,
     return failure();
   PortType port =
       getSubordinatePortType(subordinate, userWidth, *served, driven);
+  warnBottleneck(subordinate, ids.lookup(connection), port);
   if (needsConverter(port, driven.getDataWidth(), driven.getWriteIdWidth(),
                      driven.getReadIdWidth()))
     adapted.insert({connection, port});
@@ -982,7 +1011,7 @@ void NetworkLowering::drive(OpOperand *connection, Value port) {
     uint64_t convertedReadIds = readIds;
     if (auto subordinate = dyn_cast<DummiesExtSubordinateOp>(consumer))
       convertedReadIds =
-          std::min<uint64_t>(readIds, subordinate.getOutstandingReads());
+          std::min<uint64_t>(readIds, subordinate.getOutstandingReadIds());
 
     // Re-widthing beats and re-tagging them are independent, each preserving
     // what the other changes. Widths come first, so the port between the two
@@ -994,7 +1023,9 @@ void NetworkLowering::drive(OpOperand *connection, Value port) {
                         needed.getDataWidth(), driven.getWriteIdWidth(),
                         driven.getReadIdWidth(), needed.getUserWidth(),
                         needed.getWindows(), driven.getConcurrentWritesPerId(),
-                        driven.getConcurrentReadsPerId()),
+                        convertedReads(driven.getConcurrentReadsPerId(),
+                                       driven.getDataWidth(),
+                                       needed.getDataWidth())),
           clock, reset, port, clampToBudget(convertedReadIds));
     if (driven.getWriteIdWidth() != needed.getWriteIdWidth() ||
         driven.getReadIdWidth() != needed.getReadIdWidth()) {

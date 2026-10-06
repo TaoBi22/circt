@@ -707,22 +707,17 @@ LogicalResult MuxOp::verify() {
 // Dummies endpoint helpers
 //===----------------------------------------------------------------------===//
 
-/// Verify the widths and outstanding request counts a dummies endpoint declares
+/// Verify the widths and request counts a dummies endpoint declares. A zero
+/// count describes an endpoint that can issue or accept nothing, and has no ID
+/// width to infer.
 static LogicalResult verifyDummiesEndpoint(Operation *op, uint32_t addrWidth,
-                                           uint32_t dataWidth,
-                                           uint32_t outstandingWrites,
-                                           uint32_t outstandingReads) {
+                                           uint32_t dataWidth) {
   auto emitError = [&]() { return op->emitOpError(); };
   if (failed(verifyPortWidths(emitError, "", addrWidth, dataWidth)))
     return failure();
-
-  // A zero count describes an endpoint that can issue or accept nothing, and
-  // has no ID width to infer.
-  if (outstandingWrites < 1)
-    return op->emitOpError("'outstanding_writes' must be at least 1");
-  if (outstandingReads < 1)
-    return op->emitOpError("'outstanding_reads' must be at least 1");
-  return success();
+  return verifyBudgets(op,
+                       {"outstanding_write_ids", "outstanding_read_ids",
+                        "concurrent_writes_per_id", "concurrent_reads_per_id"});
 }
 
 //===----------------------------------------------------------------------===//
@@ -730,8 +725,7 @@ static LogicalResult verifyDummiesEndpoint(Operation *op, uint32_t addrWidth,
 //===----------------------------------------------------------------------===//
 
 LogicalResult DummiesExtManagerOp::verify() {
-  return verifyDummiesEndpoint(*this, getAddrWidth(), getDataWidth(),
-                               getOutstandingWrites(), getOutstandingReads());
+  return verifyDummiesEndpoint(*this, getAddrWidth(), getDataWidth());
 }
 
 //===----------------------------------------------------------------------===//
@@ -739,9 +733,7 @@ LogicalResult DummiesExtManagerOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult DummiesExtSubordinateOp::verify() {
-  if (failed(verifyDummiesEndpoint(*this, getAddrWidth(), getDataWidth(),
-                                   getOutstandingWrites(),
-                                   getOutstandingReads())))
+  if (failed(verifyDummiesEndpoint(*this, getAddrWidth(), getDataWidth())))
     return failure();
   auto emitError = [&]() { return emitOpError(); };
   return verifyWindowsFit(emitError, "", getAddrWidth(),
