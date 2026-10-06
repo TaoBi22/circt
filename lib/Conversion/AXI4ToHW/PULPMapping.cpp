@@ -296,12 +296,19 @@ static uint64_t mostReads(PortType port) {
                             1);
 }
 
+/// The `MaxTrans` of a PULP axi_demux that admits at least `perId` requests per
+/// ID. Its ID counters are full at all ones, 2**clog2(MaxTrans) - 1, which is
+/// one short of a power of two.
+static std::string pulpMaxTrans(uint32_t perId) {
+  return Twine(uint64_t{perId} + 1).str();
+}
+
 namespace {
 /// A parameter a wrapper sets on the PULP IP it instantiates.
 struct PulpParam {
   StringRef name;
   std::string value;
-  /// Whether the wrapper derives it from the ports, so that changing it would
+  /// Whether the wrapper derives it from the op, so that changing it would
   /// break the wrapper.
   bool derived = true;
 };
@@ -379,7 +386,7 @@ static LogicalResult applyPulpConfig(Operation *op,
       return op->emitOpError()
              << "cannot set PULP parameter '" << name << "' through '"
              << attr.getName().strref()
-             << "', because the wrapper derives it from the ports";
+             << "', because the wrapper derives it from the op";
     param->value = std::move(value);
   }
   return success();
@@ -540,8 +547,7 @@ static FailureOr<std::string> pulpXbarSource(StringRef name, XbarOp xbar,
       {"NoSlvPorts", Twine(numUpstream).str()},
       {"NoMstPorts", Twine(numDownstream).str()},
       {"MaxSlvTrans", Twine(kPendingWrites).str(), /*derived=*/false},
-      {"MaxMstTrans", Twine(maxPerId(xbar.getUpstream())).str(),
-       /*derived=*/false},
+      {"MaxMstTrans", pulpMaxTrans(xbar.getUpstreamConcurrentPerId())},
       {"FallThrough", "1'b0", /*derived=*/false},
       {"LatencyMode", "axi_pkg::CUT_ALL_AX", /*derived=*/false},
       {"AxiIdWidthSlvPorts", Twine(upstreamId).str()},
@@ -1230,8 +1236,8 @@ static FailureOr<std::string> pulpDemuxSource(StringRef name, DemuxOp demux,
                                     /*derived=*/false}};
   llvm::append_range(params, pulpChannelParams(prefix));
   params.push_back({"NoMstPorts", Twine(numDownstream).str()});
-  params.push_back({"MaxTrans", Twine(maxPerId(demux.getUpstream())).str(),
-                    /*derived=*/false});
+  params.push_back(
+      {"MaxTrans", pulpMaxTrans(demux.getUpstreamConcurrentPerId())});
   params.push_back({"AxiLookBits", Twine(idWidth).str(), /*derived=*/false});
   params.push_back({"UniqueIds", "1'b0", /*derived=*/false});
   if (failed(checkAtopConfig(demux, "AtopSupport", atops)) ||

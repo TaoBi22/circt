@@ -1034,9 +1034,9 @@ void NetworkLowering::emit() {
       results.push_back(types[connection]);
 
     OpBuilder builder(xbar);
-    auto axi4Xbar =
-        XbarOp::create(builder, xbar.getLoc(), results, xbar.getClock(),
-                       xbar.getReset(), placeholdersFor(builder, xbar));
+    auto axi4Xbar = XbarOp::create(
+        builder, xbar.getLoc(), results, xbar.getClock(), xbar.getReset(),
+        placeholdersFor(builder, xbar), xbar.getUpstreamConcurrentPerIdAttr());
     for (NamedAttribute attr : getPulpConfig(xbar))
       axi4Xbar->setAttr(attr.getName(), attr.getValue());
 

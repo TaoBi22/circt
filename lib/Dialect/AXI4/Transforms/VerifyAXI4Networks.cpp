@@ -86,19 +86,20 @@ static void emitDomainCrossing(Operation *op, Operation *other,
   diag.attachNote(other->getLoc()) << "connected operation here";
 }
 
-/// Report an endpoint that can handle fewer requests per ID than the port
-/// reaching it can have concurrently outstanding - this is a warning since it
-/// will only impact throughput.
-static void warnBottleneck(Operation *op, TypedValue<PortType> port,
-                           uint32_t writes, uint32_t reads) {
-  PortType reaching = port.getType();
+/// Report where `subject`, an endpoint or the upstream port of an op, can
+/// handle fewer requests per ID than the port reaching it can have concurrently
+/// outstanding - this is a warning since it will only impact throughput.
+static void warnBottleneck(Operation *op, const Twine &subject,
+                           PortType reaching, uint64_t writes, uint64_t reads) {
   if (writes < reaching.getConcurrentWritesPerId())
-    op->emitWarning() << "endpoint can handle fewer writes per ID than the "
-                         "port reaching it can have concurrently outstanding ("
+    op->emitWarning() << subject
+                      << " can handle fewer writes per ID than the port "
+                         "reaching it can have concurrently outstanding ("
                       << writes << " < " << reaching.getConcurrentWritesPerId()
                       << ")";
   if (reads < reaching.getConcurrentReadsPerId())
-    op->emitWarning() << "endpoint can handle fewer reads per ID than the port "
+    op->emitWarning() << subject
+                      << " can handle fewer reads per ID than the port "
                          "reaching it can have concurrently outstanding ("
                       << reads << " < " << reaching.getConcurrentReadsPerId()
                       << ")";
@@ -166,19 +167,31 @@ void VerifyAXI4NetworksPass::runOnOperation() {
     }
   });
 
-  // Warn on bottlenecks where an endpoint may not be able to keep up with the
-  // requests reaching it
+  // Warn on bottlenecks where an endpoint, or an op's budget, may not be able
+  // to keep up with the requests reaching it
   module.walk([](Operation *op) {
     TypeSwitch<Operation *>(op)
         .Case<AbstractSubordinateOp>([](AbstractSubordinateOp subordinate) {
-          warnBottleneck(subordinate, subordinate.getUpstream(),
+          warnBottleneck(subordinate, "endpoint",
+                         subordinate.getUpstream().getType(),
                          subordinate.getConcurrentWritesPerId(),
                          subordinate.getConcurrentReadsPerId());
         })
         .Case<PortToChannelStructsOp>([](PortToChannelStructsOp bridge) {
-          warnBottleneck(bridge, bridge.getPort(),
+          warnBottleneck(bridge, "endpoint", bridge.getPort().getType(),
                          bridge.getConcurrentWritesPerId(),
                          bridge.getConcurrentReadsPerId());
+        })
+        .Case<XbarOp>([](XbarOp xbar) {
+          uint32_t budget = xbar.getUpstreamConcurrentPerId();
+          for (auto [i, port] : llvm::enumerate(xbar.getUpstream()))
+            warnBottleneck(xbar, "upstream port #" + Twine(i),
+                           cast<PortType>(port.getType()), budget, budget);
+        })
+        .Case<DemuxOp>([](DemuxOp demux) {
+          uint32_t budget = demux.getUpstreamConcurrentPerId();
+          warnBottleneck(demux, "upstream port", demux.getUpstream().getType(),
+                         budget, budget);
         });
   });
 

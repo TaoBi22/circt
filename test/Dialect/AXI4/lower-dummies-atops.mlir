@@ -20,7 +20,7 @@
 hw.module @Atomics(in %clk : !seq.clock, in %rst_ni : i1) {
   %core, %core_access = axi4.dummies.ext_manager "core" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4 {pulp.atops}
   %dma, %dma_access = axi4.dummies.ext_manager "dma" %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
-  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %dma addr_width = 32, data_width = 64
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %dma addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
   %mem_access = axi4.dummies.ext_subordinate "mem" %clk, %rst_ni, %xbar windows <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8 {pulp.atops}
   %periph_access = axi4.dummies.ext_subordinate "periph" %clk, %rst_ni, %xbar windows <<base = 0x1000, last = 0x1fff, burst_specs = <<incr, len = 1>>>> addr_width = 32, data_width = 64, outstanding_writes = 8, outstanding_reads = 8 {pulp.atop_filter}
   axi4.dummies.accesses %core_access -> %mem_access with <base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>

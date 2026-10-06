@@ -191,7 +191,7 @@ hw.module @UnreachableDeadXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-NOT: 0x4000
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
-  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
@@ -203,7 +203,7 @@ hw.module @UnreachableDeadConnectivity(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: axi4.xbar {{.*}} {PULP_CONFIG_Connectivity = {{\[}}[true, false], [false, true]]}
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
-  %lo, %gap, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi {PULP_CONFIG_Connectivity = [[true, true, false], [false, false, true]]}
+  %lo, %gap, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4 {PULP_CONFIG_Connectivity = [[true, true, false], [false, false, true]]}
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_gap, !sub_hi)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
@@ -216,7 +216,7 @@ hw.module @ReachableDeadXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-SAME: -> (!axi4.port<{{.*}}base = 0x0{{.*}}>, !axi4.port<{{.*}}base = 0x2000{{.*}}>)
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
-  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
 }
@@ -226,7 +226,7 @@ hw.module @UnreachableLiveXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: %[[SUBS:.+]]:3 = axi4.xbar
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
-  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
@@ -241,7 +241,7 @@ hw.module @UnreachableDeadDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
                                     in %upstream : !demuxed) {
   // CHECK-NEXT: %[[DOWN:.+]]:2 = axi4.demux
   // CHECK-NOT: 0x4000
-  %lo, %hi, %gap = axi4.demux %clk, %rst_ni, %upstream
+  %lo, %hi, %gap = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4
     : (!demuxed) -> (!mgr_lo, !mgr_hi, !demux_gap)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_hi
@@ -262,16 +262,16 @@ hw.module @OneToOneXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[MGR]]
   // CHECK-NOT: axi4.xbar
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
-  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr : (!mgr_lo) -> (!sub_lo_untagged)
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 4 : (!mgr_lo) -> (!sub_lo_untagged)
   axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo_untagged
 }
 
 // CHECK-LABEL: hw.module @SingleManagerXbar
 hw.module @SingleManagerXbar(in %clk : !seq.clock, in %rst_ni : i1,
                              in %upstream : !demuxed) {
-  // CHECK-NEXT: %[[DOWN:.+]]:2 = axi4.demux %clk, %rst_ni, %upstream
+  // CHECK-NEXT: %[[DOWN:.+]]:2 = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4
   // CHECK-NOT: axi4.xbar
-  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %upstream
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %upstream upstream_concurrent_per_id 4
     : (!demuxed) -> (!mgr_lo, !mgr_hi)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_hi
@@ -285,7 +285,7 @@ hw.module @SingleSubordinateXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-NOT: axi4.xbar
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
-  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4
     : (!mgr_lo, !mgr_hi) -> (!sub_both)
   axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_both
 }
@@ -293,18 +293,18 @@ hw.module @SingleSubordinateXbar(in %clk : !seq.clock, in %rst_ni : i1) {
 // A crossbar with PULP config is configuring axi_xbar, so it does not collapse
 // CHECK-LABEL: hw.module @ConfiguredOneToOneXbar
 hw.module @ConfiguredOneToOneXbar(in %clk : !seq.clock, in %rst_ni : i1) {
-  // CHECK: axi4.xbar %clk, %rst_ni mgrs %{{.+}} {PULP_CONFIG_PipelineStages = 1 : i32}
+  // CHECK: axi4.xbar %clk, %rst_ni mgrs %{{.+}} upstream_concurrent_per_id 4 {PULP_CONFIG_PipelineStages = 1 : i32}
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
-  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr {PULP_CONFIG_PipelineStages = 1 : i32} : (!mgr_lo) -> (!sub_lo_untagged)
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 4 {PULP_CONFIG_PipelineStages = 1 : i32} : (!mgr_lo) -> (!sub_lo_untagged)
   axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo_untagged
 }
 
 // CHECK-LABEL: hw.module @ConfiguredSingleManagerXbar
 hw.module @ConfiguredSingleManagerXbar(in %clk : !seq.clock, in %rst_ni : i1,
                                        in %upstream : !demuxed) {
-  // CHECK-NEXT: axi4.xbar %clk, %rst_ni mgrs %upstream {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
+  // CHECK-NEXT: axi4.xbar %clk, %rst_ni mgrs %upstream upstream_concurrent_per_id 4 {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
   // CHECK-NOT: axi4.demux
-  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %upstream {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %upstream upstream_concurrent_per_id 4 {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
     : (!demuxed) -> (!mgr_lo, !mgr_hi)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_hi
@@ -312,11 +312,11 @@ hw.module @ConfiguredSingleManagerXbar(in %clk : !seq.clock, in %rst_ni : i1,
 
 // CHECK-LABEL: hw.module @ConfiguredSingleSubordinateXbar
 hw.module @ConfiguredSingleSubordinateXbar(in %clk : !seq.clock, in %rst_ni : i1) {
-  // CHECK: axi4.xbar %clk, %rst_ni mgrs %{{.+}}, %{{.+}} {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
+  // CHECK: axi4.xbar %clk, %rst_ni mgrs %{{.+}}, %{{.+}} upstream_concurrent_per_id 4 {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
   // CHECK-NOT: axi4.mux
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
-  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4 {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY"}
     : (!mgr_lo, !mgr_hi) -> (!sub_both)
   axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_both
 }
@@ -326,7 +326,7 @@ hw.module @OneWayDemux(in %clk : !seq.clock, in %rst_ni : i1,
                        in %upstream : !mgr_lo) {
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %upstream
   // CHECK-NOT: axi4.demux
-  %down = axi4.demux %clk, %rst_ni, %upstream : (!mgr_lo) -> (!mgr_lo)
+  %down = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!mgr_lo) -> (!mgr_lo)
   axi4.abstract_subordinate %clk, %rst_ni, %down concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
 }
 
@@ -345,9 +345,9 @@ hw.module @OneWayMux(in %clk : !seq.clock, in %rst_ni : i1,
 // CHECK-LABEL: hw.module @OneWayDemuxWideningWindow
 hw.module @OneWayDemuxWideningWindow(in %clk : !seq.clock, in %rst_ni : i1,
                                      in %upstream : !mgr_lo) {
-  // CHECK-NEXT: %[[DOWN:.+]] = axi4.demux %clk, %rst_ni, %upstream
+  // CHECK-NEXT: %[[DOWN:.+]] = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4
   // CHECK-NEXT: axi4.abstract_subordinate %clk, %rst_ni, %[[DOWN]]
-  %down = axi4.demux %clk, %rst_ni, %upstream : (!mgr_lo) -> (!wider_window)
+  %down = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!mgr_lo) -> (!wider_window)
   axi4.abstract_subordinate %clk, %rst_ni, %down concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !wider_window
 }
 

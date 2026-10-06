@@ -13,7 +13,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 hw.module @NoIds(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
   // expected-error @below {{'axi4.xbar' op cannot be lowered to PULP because its upstream port #0 has a zero-width write ID, which PULP cannot express}}
-  %s = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 : (!mgr) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
 
@@ -31,7 +31,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 hw.module @SplitUpstreamIds(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
   // expected-error @below {{'axi4.xbar' op cannot be lowered to a PULP axi_xbar, which uses a single ID width per side, because its upstream write ID width (4) and read ID width (3) differ}}
-  %s = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 : (!mgr) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
 
@@ -53,7 +53,7 @@ hw.module.extern @High(in %axi : !sub_hi)
 hw.module @MixedDownstreamIds(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
   // expected-error @below {{'axi4.xbar' op cannot be lowered to a PULP axi_xbar, which uses one ID width for every downstream port, because downstream port #1's ID width (6) differs from downstream port #0's (5)}}
-  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub_lo, !sub_hi)
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 : (!mgr) -> (!sub_lo, !sub_hi)
   hw.instance "lo" @Low(axi: %lo: !sub_lo) -> ()
   hw.instance "hi" @High(axi: %hi: !sub_hi) -> ()
 }
@@ -74,7 +74,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 hw.module @OverWideForOneManager(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
   // expected-error @below {{'axi4.xbar' op cannot be lowered to a PULP axi_xbar, which widens IDs by exactly the 0 bits needed to tag 1 manager, so its downstream ID width must be 4, not 5}}
-  %s = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 : (!mgr) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
 
@@ -94,7 +94,7 @@ hw.module @OverWideForTwoManagers(in %clk : !seq.clock, in %rst_ni : i1) {
   %a = hw.instance "mgr_a" @Manager() -> (axi: !mgr)
   %b = hw.instance "mgr_b" @Manager() -> (axi: !mgr)
   // expected-error @below {{'axi4.xbar' op cannot be lowered to a PULP axi_xbar, which widens IDs by exactly the 1 bits needed to tag 2 managers, so its downstream ID width must be 5, not 6}}
-  %s = axi4.xbar %clk, %rst_ni mgrs %a, %b : (!mgr, !mgr) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %a, %b upstream_concurrent_per_id 4 : (!mgr, !mgr) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
 
@@ -143,7 +143,7 @@ hw.module @OverWideMuxIds(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @SplitDemuxIds(in %clk : !seq.clock, in %rst_ni : i1,
                          in %upstream : !mgr, out lo : !lo, out hi : !hi) {
   // expected-error @below {{'axi4.demux' op cannot be lowered to a PULP axi_demux, which uses a single ID width, because its write ID width (4) and read ID width (3) differ}}
-  %a, %b = axi4.demux %clk, %rst_ni, %upstream : (!mgr) -> (!lo, !hi)
+  %a, %b = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!mgr) -> (!lo, !hi)
   hw.output %a, %b : !lo, !hi
 }
 
@@ -285,7 +285,7 @@ hw.module @ToMemWrappingBurst(in %clk : !seq.clock, in %rst_ni : i1,
 !port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module @ConfigDerived(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
-  // expected-error @below {{'axi4.cut' op cannot set PULP parameter 'axi_req_t' through 'PULP_CONFIG_axi_req_t', because the wrapper derives it from the ports}}
+  // expected-error @below {{'axi4.cut' op cannot set PULP parameter 'axi_req_t' through 'PULP_CONFIG_axi_req_t', because the wrapper derives it from the op}}
   %cut = axi4.cut %clk, %rst_ni, %port {PULP_CONFIG_axi_req_t = "logic"} : !port
   hw.output %cut : !port
 }
@@ -296,8 +296,18 @@ hw.module @ConfigDerived(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port
 !port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
 
 hw.module @ConfigDerivedCfg(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
-  // expected-error @below {{'axi4.xbar' op cannot set PULP parameter 'AxiAddrWidth' through 'PULP_CONFIG_AxiAddrWidth', because the wrapper derives it from the ports}}
-  %s = axi4.xbar %clk, %rst_ni mgrs %port {PULP_CONFIG_AxiAddrWidth = 64 : i32} : (!port) -> (!port)
+  // expected-error @below {{'axi4.xbar' op cannot set PULP parameter 'AxiAddrWidth' through 'PULP_CONFIG_AxiAddrWidth', because the wrapper derives it from the op}}
+  %s = axi4.xbar %clk, %rst_ni mgrs %port upstream_concurrent_per_id 4 {PULP_CONFIG_AxiAddrWidth = 64 : i32} : (!port) -> (!port)
+  hw.output %s : !port
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+hw.module @ConfigMaxMstTrans(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
+  // expected-error @below {{'axi4.xbar' op cannot set PULP parameter 'MaxMstTrans' through 'PULP_CONFIG_MaxMstTrans', because the wrapper derives it from the op}}
+  %s = axi4.xbar %clk, %rst_ni mgrs %port upstream_concurrent_per_id 4 {PULP_CONFIG_MaxMstTrans = 8 : i32} : (!port) -> (!port)
   hw.output %s : !port
 }
 
@@ -327,7 +337,7 @@ hw.module @ConfigNoName(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port,
 
 hw.module @ConnectivityShape(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port, out out : !port) {
   // expected-error @below {{'axi4.xbar' op has 'PULP_CONFIG_Connectivity', which must have a row for each of its 1 upstream ports with a column for each of its 1 downstream ports}}
-  %s = axi4.xbar %clk, %rst_ni mgrs %port {PULP_CONFIG_Connectivity = [[true, false]]} : (!port) -> (!port)
+  %s = axi4.xbar %clk, %rst_ni mgrs %port upstream_concurrent_per_id 4 {PULP_CONFIG_Connectivity = [[true, false]]} : (!port) -> (!port)
   hw.output %s : !port
 }
 
@@ -337,7 +347,7 @@ hw.module @ConnectivityShape(in %clk : !seq.clock, in %rst_ni : i1, in %port : !
 
 hw.module @AtopsDisabled(in %clk : !seq.clock, in %rst_ni : i1, in %port : !port {pulp.atops}, out out : !port {pulp.atops}) {
   // expected-error @below {{'axi4.xbar' op has 'PULP_CONFIG_ATOPs', which must be true because it carries atomics from a port marked 'pulp.atops'}}
-  %s = axi4.xbar %clk, %rst_ni mgrs %port {PULP_CONFIG_ATOPs = false} : (!port) -> (!port)
+  %s = axi4.xbar %clk, %rst_ni mgrs %port upstream_concurrent_per_id 4 {PULP_CONFIG_ATOPs = false} : (!port) -> (!port)
   hw.output %s : !port
 }
 
@@ -370,7 +380,7 @@ hw.module.extern @Periph(in %axi : !periph)
 hw.module @AtopsToUnmarkedInstance(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-note @below {{atomics issued from the port marked 'pulp.atops' here}}
   %c = hw.instance "core" @Core() -> (axi: !mgr)
-  %mem, %periph = axi4.demux %clk, %rst_ni, %c : (!mgr) -> (!mem, !periph)
+  %mem, %periph = axi4.demux %clk, %rst_ni, %c upstream_concurrent_per_id 4 : (!mgr) -> (!mem, !periph)
   hw.instance "mem" @Mem(axi: %mem: !mem) -> ()
   // expected-error @below {{atomics reach port 'axi' of instance 'periph', which is marked neither 'pulp.atops' to accept them nor 'pulp.atop_filter' to filter them out}}
   hw.instance "periph" @Periph(axi: %periph: !periph) -> ()

@@ -1,8 +1,8 @@
 // RUN: circt-opt %s --lower-axi4-to-hw=pulp-mapping=true --split-input-file | FileCheck %s
 
 !mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
-!sub_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x7ff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
-!sub_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x800, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+!sub_lo = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x0, last = 0x7ff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 3, concurrent_reads_per_id = 2>
+!sub_hi = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 5, read_id_width = 5, user_width = 0, windows = <<base = 0x800, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 3, concurrent_reads_per_id = 2>
 
 hw.module.extern @Manager(out axi : !mgr)
 hw.module.extern @Low(in %axi : !sub_lo)
@@ -34,7 +34,8 @@ hw.module.extern @High(in %axi : !sub_hi)
 // CHECK-SAME:   NoSlvPorts:         2,\0A
 // CHECK-SAME:   NoMstPorts:         2,\0A
 
-// Each manager's transactions per ID come from its port, and the writes
+// The requests per ID each upstream port tracks come from the crossbar, one
+// more since PULP's counters stop one short of a power of two, and the writes
 // running ahead of their data take PULP's default
 // CHECK-SAME:   MaxSlvTrans:        8,\0A
 // CHECK-SAME:   MaxMstTrans:        4,\0A
@@ -60,7 +61,7 @@ hw.module.extern @High(in %axi : !sub_hi)
 hw.module @TwoToTwo(in %clk : !seq.clock, in %rst_ni : i1) {
   %a = hw.instance "mgr_a" @Manager() -> (axi: !mgr)
   %b = hw.instance "mgr_b" @Manager() -> (axi: !mgr)
-  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %a, %b : (!mgr, !mgr) -> (!sub_lo, !sub_hi)
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %a, %b upstream_concurrent_per_id 3 : (!mgr, !mgr) -> (!sub_lo, !sub_hi)
   hw.instance "lo" @Low(axi: %lo: !sub_lo) -> ()
   hw.instance "hi" @High(axi: %hi: !sub_hi) -> ()
 }
@@ -82,7 +83,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 // CHECK-SAME:   assign mgr0_b = '{id: slv_resp[0].b.id, resp: slv_resp[0].b.resp};\0A
 hw.module @NoUser(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
-  %s = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 : (!mgr) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
 
@@ -102,7 +103,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 // CHECK-SAME:   assign mgr0_b = '{id: slv_resp[0].b.id, resp: slv_resp[0].b.resp, user: slv_resp[0].b.user};\0A
 hw.module @WithUser(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
-  %s = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 : (!mgr) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
 
@@ -120,7 +121,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 // CHECK-SAME:   '{idx: 0, start_addr: 32'h0, end_addr: 32'h0}\0A
 hw.module @WholeSpace(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
-  %s = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 : (!mgr) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
 
@@ -140,6 +141,6 @@ hw.module.extern @Subordinate(in %axi : !sub)
 // CHECK-SAME:   '{idx: 0, start_addr: 48'h0, end_addr: 48'h0}\0A
 hw.module @NarrowAddresses(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
-  %s = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 : (!mgr) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }

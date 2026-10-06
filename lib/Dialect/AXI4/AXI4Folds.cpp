@@ -233,7 +233,8 @@ LogicalResult XbarOp::canonicalize(XbarOp op, PatternRewriter &rewriter) {
           return sameIdWidths(cast<PortType>(value.getType()), upstreamTy);
         })) {
       auto demux = DemuxOp::create(rewriter, op.getLoc(), downstream.getTypes(),
-                                   op.getClock(), op.getReset(), upstream[0]);
+                                   op.getClock(), op.getReset(), upstream[0],
+                                   op.getUpstreamConcurrentPerIdAttr());
       rewriter.replaceOp(op, demux.getDownstream());
       return success();
     }

@@ -48,7 +48,7 @@ hw.module @ManyEndpoints(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK-SAME: sub0_awready: %sub_a.axi_awready: i1
   // CHECK-SAME: sub1_awready: %sub_b.axi_awready: i1
   // CHECK-SAME: sub2_awready: %both.axi_sub_awready: i1
-  %xbar:3 = axi4.xbar %clk, %rst_ni mgrs %m, %b
+  %xbar:3 = axi4.xbar %clk, %rst_ni mgrs %m, %b upstream_concurrent_per_id 4
     : (!mgr, !narrow_mgr) -> (!sub_a, !sub_b, !sub_c)
 
   // CHECK: hw.instance "sub_a" @SubordinateA(
@@ -73,7 +73,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 // CHECK:         hw.instance "xbar0" @axi_xbar_1u1d_a32_d64_i4_o5_usr0(
 hw.module @SingleManager(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !mgr)
-  %s = axi4.xbar %clk, %rst_ni mgrs %m : (!mgr) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 : (!mgr) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
 
@@ -105,18 +105,18 @@ hw.module.extern @HighSubordinate(in %axi : !high_sub)
 // CHECK:         hw.instance "xbar3" @axi_xbar_1u1d_a32_d64_i4_o5_usr0_0(
 hw.module @Sharing(in %clk : !seq.clock, in %rst_ni : i1) {
   %m0 = hw.instance "mgr0" @Manager() -> (axi: !mgr)
-  %s0 = axi4.xbar %clk, %rst_ni mgrs %m0 : (!mgr) -> (!sub)
+  %s0 = axi4.xbar %clk, %rst_ni mgrs %m0 upstream_concurrent_per_id 4 : (!mgr) -> (!sub)
   hw.instance "sub0" @Subordinate(axi: %s0: !sub) -> ()
 
   %m1 = hw.instance "mgr1" @Manager() -> (axi: !mgr)
-  %s1 = axi4.xbar %clk, %rst_ni mgrs %m1 : (!mgr) -> (!sub)
+  %s1 = axi4.xbar %clk, %rst_ni mgrs %m1 upstream_concurrent_per_id 4 : (!mgr) -> (!sub)
   hw.instance "sub1" @Subordinate(axi: %s1: !sub) -> ()
 
   %m2 = hw.instance "mgr2" @Manager() -> (axi: !mgr)
-  %s2 = axi4.xbar %clk, %rst_ni mgrs %m2 : (!mgr) -> (!wide_sub)
+  %s2 = axi4.xbar %clk, %rst_ni mgrs %m2 upstream_concurrent_per_id 4 : (!mgr) -> (!wide_sub)
   hw.instance "sub2" @WideSubordinate(axi: %s2: !wide_sub) -> ()
 
   %m3 = hw.instance "mgr3" @HighManager() -> (axi: !high_mgr)
-  %s3 = axi4.xbar %clk, %rst_ni mgrs %m3 : (!high_mgr) -> (!high_sub)
+  %s3 = axi4.xbar %clk, %rst_ni mgrs %m3 upstream_concurrent_per_id 4 : (!high_mgr) -> (!high_sub)
   hw.instance "sub3" @HighSubordinate(axi: %s3: !high_sub) -> ()
 }

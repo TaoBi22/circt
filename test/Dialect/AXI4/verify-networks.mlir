@@ -223,7 +223,7 @@ hw.module @DemuxCrossing(in %clk : !seq.clock, in %other_clk : !seq.clock,
   // expected-note @below {{connected operation here}}
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
   // expected-error @below {{'axi4.demux' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
-  %a, %b = axi4.demux %other_clk, %rst_ni, %mgr : (!mgr) -> (!lo, !hi)
+  %a, %b = axi4.demux %other_clk, %rst_ni, %mgr upstream_concurrent_per_id 4 : (!mgr) -> (!lo, !hi)
   axi4.abstract_subordinate %other_clk, %rst_ni, %a concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !lo
   axi4.abstract_subordinate %other_clk, %rst_ni, %b concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !hi
 }
@@ -280,4 +280,28 @@ hw.module @IdRemapCrossing(in %clk : !seq.clock,
   // expected-error @below {{'axi4.id_remap' op is in a different clock domain to the 'axi4.abstract_manager' connected to it}}
   %remap = axi4.id_remap %other_clk, %rst_ni, %mgr max_unique_ids = 4 : (!wide_ids) -> !narrow_ids
   axi4.abstract_subordinate %other_clk, %rst_ni, %remap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !narrow_ids
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 3, concurrent_reads_per_id = 2>
+
+hw.module @UndersizedXbarBudget(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
+  // expected-warning @below {{upstream port #0 can handle fewer writes per ID than the port reaching it can have concurrently outstanding (3 < 4)}}
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 3 : (!mgr) -> !sub
+  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 3 concurrent_reads_per_id 2 : !sub
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+!sub = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 3, concurrent_reads_per_id = 2>
+
+hw.module @UndersizedDemuxBudget(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
+  // expected-warning @below {{upstream port can handle fewer writes per ID than the port reaching it can have concurrently outstanding (3 < 4)}}
+  %sub = axi4.demux %clk, %rst_ni, %mgr upstream_concurrent_per_id 3 : (!mgr) -> !sub
+  axi4.abstract_subordinate %clk, %rst_ni, %sub concurrent_writes_per_id 3 concurrent_reads_per_id 2 : !sub
 }

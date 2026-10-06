@@ -129,7 +129,16 @@ hw.module @BadPayload(in %clk : !seq.clock, in %rst_ni : i1,
 
 hw.module @NoManagers(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.xbar' op must have at least one upstream port}}
-  %sub = axi4.xbar %clk, %rst_ni mgrs : () -> !mgr
+  %sub = axi4.xbar %clk, %rst_ni mgrs upstream_concurrent_per_id 4 : () -> !mgr
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+hw.module @XbarTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1, in %mgr : !mgr) {
+  // expected-error @below {{'axi4.xbar' op 'upstream_concurrent_per_id' must be at least 1}}
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 0 : (!mgr) -> !mgr
 }
 
 // -----
@@ -139,7 +148,7 @@ hw.module @NoManagers(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @NoSubordinates(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
   // expected-error @below {{'axi4.xbar' op must have at least one downstream port}}
-  axi4.xbar %clk, %rst_ni mgrs %mgr : (!mgr) -> ()
+  axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 4 : (!mgr) -> ()
 }
 
 // -----
@@ -152,7 +161,7 @@ hw.module @MismatchedManagers(in %clk : !seq.clock, in %rst_ni : i1) {
   %a = axi4.abstract_manager %clk, %rst_ni : !mgr
   %b = axi4.abstract_manager %clk, %rst_ni : !narrow_mgr
   // expected-error @below {{'axi4.xbar' op upstream port #1's 'data_width' (32) must match upstream port #0's (64)}}
-  %sub = axi4.xbar %clk, %rst_ni mgrs %a, %b : (!mgr, !narrow_mgr) -> !sub
+  %sub = axi4.xbar %clk, %rst_ni mgrs %a, %b upstream_concurrent_per_id 4 : (!mgr, !narrow_mgr) -> !sub
 }
 
 // -----
@@ -163,7 +172,7 @@ hw.module @MismatchedManagers(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @ConvertingXbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
   // expected-error @below {{'axi4.xbar' op downstream port #0's 'data_width' (128) must match upstream port #0's (64)}}
-  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr : (!mgr) -> !wide_sub
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 4 : (!mgr) -> !wide_sub
 }
 
 // -----
@@ -175,7 +184,7 @@ hw.module @NarrowIds(in %clk : !seq.clock, in %rst_ni : i1) {
   %a = axi4.abstract_manager %clk, %rst_ni : !mgr
   %b = axi4.abstract_manager %clk, %rst_ni : !mgr
   // expected-error @below {{'axi4.xbar' op downstream port #0's 'write_id_width' must be at least 5 to tag transactions from 2 managers, got 4}}
-  %sub = axi4.xbar %clk, %rst_ni mgrs %a, %b : (!mgr, !mgr) -> !sub
+  %sub = axi4.xbar %clk, %rst_ni mgrs %a, %b upstream_concurrent_per_id 4 : (!mgr, !mgr) -> !sub
 }
 
 // -----
@@ -187,7 +196,7 @@ hw.module @NarrowIds(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @OverlappingSubordinates(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
   // expected-error @below {{'axi4.xbar' op downstream ports #0 and #1 have overlapping windows}}
-  %a, %b = axi4.xbar %clk, %rst_ni mgrs %mgr : (!mgr) -> (!sub, !other_sub)
+  %a, %b = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 4 : (!mgr) -> (!sub, !other_sub)
 }
 
 // -----
@@ -198,7 +207,7 @@ hw.module @OverlappingSubordinates(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @UnroutedWindow(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
   // expected-error @below {{'axi4.xbar' op address 0x1000, in upstream port #0's windows, is not covered by any downstream port}}
-  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr : (!mgr) -> !sub
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 4 : (!mgr) -> !sub
 }
 
 // -----
@@ -210,7 +219,7 @@ hw.module @UnroutedWindow(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @UnsupportedBurst(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr = axi4.abstract_manager %clk, %rst_ni : !mgr
   // expected-error @below {{'axi4.xbar' op downstream port #0 does not support all the bursts upstream port #0 issues at address 0x0; upstream requires #axi4.burst_set<<fixed, len = 4>, <incr, len = 8>>, downstream supports #axi4.burst_set<<fixed, len = 4>>}}
-  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr : (!mgr) -> !sub
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 4 : (!mgr) -> !sub
 }
 
 // -----
@@ -224,7 +233,7 @@ hw.module @UndersizedXbarPort(in %clk : !seq.clock, in %rst_ni : i1) {
   %a = axi4.abstract_manager %clk, %rst_ni : !mgr
   %b = axi4.abstract_manager %clk, %rst_ni : !mgr
   // expected-error @below {{'axi4.xbar' op downstream port #0's 'concurrent_writes_per_id' (2) must be the 4 writes per ID the managers reaching it can issue}}
-  %sub = axi4.xbar %clk, %rst_ni mgrs %a, %b : (!mgr, !mgr) -> !sub
+  %sub = axi4.xbar %clk, %rst_ni mgrs %a, %b upstream_concurrent_per_id 4 : (!mgr, !mgr) -> !sub
 }
 
 // -----
@@ -462,7 +471,16 @@ hw.module @RecountingSplitter(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @EmptyDemux(in %clk : !seq.clock, in %rst_ni : i1,
                       in %upstream : !port) {
   // expected-error @below {{'axi4.demux' op must have at least one downstream port}}
-  axi4.demux %clk, %rst_ni, %upstream : (!port) -> ()
+  axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!port) -> ()
+}
+
+// -----
+
+!port = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 4>
+
+hw.module @DemuxTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !port) {
+  // expected-error @below {{'axi4.demux' op 'upstream_concurrent_per_id' must be at least 1}}
+  %downstream = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 0 : (!port) -> !port
 }
 
 // -----
@@ -506,7 +524,7 @@ hw.module @StillWrapping(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @TaggingDemux(in %clk : !seq.clock, in %rst_ni : i1,
                         in %upstream : !port) {
   // expected-error @below {{'axi4.demux' op downstream port #0's 'write_id_width' (5) must match upstream port's (4)}}
-  %sub = axi4.demux %clk, %rst_ni, %upstream : (!port) -> !tagged
+  %sub = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!port) -> !tagged
 }
 
 // -----
@@ -518,7 +536,7 @@ hw.module @TaggingDemux(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @OverlappingDemux(in %clk : !seq.clock, in %rst_ni : i1,
                             in %upstream : !port) {
   // expected-error @below {{'axi4.demux' op downstream ports #0 and #1 have overlapping windows}}
-  %a, %b = axi4.demux %clk, %rst_ni, %upstream : (!port) -> (!lo, !hi)
+  %a, %b = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!port) -> (!lo, !hi)
 }
 
 // -----
@@ -529,7 +547,7 @@ hw.module @OverlappingDemux(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @UnroutedDemux(in %clk : !seq.clock, in %rst_ni : i1,
                          in %upstream : !port) {
   // expected-error @below {{'axi4.demux' op address 0x1000, in upstream port's windows, is not covered by any downstream port}}
-  %sub = axi4.demux %clk, %rst_ni, %upstream : (!port) -> !lo
+  %sub = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!port) -> !lo
 }
 
 // -----
@@ -540,7 +558,7 @@ hw.module @UnroutedDemux(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @UnsupportedDemuxBurst(in %clk : !seq.clock, in %rst_ni : i1,
                                  in %upstream : !port) {
   // expected-error @below {{'axi4.demux' op downstream port #0 does not support all the bursts upstream port issues at address 0x0; upstream requires #axi4.burst_set<<fixed, len = 4>, <incr, len = 8>>, downstream supports #axi4.burst_set<<fixed, len = 4>>}}
-  %sub = axi4.demux %clk, %rst_ni, %upstream : (!port) -> !fixed_only
+  %sub = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!port) -> !fixed_only
 }
 
 // -----
@@ -554,7 +572,7 @@ hw.module @UnsupportedDemuxBurst(in %clk : !seq.clock, in %rst_ni : i1,
 hw.module @UndersizedDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
                                in %upstream : !mgr) {
   // expected-error @below {{'axi4.demux' op downstream port #0's 'concurrent_writes_per_id' (2) must be the 4 writes per ID the managers reaching it can issue}}
-  %lo, %hi = axi4.demux %clk, %rst_ni, %upstream : (!mgr) -> (!lo, !hi)
+  %lo, %hi = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!mgr) -> (!lo, !hi)
 }
 
 // -----
@@ -818,7 +836,15 @@ hw.module @FannedOutDummiesManager(in %clk : !seq.clock, in %rst_ni : i1) {
 
 hw.module @NoDummiesManagers(in %clk : !seq.clock, in %rst_ni : i1) {
   // expected-error @below {{'axi4.dummies.xbar' op must have at least one upstream port}}
-  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs addr_width = 32, data_width = 64
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs addr_width = 32, data_width = 64, upstream_concurrent_per_id = 4
+}
+
+// -----
+
+hw.module @DummiesXbarTracksNoRequests(in %clk : !seq.clock, in %rst_ni : i1) {
+  %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
+  // expected-error @below {{'axi4.dummies.xbar' op 'upstream_concurrent_per_id' must be at least 1}}
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 64, upstream_concurrent_per_id = 0
 }
 
 // -----
@@ -826,7 +852,7 @@ hw.module @NoDummiesManagers(in %clk : !seq.clock, in %rst_ni : i1) {
 hw.module @UnalignedDummiesXbarData(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // expected-error @below {{'axi4.dummies.xbar' op 'data_width' must be a power of two between 8 and 1024, got 48}}
-  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 48
+  %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %mgr addr_width = 32, data_width = 48, upstream_concurrent_per_id = 4
 }
 
 // -----
@@ -911,4 +937,24 @@ hw.module @DummiesRemapTrackingNothing(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr, %mgr_access = axi4.dummies.ext_manager %clk, %rst_ni addr_width = 32, data_width = 64, outstanding_writes = 4, outstanding_reads = 4
   // expected-error @below {{'axi4.dummies.id_remap' op 'max_unique_ids' must be at least 1}}
   %remap = axi4.dummies.id_remap %clk, %rst_ni, %mgr max_unique_ids = 0
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+!over = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+
+hw.module @XbarPastBudget(in %clk : !seq.clock, in %rst_ni : i1, in %mgr : !mgr) {
+  // expected-error @below {{'axi4.xbar' op downstream port #0's 'concurrent_writes_per_id' (4) must be the 3 writes per ID the managers reaching it can issue within the crossbar's budget}}
+  %sub = axi4.xbar %clk, %rst_ni mgrs %mgr upstream_concurrent_per_id 3 : (!mgr) -> !over
+}
+
+// -----
+
+!mgr = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+!over = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<fixed, len = 4>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 2>
+
+hw.module @DemuxPastBudget(in %clk : !seq.clock, in %rst_ni : i1, in %mgr : !mgr) {
+  // expected-error @below {{'axi4.demux' op downstream port #0's 'concurrent_writes_per_id' (4) must be the 3 writes per ID the managers reaching it can issue within the demux's budget}}
+  %sub = axi4.demux %clk, %rst_ni, %mgr upstream_concurrent_per_id 3 : (!mgr) -> !over
 }

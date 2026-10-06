@@ -11,7 +11,8 @@ hw.module.extern @Subordinate(in %axi : !port)
 // CHECK:      sv.verbatim.source @axi_demux_1d_a32_d64_i4_usr0.sv
 // CHECK-SAME:   axi_demux #(\0A
 // CHECK-SAME:     .AxiIdWidth  (4),\0A
-// CHECK-SAME:     .MaxTrans    (16),\0A
+// CHECK-SAME:     .MaxTrans    (5),\0A
+// CHECK-SAME:     .AxiLookBits (2),\0A
 // CHECK-SAME:     .UniqueIds   (1'b1),\0A
 // CHECK-SAME:     .SpillAr     (1'b0),\0A
 // CHECK-SAME:     .SpillW      (DoSpill)\0A
@@ -22,7 +23,7 @@ hw.module.extern @Subordinate(in %axi : !port)
 // CHECK:         hw.instance "demux0" @axi_demux_1d_a32_d64_i4_usr0(
 hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !port)
-  %s = axi4.demux %clk, %rst_ni, %m {PULP_CONFIG_MaxTrans = 16 : i32, PULP_CONFIG_UniqueIds = true, PULP_CONFIG_SpillAr = false, PULP_CONFIG_SpillW = "DoSpill"} : (!port) -> (!port)
+  %s = axi4.demux %clk, %rst_ni, %m upstream_concurrent_per_id 4 {PULP_CONFIG_AxiLookBits = 2 : i32, PULP_CONFIG_UniqueIds = true, PULP_CONFIG_SpillAr = false, PULP_CONFIG_SpillW = "DoSpill"} : (!port) -> (!port)
   hw.instance "sub" @Subordinate(axi: %s: !port) -> ()
 }
 
@@ -47,7 +48,7 @@ hw.module.extern @Subordinate(in %axi : !sub)
 // CHECK-SAME:   ) i_xbar (\0A
 hw.module @Xbar(in %clk : !seq.clock, in %rst_ni : i1) {
   %m = hw.instance "mgr" @Manager() -> (axi: !port)
-  %s = axi4.xbar %clk, %rst_ni mgrs %m {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY", PULP_CONFIG_PipelineStages = 2 : i32, PULP_CONFIG_ATOPs = false} : (!port) -> (!sub)
+  %s = axi4.xbar %clk, %rst_ni mgrs %m upstream_concurrent_per_id 4 {PULP_CONFIG_LatencyMode = "axi_pkg::NO_LATENCY", PULP_CONFIG_PipelineStages = 2 : i32, PULP_CONFIG_ATOPs = false} : (!port) -> (!sub)
   hw.instance "sub" @Subordinate(axi: %s: !sub) -> ()
 }
 
@@ -95,7 +96,7 @@ hw.module.extern @High(in %axi : !hi)
 hw.module @Connectivity(in %clk : !seq.clock, in %rst_ni : i1) {
   %m0 = hw.instance "mgr0" @Manager() -> (axi: !mgr)
   %m1 = hw.instance "mgr1" @Manager() -> (axi: !mgr)
-  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %m0, %m1 {PULP_CONFIG_Connectivity = [[true, true], [false, true]]} : (!mgr, !mgr) -> (!lo, !hi)
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %m0, %m1 upstream_concurrent_per_id 4 {PULP_CONFIG_Connectivity = [[true, true], [false, true]]} : (!mgr, !mgr) -> (!lo, !hi)
   hw.instance "lo" @Low(axi: %lo: !lo) -> ()
   hw.instance "hi" @High(axi: %hi: !hi) -> ()
 }

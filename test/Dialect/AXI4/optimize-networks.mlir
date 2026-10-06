@@ -16,7 +16,7 @@ hw.module @UnreachableSubordinate(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   // expected-remark @below {{removed downstream port #2, which no upstream manager addresses}}
-  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
@@ -30,7 +30,7 @@ hw.module @UnreachableConnectivity(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   // expected-remark @below {{removed downstream port #1, which no upstream manager addresses}}
-  %lo, %gap, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi {PULP_CONFIG_Connectivity = [[true, true, false], [false, false, true]]}
+  %lo, %gap, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4 {PULP_CONFIG_Connectivity = [[true, true, false], [false, false, true]]}
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_gap, !sub_hi)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
   axi4.abstract_subordinate %clk, %rst_ni, %gap concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_gap
@@ -47,7 +47,7 @@ hw.module @UnreachableBehindAdaptors(in %clk : !seq.clock, in %rst_ni : i1) {
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   // expected-remark @below {{removed downstream port #2, which no upstream manager addresses}}
-  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
@@ -65,7 +65,7 @@ hw.module @ReachableSubordinate(in %clk : !seq.clock, in %rst_ni : i1) {
   // CHECK: %[[SUBS:.+]]:2 = axi4.xbar
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
-  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+  %lo, %hi = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
@@ -85,7 +85,7 @@ hw.module @UnreachableLiveBridge(in %clk : !seq.clock, in %rst_ni : i1,
   %mgr_lo = axi4.abstract_manager %clk, %rst_ni : !mgr_lo
   %mgr_hi = axi4.abstract_manager %clk, %rst_ni : !mgr_hi
   // expected-warning @below {{downstream port #2 is not addressed by any upstream manager}}
-  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi
+  %lo, %hi, %gap = axi4.xbar %clk, %rst_ni mgrs %mgr_lo, %mgr_hi upstream_concurrent_per_id 4
     : (!mgr_lo, !mgr_hi) -> (!sub_lo, !sub_hi, !sub_gap)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !sub_hi
@@ -107,7 +107,7 @@ hw.module @UnreachableDemuxPort(in %clk : !seq.clock, in %rst_ni : i1,
   // CHECK: %[[DOWN:.+]]:2 = axi4.demux
   // CHECK-NOT: 0x4000
   // expected-remark @below {{removed downstream port #2, which no upstream manager addresses}}
-  %lo, %hi, %gap = axi4.demux %clk, %rst_ni, %upstream
+  %lo, %hi, %gap = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4
     : (!demuxed) -> (!mgr_lo, !mgr_hi, !demux_gap)
   axi4.abstract_subordinate %clk, %rst_ni, %lo concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_lo
   axi4.abstract_subordinate %clk, %rst_ni, %hi concurrent_writes_per_id 4 concurrent_reads_per_id 4 : !mgr_hi

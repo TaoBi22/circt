@@ -57,7 +57,7 @@ hw.module.extern @Periph(in %axi : !periph)
 hw.module @Mixed(in %clk : !seq.clock, in %rst_ni : i1) {
   %c = hw.instance "core" @Core() -> (axi: !mgr)
   %d = hw.instance "dma" @Dma() -> (axi: !mgr)
-  %mem, %periph = axi4.xbar %clk, %rst_ni mgrs %c, %d {PULP_CONFIG_Connectivity = [[true, false], [true, true]]} : (!mgr, !mgr) -> (!mem, !periph)
+  %mem, %periph = axi4.xbar %clk, %rst_ni mgrs %c, %d upstream_concurrent_per_id 4 {PULP_CONFIG_Connectivity = [[true, false], [true, true]]} : (!mgr, !mgr) -> (!mem, !periph)
   %cut = axi4.cut %clk, %rst_ni, %periph : !periph
   hw.instance "mem" @Mem(axi: %mem: !mem) -> ()
   hw.instance "periph" @Periph(axi: %cut: !periph) -> ()
@@ -93,7 +93,7 @@ hw.module @Boundary(in %clk : !seq.clock, in %rst_ni : i1, in %core : !port {pul
 // CHECK:      sv.verbatim.source @axi_demux_1d_a32_d64_i4_usr0_atop.sv
 // CHECK-SAME:   .AtopSupport (1'b1),\0A
 hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1, in %core : !port {pulp.atops}, out mem : !port {pulp.atops}) {
-  %demuxed = axi4.demux %clk, %rst_ni, %core : (!port) -> (!port)
+  %demuxed = axi4.demux %clk, %rst_ni, %core upstream_concurrent_per_id 4 : (!port) -> (!port)
   hw.output %demuxed : !port
 }
 
@@ -105,7 +105,7 @@ hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1, in %core : !port {pulp.a
 // CHECK:      sv.verbatim.source @axi_xbar_1u1d_a32_d64_i4_o4_usr0_atop.sv
 // CHECK-SAME:   .ATOPs         (1'b1),\0A
 hw.module @AgreeingConfig(in %clk : !seq.clock, in %rst_ni : i1, in %core : !port {pulp.atops}, out mem : !port {pulp.atops}) {
-  %s = axi4.xbar %clk, %rst_ni mgrs %core {PULP_CONFIG_ATOPs = true} : (!port) -> (!port)
+  %s = axi4.xbar %clk, %rst_ni mgrs %core upstream_concurrent_per_id 4 {PULP_CONFIG_ATOPs = true} : (!port) -> (!port)
   hw.output %s : !port
 }
 
@@ -117,7 +117,7 @@ hw.module @AgreeingConfig(in %clk : !seq.clock, in %rst_ni : i1, in %core : !por
 // CHECK:      sv.verbatim.source @axi_demux_1d_a32_d64_i4_usr0.sv
 // CHECK-SAME:   .AtopSupport (1'b1),\0A
 hw.module @EnablingConfig(in %clk : !seq.clock, in %rst_ni : i1, in %core : !port, out mem : !port) {
-  %demuxed = axi4.demux %clk, %rst_ni, %core {PULP_CONFIG_AtopSupport = true} : (!port) -> (!port)
+  %demuxed = axi4.demux %clk, %rst_ni, %core upstream_concurrent_per_id 4 {PULP_CONFIG_AtopSupport = true} : (!port) -> (!port)
   hw.output %demuxed : !port
 }
 
@@ -147,7 +147,7 @@ hw.module @EnablingConfig(in %clk : !seq.clock, in %rst_ni : i1, in %core : !por
 // CHECK-NOT:     periph_aw_atop
 // CHECK:         %atop_filter0.mgr0_awready, {{.*}} = hw.instance "atop_filter0" @axi_atop_filter_a32_d64_i4_usr0(clk_i: %clk: !seq.clock, rst_ni: %rst_ni: i1, {{.*}}mgr0_aw_atop: %demux0.sub1_aw_atop: i6
 hw.module @Filter(in %clk : !seq.clock, in %rst_ni : i1, in %core : !mgr {pulp.atops}, out mem : !mem {pulp.atops}, out periph : !periph {pulp.atop_filter}) {
-  %mem, %periph = axi4.demux %clk, %rst_ni, %core : (!mgr) -> (!mem, !periph)
+  %mem, %periph = axi4.demux %clk, %rst_ni, %core upstream_concurrent_per_id 4 : (!mgr) -> (!mem, !periph)
   hw.output %mem, %periph : !mem, !periph
 }
 
@@ -162,7 +162,7 @@ hw.module @Filter(in %clk : !seq.clock, in %rst_ni : i1, in %core : !mgr {pulp.a
 // CHECK:      sv.verbatim.source @axi_atop_filter_a32_d64_i4_usr0.sv
 // CHECK-SAME:     .AxiMaxWriteTxns (32),\0A
 hw.module @FilterBudget(in %clk : !seq.clock, in %rst_ni : i1, in %core : !mgr {pulp.atops}, out mem : !mem {pulp.atops}, out periph : !periph {pulp.atop_filter = 32 : i32}) {
-  %mem, %periph = axi4.demux %clk, %rst_ni, %core : (!mgr) -> (!mem, !periph)
+  %mem, %periph = axi4.demux %clk, %rst_ni, %core upstream_concurrent_per_id 4 : (!mgr) -> (!mem, !periph)
   hw.output %mem, %periph : !mem, !periph
 }
 

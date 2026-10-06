@@ -50,12 +50,14 @@
 // CHECK-SAME:     .addr_i           (slv_req.ar.addr),\0A
 // CHECK-SAME:     .idx_o            (ar_select),\0A
 
+// The requests per ID come from the demux, one more since PULP's counters stop
+// one short of a power of two
 // CHECK-SAME:   axi_demux #(\0A
 // CHECK-SAME:     .AxiIdWidth  (4),\0A
 // CHECK-SAME:     .AtopSupport (1'b0),\0A
 // CHECK-SAME:     .aw_chan_t  (axi_demux_2d_a32_d64_i4_usr0_aw_chan_t),\0A
 // CHECK-SAME:     .NoMstPorts  (2),\0A
-// CHECK-SAME:     .MaxTrans    (4),\0A
+// CHECK-SAME:     .MaxTrans    (5),\0A
 // CHECK-SAME:     .AxiLookBits (4),\0A
 // CHECK-SAME:     .UniqueIds   (1'b0)\0A
 // CHECK-SAME:   ) i_demux (\0A
@@ -71,6 +73,6 @@
 // CHECK:         hw.instance "demux0" @axi_demux_2d_a32_d64_i4_usr0(
 hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !mgr,
                  out lo : !lo, out hi : !hi) {
-  %a, %b = axi4.demux %clk, %rst_ni, %upstream : (!mgr) -> (!lo, !hi)
+  %a, %b = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!mgr) -> (!lo, !hi)
   hw.output %a, %b : !lo, !hi
 }

@@ -252,6 +252,13 @@ static std::pair<uint64_t, uint64_t> routingPerIdBelow(ValueRange upstream,
   return {writes, reads};
 }
 
+/// `reaching` with each count capped at `budget`, the requests per ID an op
+/// tracks.
+static std::pair<uint64_t, uint64_t>
+capPerId(std::pair<uint64_t, uint64_t> reaching, uint64_t budget) {
+  return {std::min(reaching.first, budget), std::min(reaching.second, budget)};
+}
+
 /// Verify that `port` holds exactly the requests per ID reaching it.
 static LogicalResult verifyPerId(Operation *op, const Twine &portDesc,
                                  PortType port,
@@ -283,6 +290,8 @@ LogicalResult XbarOp::verify() {
     return emitOpError("must have at least one upstream port");
   if (downstream.empty())
     return emitOpError("must have at least one downstream port");
+  if (getUpstreamConcurrentPerId() < 1)
+    return emitOpError("'upstream_concurrent_per_id' must be at least 1");
 
   // Make sure all upstream ports agree on widths
   auto upstreamTy = cast<PortType>(upstream.front().getType());
@@ -329,9 +338,11 @@ LogicalResult XbarOp::verify() {
   // checked first.
   for (auto [i, value] : llvm::enumerate(downstream)) {
     auto downstreamTy = cast<PortType>(value.getType());
-    if (failed(verifyPerId(*this, "downstream port #" + Twine(i), downstreamTy,
-                           routingPerIdBelow(upstream, downstreamTy),
-                           "the managers reaching it can issue")))
+    if (failed(verifyPerId(
+            *this, "downstream port #" + Twine(i), downstreamTy,
+            capPerId(routingPerIdBelow(upstream, downstreamTy),
+                     getUpstreamConcurrentPerId()),
+            "the managers reaching it can issue within the crossbar's budget")))
       return failure();
   }
 
@@ -552,6 +563,8 @@ LogicalResult DemuxOp::verify() {
   ValueRange downstream = getDownstream();
   if (downstream.empty())
     return emitOpError("must have at least one downstream port");
+  if (getUpstreamConcurrentPerId() < 1)
+    return emitOpError("'upstream_concurrent_per_id' must be at least 1");
 
   // A demux routes, it does not re-width or re-tag
   for (auto [i, value] : llvm::enumerate(downstream))
@@ -570,9 +583,11 @@ LogicalResult DemuxOp::verify() {
   // checked first.
   for (auto [i, value] : llvm::enumerate(downstream)) {
     auto downstreamTy = cast<PortType>(value.getType());
-    if (failed(verifyPerId(*this, "downstream port #" + Twine(i), downstreamTy,
-                           routingPerIdBelow(upstreamValue, downstreamTy),
-                           "the managers reaching it can issue")))
+    if (failed(verifyPerId(
+            *this, "downstream port #" + Twine(i), downstreamTy,
+            capPerId(routingPerIdBelow(upstreamValue, downstreamTy),
+                     getUpstreamConcurrentPerId()),
+            "the managers reaching it can issue within the demux's budget")))
       return failure();
   }
 
@@ -682,6 +697,8 @@ LogicalResult DummiesExtSubordinateOp::verify() {
 LogicalResult DummiesXbarOp::verify() {
   if (getUpstream().empty())
     return emitOpError("must have at least one upstream port");
+  if (getUpstreamConcurrentPerId() < 1)
+    return emitOpError("'upstream_concurrent_per_id' must be at least 1");
 
   auto emitError = [&]() { return emitOpError(); };
   return verifyPortWidths(emitError, "", getAddrWidth(), getDataWidth());

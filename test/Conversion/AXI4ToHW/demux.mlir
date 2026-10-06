@@ -29,7 +29,7 @@ hw.module @Demux(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !mgr,
   // CHECK-SAME: mgr0_aw: %upstream_aw:
   // CHECK-SAME: sub0_awready: %lo_awready: i1
   // CHECK-SAME: sub1_awready: %hi_awready: i1
-  %a, %b = axi4.demux %clk, %rst_ni, %upstream : (!mgr) -> (!lo, !hi)
+  %a, %b = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4 : (!mgr) -> (!lo, !hi)
 
   // CHECK: hw.output %demux0.mgr0_awready,
   // CHECK-SAME: %demux0.sub0_aw,

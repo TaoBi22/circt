@@ -188,21 +188,25 @@ def XbarOp : AXI4Op<"xbar", [PortResultsAtMostOneUse]> {
     Routes the requests of a set of upstream managers onto a set of downstream
     subordinates. Every address a manager can issue to must be covered by
     exactly one downstream port, which must support at least the bursts the
-    manager issues there.
+    manager issues there. Each upstream port tracks up to
+    `upstream_concurrent_per_id` requests with any one ID.
 
     Example:
     ```mlir
     %mem, %periph = axi4.xbar %clk, %rst_ni mgrs %core, %debug
+      upstream_concurrent_per_id 4
       : (!core_mgr, !debug_mgr) -> (!mem_sub, !periph_sub)
     ```
   }];
 
   let arguments = (ins ClockType:$clock, I1:$reset,
-                       Variadic<PortType>:$upstream);
+                       Variadic<PortType>:$upstream,
+                       I32Attr:$upstream_concurrent_per_id);
   let results = (outs Variadic<PortType>:$downstream);
 
   let assemblyFormat = [{
-    $clock `,` $reset `mgrs` $upstream attr-dict `:`
+    $clock `,` $reset `mgrs` $upstream
+      `upstream_concurrent_per_id` $upstream_concurrent_per_id attr-dict `:`
       functional-type($upstream, $downstream)
   }];
 
@@ -404,20 +408,24 @@ def DemuxOp : AXI4Op<"demux", [PortResultsAtMostOneUse]> {
   let description = [{
     Demultiplexes an AXI4 port into several ports, only one of which has its
     AW/AR valid signals high based on the address mapping inferred from this
-    op's return types.
+    op's return types. The upstream port tracks up to
+    `upstream_concurrent_per_id` requests with any one ID.
 
     Example:
     ```mlir
     %downstream1, %downstream2 = axi4.demux %clk, %rst_ni, %upstream
+      upstream_concurrent_per_id 4
       : (!axi4.port<...>) -> (!axi4.port<...>, !axi4.port<...>)
     ```
   }];
 
-  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream);
+  let arguments = (ins ClockType:$clock, I1:$reset, PortType:$upstream,
+                       I32Attr:$upstream_concurrent_per_id);
   let results = (outs Variadic<PortType>:$downstream);
 
   let assemblyFormat = [{
-    $clock `,` $reset `,` $upstream attr-dict `:`
+    $clock `,` $reset `,` $upstream
+      `upstream_concurrent_per_id` $upstream_concurrent_per_id attr-dict `:`
       functional-type($upstream, $downstream)
   }];
 
@@ -563,23 +571,26 @@ def DummiesXbarOp : AXI4DummiesOp<"xbar"> {
   let description = [{
     Routes the requests of a set of upstream managers onto downstream
     subordinates. Each use of its result corresponds to a physical downstream
-    port.
+    port. Each upstream port tracks up to `upstream_concurrent_per_id` requests
+    with any one ID.
 
     Example:
     ```mlir
     %xbar = axi4.dummies.xbar %clk, %rst_ni mgrs %core, %debug addr_width = 32,
-      data_width = 64
+      data_width = 64, upstream_concurrent_per_id = 4
     ```
   }];
 
   let arguments = (ins ClockType:$clock, I1:$reset,
                        Variadic<DummiesPortType>:$upstream,
-                       I32Attr:$addr_width, I32Attr:$data_width);
+                       I32Attr:$addr_width, I32Attr:$data_width,
+                       I32Attr:$upstream_concurrent_per_id);
   let results = (outs DummiesPortType:$downstream);
 
   let assemblyFormat = [{
     $clock `,` $reset `mgrs` $upstream `addr_width` `=` $addr_width `,`
-      `data_width` `=` $data_width attr-dict
+      `data_width` `=` $data_width `,`
+      `upstream_concurrent_per_id` `=` $upstream_concurrent_per_id attr-dict
   }];
 
   let hasVerifier = 1;
