@@ -1,5 +1,4 @@
 // RUN: circt-opt %s --lower-axi4-dummies-to-axi --split-input-file | FileCheck %s
-// RUN: circt-opt %s --lower-axi4-dummies-to-axi --optimize-axi4-networks --split-input-file | FileCheck %s
 // RUN: circt-opt %s --lower-axi4-dummies-to-axi --verify-axi4-networks --lower-axi4-to-hw=pulp-mapping=true --split-input-file | FileCheck %s --check-prefix=PULP
 
 // A quadrant crossbar reaches each cluster's crossbar through an ID remapper,

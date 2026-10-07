@@ -179,6 +179,42 @@ static LogicalResult fuseAdaptors(Op op, PatternRewriter &rewriter) {
 }
 
 namespace {
+/// Trim per-ID provisioning to the bounds recorded in the upstream ports.
+/// A crossbar uses the same budget for every input, so take their maximum.
+/// This leaves min(upstream bound, budget) unchanged for every input and
+/// channel, preserving the downstream port types, including around cycles.
+template <typename Op>
+struct TrimPerIdBudget : OpRewritePattern<Op> {
+  TrimPerIdBudget(MLIRContext *context, StringRef budgetName)
+      : OpRewritePattern<Op>(context), budgetName(budgetName) {}
+
+  LogicalResult matchAndRewrite(Op op,
+                                PatternRewriter &rewriter) const override {
+    uint32_t writes = 0, reads = 0;
+    auto upstream = op.getUpstream();
+    for (Value value : ValueRange(upstream)) {
+      auto port = cast<PortType>(value.getType());
+      writes = std::max(writes, port.getConcurrentWritesPerId());
+      reads = std::max(reads, port.getConcurrentReadsPerId());
+    }
+    uint32_t required = std::max(writes, reads);
+    uint32_t budget =
+        op->template getAttrOfType<IntegerAttr>(budgetName).getInt();
+    if (!required || required >= budget)
+      return rewriter.notifyMatchFailure(op, "no excess per-ID budget");
+
+    rewriter.modifyOpInPlace(op, [&] {
+      op->setAttr(budgetName, rewriter.getI32IntegerAttr(required));
+    });
+    op.emitRemark() << "reduced " << budgetName << " from " << budget << " to "
+                    << required << " (upstream bound: " << writes
+                    << " writes and " << reads << " reads per ID)";
+    return success();
+  }
+
+  StringRef budgetName;
+};
+
 /// Fuse every adaptor with the like adaptor driving it.
 template <typename Op>
 struct FuseAdaptors : OpRewritePattern<Op> {
@@ -248,6 +284,9 @@ void OptimizeAXI4NetworksPass::runOnOperation() {
   patterns.add<FuseAdaptors<DWConverterOp>, FuseAdaptors<IWConverterOp>,
                FuseAdaptors<BurstSplitterOp>, FuseAdaptors<BurstUnwrapperOp>,
                FuseCrossings>(&context);
+  patterns.add<TrimPerIdBudget<IDRemapOp>>(&context, "concurrent_per_id");
+  patterns.add<TrimPerIdBudget<XbarOp>, TrimPerIdBudget<DemuxOp>>(
+      &context, "upstream_concurrent_per_id");
   // Rewrite only the AXI4 ops, leaving the logic around them untouched
   Dialect *dialect = context.getLoadedDialect<AXI4Dialect>();
   SmallVector<Operation *> ops;

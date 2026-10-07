@@ -265,3 +265,48 @@ hw.module @UnrelatedLogic(in %a : i8, out o : i8) {
   %dead = comb.xor %a, %a : i8
   hw.output %a : i8
 }
+
+//===----------------------------------------------------------------------===//
+// Per-ID budgets
+//===----------------------------------------------------------------------===//
+
+!low_demand = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 4, read_id_width = 4, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 1, concurrent_reads_per_id = 1>
+!remapped_budget = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 4, concurrent_reads_per_id = 1>
+!two_per_id = !axi4.port<addr_width = 32, data_width = 64, write_id_width = 2, read_id_width = 2, user_width = 0, windows = <<base = 0x0, last = 0xfff, burst_specs = <<incr, len = 16>>>>, concurrent_writes_per_id = 2, concurrent_reads_per_id = 2>
+
+// CHECK-LABEL: hw.module @RemapperBudget
+hw.module @RemapperBudget(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !one_read, out downstream : !remapped_budget) {
+  // CHECK: %[[CUT:.+]] = axi4.cut %clk, %rst_ni, %upstream
+  // CHECK: axi4.id_remap %clk, %rst_ni, %[[CUT]] max_unique_ids = 4, concurrent_per_id = 4
+  %cut = axi4.cut %clk, %rst_ni, %upstream : !one_read
+  // expected-remark @below {{reduced concurrent_per_id from 8 to 4 (upstream bound: 4 writes and 1 reads per ID)}}
+  %remap = axi4.id_remap %clk, %rst_ni, %cut max_unique_ids = 4, concurrent_per_id = 8 : (!one_read) -> !remapped_budget
+  hw.output %remap : !remapped_budget
+}
+
+// CHECK-LABEL: hw.module @CrossbarBudget
+hw.module @CrossbarBudget(in %clk : !seq.clock, in %rst_ni : i1, in %a : !low_demand, in %b : !mgr_lo, out downstream : !sub_lo) {
+  // CHECK: axi4.xbar %clk, %rst_ni mgrs %a, %b upstream_concurrent_per_id 4
+  // expected-remark @below {{reduced upstream_concurrent_per_id from 8 to 4 (upstream bound: 4 writes and 4 reads per ID)}}
+  %down = axi4.xbar %clk, %rst_ni mgrs %a, %b upstream_concurrent_per_id 8 : (!low_demand, !mgr_lo) -> (!sub_lo)
+  hw.output %down : !sub_lo
+}
+
+// CHECK-LABEL: hw.module @DemuxBudget
+hw.module @DemuxBudget(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !demuxed, out low : !mgr_lo, out high : !mgr_hi) {
+  // CHECK: axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 4
+  // expected-remark @below {{reduced upstream_concurrent_per_id from 8 to 4 (upstream bound: 4 writes and 4 reads per ID)}}
+  %lo, %hi = axi4.demux %clk, %rst_ni, %upstream upstream_concurrent_per_id 8 : (!demuxed) -> (!mgr_lo, !mgr_hi)
+  hw.output %lo, %hi : !mgr_lo, !mgr_hi
+}
+
+// CHECK-LABEL: hw.module @PreserveBudgets
+hw.module @PreserveBudgets(in %clk : !seq.clock, in %rst_ni : i1, in %upstream : !mgr_lo, in %zero : !sub_gap, out downstream : !two_per_id, out inactive : !sub_gap) {
+  // CHECK: axi4.id_remap {{.*}} max_unique_ids = 4, concurrent_per_id = 4
+  // CHECK: axi4.id_remap {{.*}} max_unique_ids = 4, concurrent_per_id = 2
+  // CHECK: axi4.id_remap {{.*}} max_unique_ids = 4, concurrent_per_id = 8
+  %tight = axi4.id_remap %clk, %rst_ni, %upstream max_unique_ids = 4, concurrent_per_id = 4 : (!mgr_lo) -> !narrow_ids
+  %small = axi4.id_remap %clk, %rst_ni, %tight max_unique_ids = 4, concurrent_per_id = 2 : (!narrow_ids) -> !two_per_id
+  %inactive = axi4.id_remap %clk, %rst_ni, %zero max_unique_ids = 4, concurrent_per_id = 8 : (!sub_gap) -> !sub_gap
+  hw.output %small, %inactive : !two_per_id, !sub_gap
+}

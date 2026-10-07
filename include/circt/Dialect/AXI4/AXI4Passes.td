@@ -51,6 +51,11 @@ def OptimizeAXI4Networks : Pass<"optimize-axi4-networks", "mlir::ModuleOp"> {
     - Fuses each `axi4.cdc` with the crossing driving it, if there is one, so
       a connection crosses once into the domain it ends up in, rather than once
       per crossing written.
+    - Reduces `concurrent_per_id` on `axi4.id_remap` and
+      `upstream_concurrent_per_id` on `axi4.xbar` and `axi4.demux` to the maximum
+      write or read bound across all upstream ports, when that value is positive
+      and smaller than the configured budget. Port types, ID tracking capacity,
+      and all other configuration stay unchanged.
   }];
 
   let dependentDialects = ["circt::axi4::AXI4Dialect"];
